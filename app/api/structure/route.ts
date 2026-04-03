@@ -14,9 +14,9 @@ type StructureBody = {
   crmText: string
 }
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+}
 
 const SYSTEM_PROMPT = `You are a CRM assistant for a B2B agricultural field sales rep based in California.
 
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing note' }, { status: 400 })
     }
 
-    const response = await client.chat.completions.create({
+    const response = await getClient().chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0,
       messages: [

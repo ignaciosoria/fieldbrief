@@ -1,9 +1,9 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+}
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    const transcription = await client.audio.transcriptions.create({
+    const transcription = await getClient().audio.transcriptions.create({
       file,
       model: 'whisper-1',
     })
