@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 
 type StructureBody = {
   customer: string
+  dealer: string
   contact: string
   summary: string
   nextStep: string
@@ -25,7 +26,8 @@ Notes are informal, spoken-style, and may include industry slang or abbreviation
 Your job: extract structured CRM data from the note. Return ONLY valid JSON, no markdown, no explanation.
 
 Fields to extract:
-- customer: farm name or company name
+- customer: the GROWER or farm operation that uses the product (e.g. Laguna Farms). Never the distributor — that belongs in dealer.
+- dealer: the distributing company or intermediary the rep visited (e.g. Coastal Growers). Empty string if the rep met the grower directly.
 - contact: person's name spoken to (first name or full name)
 - summary: 1-2 sentences ONLY about what was discussed and any objections or next context. Do NOT repeat location, crop, or acreage — those are separate fields. Focus only on what happened in the conversation.
 - nextStep: the single most important action the rep needs to take, starting with a verb
@@ -37,6 +39,9 @@ Fields to extract:
 - crmText: a clean, well-written paragraph in the SAME language as the input note, ready to paste directly into a CRM. Write it as if the rep wrote it themselves — no labels, no bullet points, no field names. Just a natural, professional summary of the visit including who they met, what was discussed, key details (product, acreage, crop if relevant), and the next action. 2-4 sentences maximum. Sound like a human, not a form.
 
 Rules:
+- customer is always the GROWER or farm that uses the product (e.g. Laguna Farms), never the dealer.
+- dealer is the distributing company or intermediary the rep visited (e.g. Coastal Growers); leave empty if they visited the grower directly.
+- If the rep visited a dealer who mentioned a grower client, put the grower in customer and the visited company in dealer.
 - Do NOT invent or assume information not in the note
 - If a field is not mentioned, return ""
 - summary must be short and focused on the conversation only
@@ -63,6 +68,7 @@ function parseStructureJson(text: string): StructureBody {
 
   return {
     customer: typeof parsed.customer === 'string' ? parsed.customer : '',
+    dealer: typeof parsed.dealer === 'string' ? parsed.dealer : '',
     contact: typeof parsed.contact === 'string' ? parsed.contact : '',
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     nextStep: typeof parsed.nextStep === 'string' ? parsed.nextStep : '',
@@ -111,6 +117,7 @@ const capitalized = {
   ...result,
   contact: result.contact.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
   customer: result.customer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+  dealer: result.dealer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
   summary: capitalize(result.summary),
   nextStep: capitalize(result.nextStep),
   notes: capitalize(result.notes),

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 type StructureResult = {
   customer: string
+  dealer: string
   contact: string
   summary: string
   nextStep: string
@@ -16,6 +17,7 @@ type StructureResult = {
 
 const emptyResult: StructureResult = {
   customer: '',
+  dealer: '',
   contact: '',
   summary: '',
   nextStep: '',
