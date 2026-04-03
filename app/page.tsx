@@ -11,6 +11,7 @@ type StructureResult = {
   crop: string
   product: string
   location: string
+  crmText: string
 }
 
 const emptyResult: StructureResult = {
@@ -22,6 +23,7 @@ const emptyResult: StructureResult = {
   crop: '',
   product: '',
   location: '',
+  crmText: '',
 }
 
 type Tab = 'record' | 'history' | 'settings'
@@ -99,16 +101,7 @@ export default function Home() {
   const copyText = useMemo(() => {
     const r = activeResult
     if (!r) return ''
-    const lines: string[] = []
-    if (r.customer) lines.push(`CUSTOMER: ${r.customer}`)
-    if (r.contact) lines.push(`CONTACT: ${r.contact}`)
-    if (r.crop) lines.push(`CROP: ${r.crop}`)
-    if (r.product) lines.push(`PRODUCT: ${r.product}`)
-    if (r.location) lines.push(`LOCATION: ${r.location}`)
-    if (r.summary) { lines.push(''); lines.push(`SUMMARY: ${r.summary}`) }
-    if (r.nextStep) { lines.push(''); lines.push(`NEXT STEP: ${r.nextStep}`) }
-    if (r.notes) { lines.push(''); lines.push(`NOTES: ${r.notes}`) }
-    return lines.join('\n')
+    return r.crmText || ''
   }, [activeResult])
 
   const formatSeconds = (s: number) => {

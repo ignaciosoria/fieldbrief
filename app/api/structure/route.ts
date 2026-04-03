@@ -10,6 +10,7 @@ type StructureBody = {
   crop: string
   product: string
   location: string
+  crmText: string
 }
 
 const client = new OpenAI({
@@ -33,6 +34,7 @@ Fields to extract:
 - product: the product(s) discussed
 - location: city or region only (e.g. Salinas, Oxnard)
 - acreage: number of acres mentioned as a number only (e.g. 200), empty string if not mentioned
+- crmText: a clean, well-written paragraph in the SAME language as the input note, ready to paste directly into a CRM. Write it as if the rep wrote it themselves — no labels, no bullet points, no field names. Just a natural, professional summary of the visit including who they met, what was discussed, key details (product, acreage, crop if relevant), and the next action. 2-4 sentences maximum. Sound like a human, not a form.
 
 Rules:
 - Do NOT invent or assume information not in the note
@@ -68,6 +70,7 @@ function parseStructureJson(text: string): StructureBody {
     crop: typeof parsed.crop === 'string' ? parsed.crop : '',
     product: typeof parsed.product === 'string' ? parsed.product : '',
     location: typeof parsed.location === 'string' ? parsed.location : '',
+    crmText: typeof parsed.crmText === 'string' ? parsed.crmText : '',
   }
 }
 
@@ -114,6 +117,7 @@ const capitalized = {
   crop: result.crop.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
   product: result.product.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
   location: result.location.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+  crmText: capitalize(result.crmText),
 }
 
 return NextResponse.json(capitalized)
