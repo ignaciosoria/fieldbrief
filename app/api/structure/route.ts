@@ -85,18 +85,18 @@ export async function POST(request: Request) {
   try {
     const { note } = await request.json()
 
-    const today = new Date().toLocaleDateString('es-ES')
-
     if (!note || typeof note !== 'string') {
       return NextResponse.json({ error: 'Missing note' }, { status: 400 })
     }
+
+    const today = new Date().toLocaleDateString('es-ES')
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: note },
+        { role: 'user', content: `Hoy es ${today}.\n\n${note}` },
       ],
     })
 
