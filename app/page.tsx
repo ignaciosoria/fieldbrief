@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 type StructureResult = {
   customer: string
-  dealer: string
   contact: string
   summary: string
   nextStep: string
@@ -17,7 +16,6 @@ type StructureResult = {
 
 const emptyResult: StructureResult = {
   customer: '',
-  dealer: '',
   contact: '',
   summary: '',
   nextStep: '',
@@ -27,8 +25,6 @@ const emptyResult: StructureResult = {
   location: '',
   crmText: '',
 }
-
-type ProcessingStep = 'transcribing' | 'structuring'
 
 type Tab = 'record' | 'history' | 'settings'
 
@@ -45,8 +41,7 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [result, setResult] = useState<StructureResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null)
-  const [processingLinger, setProcessingLinger] = useState(false)
+  const [loadingStage, setLoadingStage] = useState<'transcribing' | 'structuring' | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -54,6 +49,7 @@ export default function Home() {
   const [transcript, setTranscript] = useState('')
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
+  const [noteSaved, setNoteSaved] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -83,15 +79,6 @@ export default function Home() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [isRecording])
 
-  useEffect(() => {
-    if (loading) {
-      setProcessingLinger(true)
-      return
-    }
-    const id = setTimeout(() => setProcessingLinger(false), 320)
-    return () => clearTimeout(id)
-  }, [loading])
-
   const saveNote = (res: StructureResult, tx: string) => {
     const note: SavedNote = {
       id: Date.now().toString(),
@@ -101,6 +88,8 @@ export default function Home() {
     }
     const updated = [note, ...savedNotes]
     setSavedNotes(updated)
+    setNoteSaved(true)
+    setTimeout(() => setNoteSaved(false), 2000)
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
   }
 
@@ -185,7 +174,7 @@ export default function Home() {
 
   const processRecordedAudio = async (blob: Blob) => {
     setLoading(true)
-    setProcessingStep('transcribing')
+    setLoadingStage('transcribing')
     setError('')
     setResult(null)
     try {
@@ -201,8 +190,8 @@ export default function Home() {
       const tx = transcribeData.transcript || transcribeData.text || ''
       setTranscript(tx)
       setInput(tx)
+      setLoadingStage('structuring')
 
-      setProcessingStep('structuring')
       const structureRes = await fetch('/api/structure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -217,15 +206,15 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
-      setProcessingStep(null)
       setLoading(false)
+      setLoadingStage(null)
     }
   }
 
   const processTypedNote = async () => {
     if (!input.trim()) return
     setLoading(true)
-    setProcessingStep('structuring')
+    setLoadingStage('structuring')
     setError('')
     setResult(null)
     setCopied(false)
@@ -243,8 +232,8 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
-      setProcessingStep(null)
       setLoading(false)
+      setLoadingStage(null)
     }
   }
 
@@ -269,31 +258,53 @@ export default function Home() {
 
   if (!mounted) return null
 
+  const progressWidth = loadingStage === 'transcribing' ? '55%' : loadingStage === 'structuring' ? '85%' : '0%'
+
   return (
-    <main className="flex min-h-screen flex-col bg-[#0d0d14] text-white antialiased select-none">
+    <main className="flex min-h-screen flex-col bg-[#f7f6f3] text-zinc-900 antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-5 pb-3">
+      <header className="flex items-center justify-between px-5 pt-12 pb-4 bg-[#f7f6f3]">
         <button className="flex flex-col gap-[5px] p-1" aria-label="Menu">
-          <span className="block h-[2px] w-5 rounded-full bg-zinc-500" />
-          <span className="block h-[2px] w-5 rounded-full bg-zinc-500" />
-          <span className="block h-[2px] w-3 rounded-full bg-zinc-500" />
+          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-400" />
+          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-400" />
+          <span className="block h-[1.5px] w-3 rounded-full bg-zinc-400" />
         </button>
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[12px] font-bold tracking-[0.25em] text-white uppercase">FieldBrief</span>
-          <span className="text-[9px] tracking-[0.12em] text-zinc-600 uppercase">Talk. We'll handle the rest.</span>
+          <span className="text-[13px] font-bold tracking-[0.22em] text-zinc-900 uppercase">FieldBrief</span>
+          <span className="text-[9px] tracking-[0.1em] text-zinc-400 uppercase">Your field notes, structured.</span>
         </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-[12px] font-semibold text-indigo-300">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-[12px] font-semibold text-indigo-600">
           IG
         </div>
       </header>
+
+      {/* Progress bar */}
+      {loading && (
+        <div className="h-[2px] w-full bg-zinc-200 overflow-hidden">
+          <div
+            className="h-full bg-indigo-500 transition-all duration-700 ease-in-out rounded-full"
+            style={{ width: progressWidth }}
+          />
+        </div>
+      )}
+
+      {/* Note saved toast */}
+      {noteSaved && (
+        <div className="mx-5 mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-[13px] font-medium text-emerald-700">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Note saved
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto pb-28 px-5">
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="flex flex-col items-center pt-10">
+          <div className="flex flex-col items-center pt-8">
 
             {/* Mic button */}
             <button
@@ -303,8 +314,8 @@ export default function Home() {
                 relative mb-6 flex h-32 w-32 items-center justify-center rounded-[2rem]
                 transition-all duration-300 active:scale-95 disabled:opacity-40
                 ${isRecording
-                  ? 'bg-rose-600 shadow-[0_12px_50px_rgba(225,29,72,0.5)]'
-                  : 'bg-indigo-600 shadow-[0_12px_50px_rgba(99,102,241,0.45)] hover:bg-indigo-500'
+                  ? 'bg-rose-500 shadow-[0_8px_30px_rgba(239,68,68,0.3)]'
+                  : 'bg-indigo-600 shadow-[0_8px_30px_rgba(99,102,241,0.25)] hover:bg-indigo-500'
                 }
               `}
             >
@@ -317,44 +328,22 @@ export default function Home() {
               </svg>
             </button>
 
-            {/* Processing: status + progress (below mic) */}
-            {processingLinger && (
-              <div
-                className={`
-                  mb-4 w-full max-w-xs transition-opacity duration-300 ease-out
-                  ${loading ? 'opacity-100' : 'opacity-0'}
-                `}
-              >
-                <p className="mb-2 text-center text-[13px] text-zinc-400 transition-all duration-300 ease-out">
-                  {processingStep === 'transcribing' ? 'Transcribing your note...' : 'Structuring...'}
-                </p>
-                <div className="h-[2px] w-full overflow-hidden rounded-full bg-zinc-800">
-                  <div
-                    className="progress-shimmer-fill h-full rounded-full transition-[width] duration-500 ease-out"
-                    style={{
-                      width: processingStep === 'transcribing' ? '40%' : '80%',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
             {/* Timer / status */}
             <div className="mb-4 h-12 flex items-center justify-center">
               {isRecording ? (
-                <span className="text-[48px] font-bold tabular-nums tracking-tight text-white leading-none">
+                <span className="text-[48px] font-bold tabular-nums tracking-tight text-zinc-900 leading-none">
                   {formatSeconds(recordingSeconds)}
                 </span>
               ) : loading ? (
-                <span className="sr-only">Processing</span>
-              ) : result ? (
-                <span className="text-[14px] text-emerald-400">✓ Note saved</span>
+                <span className="text-[14px] text-zinc-500 animate-pulse">
+                  {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
+                </span>
               ) : (
-                <span className="text-[14px] text-zinc-600">Tap to record</span>
+                <span className="text-[14px] text-zinc-400">Tap to record</span>
               )}
             </div>
 
-            {/* Waveform — only visible while recording */}
+            {/* Waveform — only while recording */}
             {isRecording ? (
               <div className="mb-6 flex h-7 items-end justify-center gap-[3px]">
                 {Array.from({ length: 22 }).map((_, i) => (
@@ -373,13 +362,13 @@ export default function Home() {
 
             {/* Textarea */}
             <textarea
-              className="mb-4 w-full resize-none rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3.5 text-[14px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-700 focus-visible:border-indigo-500/50 min-h-[90px]"
+              className="mb-4 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 focus-visible:border-indigo-400 min-h-[90px] shadow-sm"
               placeholder="Add details manually..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
             {transcript && (
-              <p className="mb-3 w-full text-[12px] text-emerald-500/70">✓ Transcript loaded</p>
+              <p className="mb-3 w-full text-[12px] text-emerald-600">✓ Transcript loaded</p>
             )}
 
             {/* Buttons */}
@@ -387,14 +376,14 @@ export default function Home() {
               <button
                 onClick={processTypedNote}
                 disabled={loading || !input.trim()}
-                className="flex-1 rounded-2xl bg-indigo-600 py-4 text-[15px] font-semibold text-white shadow-[0_4px_20px_rgba(99,102,241,0.3)] transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+                className="flex-1 rounded-2xl bg-indigo-600 py-4 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
               >
                 {loading ? 'Processing...' : 'Process Note'}
               </button>
               {(input || result) && (
                 <button
                   onClick={handleReset}
-                  className="rounded-2xl border border-zinc-800 px-4 text-[13px] text-zinc-500 transition-all hover:text-zinc-300"
+                  className="rounded-2xl border border-zinc-200 bg-white px-4 text-[13px] text-zinc-400 transition-all hover:text-zinc-600 shadow-sm"
                 >
                   Clear
                 </button>
@@ -403,7 +392,7 @@ export default function Home() {
 
             {/* Error */}
             {error && (
-              <div className="mb-4 w-full rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-[13px] text-red-300">
+              <div className="mb-4 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-600">
                 {error}
               </div>
             )}
@@ -412,29 +401,28 @@ export default function Home() {
             {result && (
               <div className="w-full space-y-3">
 
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">Analysis result</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Analysis result</p>
 
-                {/* Contact + Company card */}
-                <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[13px] font-semibold text-indigo-300">
+                {/* Contact card */}
+                <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">
                       {result.contact ? getInitials(result.contact) : result.customer ? getInitials(result.customer) : 'NA'}
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">Contact</p>
-                      <p className="text-[16px] font-semibold text-white leading-tight">{result.contact || '—'}</p>
+                      <p className="text-[18px] font-bold text-zinc-900 leading-tight">{result.contact || '—'}</p>
                       {result.customer && (
-                        <p className="text-[12px] text-zinc-500 mt-0.5">{result.customer}</p>
+                        <p className="text-[13px] text-zinc-400 mt-0.5">{result.customer}</p>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Pills row — location, crop, product */}
+                {/* Pills */}
                 {(result.location || result.crop || result.product) && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {result.location && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                         </svg>
@@ -442,19 +430,12 @@ export default function Home() {
                       </span>
                     )}
                     {result.crop && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12c0-2.76 1.12-5.26 2.93-7.07"/>
-                          <path d="M12 6v6l4 2"/>
-                        </svg>
+                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
                         {result.crop}
                       </span>
                     )}
                     {result.product && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-indigo-800/40 bg-indigo-950/40 px-3 py-1.5 text-[11px] text-indigo-400">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                        </svg>
+                      <span className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] text-indigo-600">
                         {result.product}
                       </span>
                     )}
@@ -463,44 +444,43 @@ export default function Home() {
 
                 {/* Summary */}
                 {result.summary && (
-                  <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">Summary</p>
-                    <p className="text-[13px] leading-relaxed text-zinc-300">{result.summary}</p>
+                  <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
+                    <p className="text-[13px] leading-relaxed text-zinc-600">{result.summary}</p>
                   </div>
                 )}
 
                 {/* Next Step */}
                 {result.nextStep && (
-                  <div className="rounded-2xl border border-indigo-500/20 bg-indigo-950/40 px-4 py-3.5">
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
                     <div className="mb-2 flex items-center gap-2">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="rgba(165,180,252,0.8)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1">
                         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                       </svg>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-400/80">Next step</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Next step</p>
                     </div>
-                    <p className="text-[16px] font-semibold text-white leading-snug italic">"{result.nextStep}"</p>
+                    <p className="text-[18px] font-bold text-indigo-700 leading-snug">{result.nextStep}</p>
                   </div>
                 )}
 
-                {/* Copy button */}
+                {/* Buttons */}
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={handleCopy}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 py-3.5 text-[13px] font-medium text-zinc-300 transition-all hover:border-zinc-700 hover:text-white active:scale-[0.98]"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all hover:text-zinc-800 active:scale-[0.98]"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="9" y="9" width="13" height="13" rx="2"/>
                       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                     </svg>
-                    {copied ? 'Copied!' : 'Copy'}
+                    {copied ? 'Copied!' : 'Copy for CRM'}
                   </button>
                   <button
-                    onClick={() => { setActiveTab('history') }}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3.5 text-[13px] font-medium text-white shadow-[0_4px_16px_rgba(99,102,241,0.3)] transition-all hover:bg-indigo-500 active:scale-[0.98]"
+                    onClick={() => setActiveTab('history')}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:bg-indigo-500 active:scale-[0.98]"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 8v4l3 3"/>
-                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                     </svg>
                     View history
                   </button>
@@ -518,7 +498,7 @@ export default function Home() {
               <div>
                 <button
                   onClick={() => setSelectedNote(null)}
-                  className="mb-4 flex items-center gap-2 text-[13px] text-zinc-500 hover:text-zinc-300"
+                  className="mb-4 flex items-center gap-2 text-[13px] text-zinc-400 hover:text-zinc-700"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M15 18l-6-6 6-6"/>
@@ -527,28 +507,26 @@ export default function Home() {
                 </button>
 
                 <div className="space-y-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-600">{formatDate(selectedNote.date)}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">{formatDate(selectedNote.date)}</p>
 
-                  <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[13px] font-semibold text-indigo-300">
+                  <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                    <div className="flex items-center gap-3.5">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">
                         {selectedNote.result.contact ? getInitials(selectedNote.result.contact) : 'NA'}
                       </div>
                       <div>
-                        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">Contact</p>
-                        <p className="text-[16px] font-semibold text-white">{selectedNote.result.contact || '—'}</p>
+                        <p className="text-[18px] font-bold text-zinc-900">{selectedNote.result.contact || '—'}</p>
                         {selectedNote.result.customer && (
-                          <p className="text-[12px] text-zinc-500 mt-0.5">{selectedNote.result.customer}</p>
+                          <p className="text-[13px] text-zinc-400 mt-0.5">{selectedNote.result.customer}</p>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Pills en history detail */}
                   {(selectedNote.result.location || selectedNote.result.crop || selectedNote.result.product) && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedNote.result.location && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                           </svg>
@@ -556,12 +534,12 @@ export default function Home() {
                         </span>
                       )}
                       {selectedNote.result.crop && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                        <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
                           {selectedNote.result.crop}
                         </span>
                       )}
                       {selectedNote.result.product && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-indigo-800/40 bg-indigo-950/40 px-3 py-1.5 text-[11px] text-indigo-400">
+                        <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] text-indigo-600">
                           {selectedNote.result.product}
                         </span>
                       )}
@@ -569,28 +547,28 @@ export default function Home() {
                   )}
 
                   {selectedNote.result.summary && (
-                    <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">Summary</p>
-                      <p className="text-[13px] leading-relaxed text-zinc-300">{selectedNote.result.summary}</p>
+                    <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
+                      <p className="text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.summary}</p>
                     </div>
                   )}
 
                   {selectedNote.result.nextStep && (
-                    <div className="rounded-2xl border border-indigo-500/20 bg-indigo-950/40 px-4 py-3.5">
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
                       <div className="mb-2 flex items-center gap-2">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="rgba(165,180,252,0.8)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1">
                           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                         </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-400/80">Next step</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Next step</p>
                       </div>
-                      <p className="text-[16px] font-semibold text-white leading-snug italic">"{selectedNote.result.nextStep}"</p>
+                      <p className="text-[18px] font-bold text-indigo-700 leading-snug">{selectedNote.result.nextStep}</p>
                     </div>
                   )}
 
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={handleCopy}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 py-3.5 text-[13px] font-medium text-zinc-300 transition-all hover:text-white active:scale-[0.98]"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all hover:text-zinc-800 active:scale-[0.98]"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -600,7 +578,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => deleteNote(selectedNote.id)}
-                      className="rounded-2xl border border-red-900/40 bg-red-950/30 px-4 text-[13px] text-red-400 transition-all hover:bg-red-950/50 active:scale-[0.98]"
+                      className="rounded-2xl border border-red-200 bg-red-50 px-4 text-[13px] text-red-500 transition-all hover:bg-red-100 active:scale-[0.98]"
                     >
                       Delete
                     </button>
@@ -609,18 +587,18 @@ export default function Home() {
               </div>
             ) : (
               <div>
-                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
                   {savedNotes.length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
                 </p>
                 {savedNotes.length === 0 ? (
                   <div className="flex flex-col items-center justify-center pt-16 text-center">
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-900">
+                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(99,102,241,0.5)" strokeWidth="1.5">
                         <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                       </svg>
                     </div>
-                    <p className="text-[14px] text-zinc-500">No notes yet</p>
-                    <p className="mt-1 text-[12px] text-zinc-700">Record your first visit to get started</p>
+                    <p className="text-[14px] text-zinc-400">No notes yet</p>
+                    <p className="mt-1 text-[12px] text-zinc-300">Record your first visit to get started</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -628,26 +606,26 @@ export default function Home() {
                       <button
                         key={note.id}
                         onClick={() => setSelectedNote(note)}
-                        className="w-full rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5 text-left transition-all hover:border-zinc-700 active:scale-[0.99]"
+                        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-zinc-300 active:scale-[0.99]"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-semibold text-indigo-300">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-600">
                               {note.result.contact ? getInitials(note.result.contact) : 'NA'}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[14px] font-semibold text-white truncate">
+                              <p className="text-[14px] font-semibold text-zinc-900 truncate">
                                 {note.result.contact || note.result.customer || 'Unnamed'}
                               </p>
                               {note.result.customer && note.result.contact && (
-                                <p className="text-[12px] text-zinc-500 truncate">{note.result.customer}</p>
+                                <p className="text-[12px] text-zinc-400 truncate">{note.result.customer}</p>
                               )}
                             </div>
                           </div>
-                          <p className="shrink-0 text-[11px] text-zinc-600 mt-0.5">{formatDate(note.date)}</p>
+                          <p className="shrink-0 text-[11px] text-zinc-400 mt-0.5">{formatDate(note.date)}</p>
                         </div>
                         {note.result.nextStep && (
-                          <p className="mt-2 text-[12px] text-indigo-400/80 truncate pl-12">→ {note.result.nextStep}</p>
+                          <p className="mt-2 text-[12px] text-indigo-500 truncate pl-12">→ {note.result.nextStep}</p>
                         )}
                       </button>
                     ))}
@@ -661,17 +639,17 @@ export default function Home() {
         {/* ── SETTINGS TAB ── */}
         {activeTab === 'settings' && (
           <div className="pt-2 space-y-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">Account</p>
-            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Account</p>
+            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-500/20 text-[13px] font-semibold text-indigo-300">IG</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">IG</div>
                 <div>
-                  <p className="text-[14px] font-semibold text-white">Ignacio</p>
-                  <p className="text-[12px] text-zinc-500">Personal use</p>
+                  <p className="text-[14px] font-semibold text-zinc-900">Ignacio</p>
+                  <p className="text-[12px] text-zinc-400">Personal use</p>
                 </div>
               </div>
             </div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">Data</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Data</p>
             <button
               onClick={() => {
                 if (confirm('Delete all saved notes?')) {
@@ -679,7 +657,7 @@ export default function Home() {
                   localStorage.removeItem('fieldbrief-notes')
                 }
               }}
-              className="w-full rounded-2xl border border-red-900/30 bg-red-950/20 py-3.5 text-[13px] font-medium text-red-400 transition-all hover:bg-red-950/40"
+              className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-500 transition-all hover:bg-red-100"
             >
               Clear all notes
             </button>
@@ -689,7 +667,7 @@ export default function Home() {
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-zinc-800/60 bg-[#0d0d14]/95 px-2 pb-safe pt-2 backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-zinc-200 bg-[#f7f6f3]/95 px-2 pb-safe pt-2 backdrop-blur-md">
         <NavBtn
           active={activeTab === 'record'}
           onClick={() => { setActiveTab('record'); setSelectedNote(null) }}
@@ -730,20 +708,6 @@ export default function Home() {
           from { height: 3px; opacity: 0.5; }
           to   { height: 20px; opacity: 1; }
         }
-        @keyframes progress-shimmer {
-          0% { background-position: 100% 0; }
-          100% { background-position: -100% 0; }
-        }
-        .progress-shimmer-fill {
-          background: linear-gradient(
-            90deg,
-            rgb(99 102 241),
-            rgb(129 140 248),
-            rgb(99 102 241)
-          );
-          background-size: 200% 100%;
-          animation: progress-shimmer 1.2s linear infinite;
-        }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
     </main>
@@ -764,10 +728,10 @@ function NavBtn({
       onClick={onClick}
       className="relative flex flex-col items-center gap-1 px-5 py-2 transition-all"
     >
-      <span className={active ? 'text-indigo-400' : 'text-zinc-600'}>{icon}</span>
-      <span className={`text-[10px] font-medium ${active ? 'text-indigo-400' : 'text-zinc-600'}`}>{label}</span>
+      <span className={active ? 'text-indigo-600' : 'text-zinc-400'}>{icon}</span>
+      <span className={`text-[10px] font-medium ${active ? 'text-indigo-600' : 'text-zinc-400'}`}>{label}</span>
       {badge && badge > 0 ? (
-        <span className="absolute right-3 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white">
+        <span className="absolute right-3 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-indigo-600 px-1 text-[9px] font-bold text-white">
           {badge}
         </span>
       ) : null}
