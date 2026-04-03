@@ -261,37 +261,34 @@ export default function Home() {
   const progressWidth = loadingStage === 'transcribing' ? '55%' : loadingStage === 'structuring' ? '85%' : '0%'
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#f7f6f3] text-zinc-900 antialiased select-none">
+    <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-12 pb-4 bg-[#f7f6f3]">
+      <header className="flex items-center justify-between px-5 pt-12 pb-3 bg-white">
         <button className="flex flex-col gap-[5px] p-1" aria-label="Menu">
-          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-400" />
-          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-400" />
-          <span className="block h-[1.5px] w-3 rounded-full bg-zinc-400" />
+          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
+          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
+          <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[13px] font-bold tracking-[0.22em] text-zinc-900 uppercase">FieldBrief</span>
-          <span className="text-[9px] tracking-[0.1em] text-zinc-400 uppercase">Your field notes, structured.</span>
-        </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-[12px] font-semibold text-indigo-600">
+        <span className="text-[15px] font-bold tracking-[0.2em] text-zinc-900 uppercase">FieldBrief</span>
+        <div className="flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
           IG
         </div>
       </header>
 
       {/* Progress bar */}
       {loading && (
-        <div className="h-[2px] w-full bg-zinc-200 overflow-hidden">
+        <div className="h-[2px] w-full bg-zinc-100 overflow-hidden">
           <div
-            className="h-full bg-indigo-500 transition-all duration-700 ease-in-out rounded-full"
-            style={{ width: progressWidth }}
+            className="h-full transition-all duration-700 ease-in-out rounded-full"
+            style={{ width: progressWidth, backgroundColor: '#1a4d2e' }}
           />
         </div>
       )}
 
       {/* Note saved toast */}
       {noteSaved && (
-        <div className="mx-5 mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-[13px] font-medium text-emerald-700">
+        <div className="mx-5 mt-3 flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M20 6L9 17l-5-5"/>
           </svg>
@@ -304,25 +301,24 @@ export default function Home() {
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="flex flex-col items-center pt-8">
+          <div className="flex flex-col items-center pt-6">
 
-            {/* Mic button */}
+            {/* Mic button — circular */}
             <button
               onClick={toggleRecording}
               disabled={loading}
-              className={`
-                relative mb-6 flex h-32 w-32 items-center justify-center rounded-[2rem]
-                transition-all duration-300 active:scale-95 disabled:opacity-40
-                ${isRecording
-                  ? 'bg-rose-500 shadow-[0_8px_30px_rgba(239,68,68,0.3)]'
-                  : 'bg-indigo-600 shadow-[0_8px_30px_rgba(99,102,241,0.25)] hover:bg-indigo-500'
-                }
-              `}
+              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:opacity-40"
+              style={{
+                backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
+                boxShadow: isRecording
+                  ? '0 8px 32px rgba(220,38,38,0.3)'
+                  : '0 8px 32px rgba(26,77,46,0.3)',
+              }}
             >
               {isRecording && (
-                <span className="absolute inset-0 animate-ping rounded-[2rem] bg-rose-400/20" />
+                <span className="absolute inset-0 animate-ping rounded-full opacity-20" style={{backgroundColor: '#dc2626'}} />
               )}
-              <svg width="44" height="44" viewBox="0 0 24 24" fill="white">
+              <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
                 <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
                 <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
               </svg>
@@ -335,7 +331,7 @@ export default function Home() {
                   {formatSeconds(recordingSeconds)}
                 </span>
               ) : loading ? (
-                <span className="text-[14px] text-zinc-500 animate-pulse">
+                <span className="text-[14px] animate-pulse" style={{color: '#1a4d2e'}}>
                   {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
                 </span>
               ) : (
@@ -345,30 +341,32 @@ export default function Home() {
 
             {/* Waveform — only while recording */}
             {isRecording ? (
-              <div className="mb-6 flex h-7 items-end justify-center gap-[3px]">
+              <div className="mb-5 flex h-7 items-end justify-center gap-[3px]">
                 {Array.from({ length: 22 }).map((_, i) => (
                   <span
                     key={i}
-                    className="w-[3px] rounded-full bg-indigo-400"
+                    className="w-[3px] rounded-full"
                     style={{
+                      backgroundColor: '#1a4d2e',
                       animation: `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`,
                     }}
                   />
                 ))}
               </div>
             ) : (
-              <div className="mb-4" />
+              <div className="mb-3" />
             )}
 
             {/* Textarea */}
             <textarea
-              className="mb-4 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 focus-visible:border-indigo-400 min-h-[90px] shadow-sm"
+              className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[90px] shadow-sm"
+              style={{'--tw-ring-color': '#1a4d2e'} as any}
               placeholder="Add details manually..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
             {transcript && (
-              <p className="mb-3 w-full text-[12px] text-emerald-600">✓ Transcript loaded</p>
+              <p className="mb-3 w-full text-[12px]" style={{color: '#1a4d2e'}}>✓ Transcript loaded</p>
             )}
 
             {/* Buttons */}
@@ -376,7 +374,8 @@ export default function Home() {
               <button
                 onClick={processTypedNote}
                 disabled={loading || !input.trim()}
-                className="flex-1 rounded-2xl bg-indigo-600 py-4 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+                className="flex-1 rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
+                style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)'}}
               >
                 {loading ? 'Processing...' : 'Process Note'}
               </button>
@@ -404,13 +403,13 @@ export default function Home() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Analysis result</p>
 
                 {/* Contact card */}
-                <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                   <div className="flex items-center gap-3.5">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
                       {result.contact ? getInitials(result.contact) : result.customer ? getInitials(result.customer) : 'NA'}
                     </div>
                     <div>
-                      <p className="text-[18px] font-bold text-zinc-900 leading-tight">{result.contact || '—'}</p>
+                      <p className="text-[20px] font-bold text-zinc-900 leading-tight">{result.contact || '—'}</p>
                       {result.customer && (
                         <p className="text-[13px] text-zinc-400 mt-0.5">{result.customer}</p>
                       )}
@@ -435,7 +434,7 @@ export default function Home() {
                       </span>
                     )}
                     {result.product && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] text-indigo-600">
+                      <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
                         {result.product}
                       </span>
                     )}
@@ -444,7 +443,7 @@ export default function Home() {
 
                 {/* Summary */}
                 {result.summary && (
-                  <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                  <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
                     <p className="text-[13px] leading-relaxed text-zinc-600">{result.summary}</p>
                   </div>
@@ -452,14 +451,14 @@ export default function Home() {
 
                 {/* Next Step */}
                 {result.nextStep && (
-                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
+                  <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
                     <div className="mb-2 flex items-center gap-2">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
                         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                       </svg>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Next step</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
                     </div>
-                    <p className="text-[18px] font-bold text-indigo-700 leading-snug">{result.nextStep}</p>
+                    <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>{result.nextStep}</p>
                   </div>
                 )}
 
@@ -477,7 +476,8 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => setActiveTab('history')}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:bg-indigo-500 active:scale-[0.98]"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
+                    style={{backgroundColor: '#1a4d2e'}}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
@@ -509,13 +509,13 @@ export default function Home() {
                 <div className="space-y-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">{formatDate(selectedNote.date)}</p>
 
-                  <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                  <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                     <div className="flex items-center gap-3.5">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
                         {selectedNote.result.contact ? getInitials(selectedNote.result.contact) : 'NA'}
                       </div>
                       <div>
-                        <p className="text-[18px] font-bold text-zinc-900">{selectedNote.result.contact || '—'}</p>
+                        <p className="text-[20px] font-bold text-zinc-900">{selectedNote.result.contact || '—'}</p>
                         {selectedNote.result.customer && (
                           <p className="text-[13px] text-zinc-400 mt-0.5">{selectedNote.result.customer}</p>
                         )}
@@ -539,7 +539,7 @@ export default function Home() {
                         </span>
                       )}
                       {selectedNote.result.product && (
-                        <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[11px] text-indigo-600">
+                        <span className="rounded-full px-3 py-1.5 text-[11px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
                           {selectedNote.result.product}
                         </span>
                       )}
@@ -547,21 +547,21 @@ export default function Home() {
                   )}
 
                   {selectedNote.result.summary && (
-                    <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+                    <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
                       <p className="text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.summary}</p>
                     </div>
                   )}
 
                   {selectedNote.result.nextStep && (
-                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4">
+                    <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
                       <div className="mb-2 flex items-center gap-2">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#6366f1">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
                           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                         </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-500">Next step</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
                       </div>
-                      <p className="text-[18px] font-bold text-indigo-700 leading-snug">{selectedNote.result.nextStep}</p>
+                      <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>{selectedNote.result.nextStep}</p>
                     </div>
                   )}
 
@@ -592,8 +592,8 @@ export default function Home() {
                 </p>
                 {savedNotes.length === 0 ? (
                   <div className="flex flex-col items-center justify-center pt-16 text-center">
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(99,102,241,0.5)" strokeWidth="1.5">
+                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full" style={{backgroundColor: '#f0f7f2'}}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1a4d2e" strokeWidth="1.5" opacity="0.5">
                         <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                       </svg>
                     </div>
@@ -606,11 +606,11 @@ export default function Home() {
                       <button
                         key={note.id}
                         onClick={() => setSelectedNote(note)}
-                        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-zinc-300 active:scale-[0.99]"
+                        className="w-full rounded-2xl border border-zinc-100 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-zinc-200 active:scale-[0.99]"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-600">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
                               {note.result.contact ? getInitials(note.result.contact) : 'NA'}
                             </div>
                             <div className="min-w-0">
@@ -625,7 +625,7 @@ export default function Home() {
                           <p className="shrink-0 text-[11px] text-zinc-400 mt-0.5">{formatDate(note.date)}</p>
                         </div>
                         {note.result.nextStep && (
-                          <p className="mt-2 text-[12px] text-indigo-500 truncate pl-12">→ {note.result.nextStep}</p>
+                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#1a4d2e'}}>→ {note.result.nextStep}</p>
                         )}
                       </button>
                     ))}
@@ -640,9 +640,9 @@ export default function Home() {
         {activeTab === 'settings' && (
           <div className="pt-2 space-y-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Account</p>
-            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+            <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-bold text-indigo-600">IG</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>IG</div>
                 <div>
                   <p className="text-[14px] font-semibold text-zinc-900">Ignacio</p>
                   <p className="text-[12px] text-zinc-400">Personal use</p>
@@ -667,11 +667,12 @@ export default function Home() {
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-zinc-200 bg-[#f7f6f3]/95 px-2 pb-safe pt-2 backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-zinc-100 bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
         <NavBtn
           active={activeTab === 'record'}
           onClick={() => { setActiveTab('record'); setSelectedNote(null) }}
           label="Record"
+          activeColor="#1a4d2e"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
@@ -684,6 +685,7 @@ export default function Home() {
           onClick={() => { setActiveTab('history'); setSelectedNote(null) }}
           label="History"
           badge={savedNotes.length}
+          activeColor="#1a4d2e"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
@@ -694,6 +696,7 @@ export default function Home() {
           active={activeTab === 'settings'}
           onClick={() => setActiveTab('settings')}
           label="Settings"
+          activeColor="#1a4d2e"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="12" r="3"/>
@@ -715,23 +718,25 @@ export default function Home() {
 }
 
 function NavBtn({
-  active, onClick, label, icon, badge
+  active, onClick, label, icon, badge, activeColor
 }: {
   active: boolean
   onClick: () => void
   label: string
   icon: React.ReactNode
   badge?: number
+  activeColor: string
 }) {
   return (
     <button
       onClick={onClick}
       className="relative flex flex-col items-center gap-1 px-5 py-2 transition-all"
+      style={{color: active ? activeColor : '#a1a1aa'}}
     >
-      <span className={active ? 'text-indigo-600' : 'text-zinc-400'}>{icon}</span>
-      <span className={`text-[10px] font-medium ${active ? 'text-indigo-600' : 'text-zinc-400'}`}>{label}</span>
+      <span>{icon}</span>
+      <span className="text-[10px] font-medium">{label}</span>
       {badge && badge > 0 ? (
-        <span className="absolute right-3 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-indigo-600 px-1 text-[9px] font-bold text-white">
+        <span className="absolute right-3 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-bold text-white" style={{backgroundColor: activeColor}}>
           {badge}
         </span>
       ) : null}
