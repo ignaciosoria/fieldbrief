@@ -28,6 +28,8 @@ const emptyResult: StructureResult = {
   crmText: '',
 }
 
+type ProcessingStep = 'transcribing' | 'structuring'
+
 type Tab = 'record' | 'history' | 'settings'
 
 type SavedNote = {
@@ -43,6 +45,8 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [result, setResult] = useState<StructureResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null)
+  const [processingLinger, setProcessingLinger] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -78,6 +82,15 @@ export default function Home() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [isRecording])
+
+  useEffect(() => {
+    if (loading) {
+      setProcessingLinger(true)
+      return
+    }
+    const id = setTimeout(() => setProcessingLinger(false), 320)
+    return () => clearTimeout(id)
+  }, [loading])
 
   const saveNote = (res: StructureResult, tx: string) => {
     const note: SavedNote = {
@@ -172,6 +185,7 @@ export default function Home() {
 
   const processRecordedAudio = async (blob: Blob) => {
     setLoading(true)
+    setProcessingStep('transcribing')
     setError('')
     setResult(null)
     try {
@@ -188,6 +202,7 @@ export default function Home() {
       setTranscript(tx)
       setInput(tx)
 
+      setProcessingStep('structuring')
       const structureRes = await fetch('/api/structure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -202,6 +217,7 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
+      setProcessingStep(null)
       setLoading(false)
     }
   }
@@ -209,6 +225,7 @@ export default function Home() {
   const processTypedNote = async () => {
     if (!input.trim()) return
     setLoading(true)
+    setProcessingStep('structuring')
     setError('')
     setResult(null)
     setCopied(false)
@@ -226,6 +243,7 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
+      setProcessingStep(null)
       setLoading(false)
     }
   }
@@ -299,6 +317,28 @@ export default function Home() {
               </svg>
             </button>
 
+            {/* Processing: status + progress (below mic) */}
+            {processingLinger && (
+              <div
+                className={`
+                  mb-4 w-full max-w-xs transition-opacity duration-300 ease-out
+                  ${loading ? 'opacity-100' : 'opacity-0'}
+                `}
+              >
+                <p className="mb-2 text-center text-[13px] text-zinc-400 transition-all duration-300 ease-out">
+                  {processingStep === 'transcribing' ? 'Transcribing your note...' : 'Structuring...'}
+                </p>
+                <div className="h-[2px] w-full overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="progress-shimmer-fill h-full rounded-full transition-[width] duration-500 ease-out"
+                    style={{
+                      width: processingStep === 'transcribing' ? '40%' : '80%',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Timer / status */}
             <div className="mb-4 h-12 flex items-center justify-center">
               {isRecording ? (
@@ -306,7 +346,7 @@ export default function Home() {
                   {formatSeconds(recordingSeconds)}
                 </span>
               ) : loading ? (
-                <span className="text-[15px] text-zinc-400 animate-pulse">Processing...</span>
+                <span className="sr-only">Processing</span>
               ) : result ? (
                 <span className="text-[14px] text-emerald-400">✓ Note saved</span>
               ) : (
@@ -689,6 +729,20 @@ export default function Home() {
         @keyframes pulse-bar {
           from { height: 3px; opacity: 0.5; }
           to   { height: 20px; opacity: 1; }
+        }
+        @keyframes progress-shimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+        .progress-shimmer-fill {
+          background: linear-gradient(
+            90deg,
+            rgb(99 102 241),
+            rgb(129 140 248),
+            rgb(99 102 241)
+          );
+          background-size: 200% 100%;
+          animation: progress-shimmer 1.2s linear infinite;
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
