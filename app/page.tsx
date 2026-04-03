@@ -405,7 +405,7 @@ export default function Home() {
                 {/* Contact card */}
                 <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                   <div className="flex items-center gap-3.5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[13px] font-bold text-zinc-700">
                       {result.contact ? getInitials(result.contact) : result.customer ? getInitials(result.customer) : 'NA'}
                     </div>
                     <div>
@@ -422,20 +422,17 @@ export default function Home() {
                   <div className="flex flex-wrap gap-1.5">
                     {result.location && (
                       <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                        </svg>
-                        {result.location}
+                        📍 {result.location}
                       </span>
                     )}
                     {result.crop && (
                       <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                        {result.crop}
+                        🌱 {result.crop}
                       </span>
                     )}
                     {result.product && (
-                      <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
-                        {result.product}
+                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
+                        🧪 {result.product}
                       </span>
                     )}
                   </div>
@@ -466,7 +463,8 @@ export default function Home() {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={handleCopy}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all hover:text-zinc-800 active:scale-[0.98]"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
+                    style={{backgroundColor: '#2d6a4f'}}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -476,13 +474,12 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => setActiveTab('history')}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
-                    style={{backgroundColor: '#1a4d2e'}}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-medium text-zinc-500 border border-zinc-200 bg-white shadow-sm transition-all active:scale-[0.98]"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                     </svg>
-                    View history
+                    History
                   </button>
                 </div>
 
@@ -511,7 +508,7 @@ export default function Home() {
 
                   <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                     <div className="flex items-center gap-3.5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[13px] font-bold text-zinc-700">
                         {selectedNote.result.contact ? getInitials(selectedNote.result.contact) : 'NA'}
                       </div>
                       <div>
@@ -527,20 +524,17 @@ export default function Home() {
                     <div className="flex flex-wrap gap-1.5">
                       {selectedNote.result.location && (
                         <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                          </svg>
-                          {selectedNote.result.location}
+                          📍 {selectedNote.result.location}
                         </span>
                       )}
                       {selectedNote.result.crop && (
                         <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                          {selectedNote.result.crop}
+                          🌱 {selectedNote.result.crop}
                         </span>
                       )}
                       {selectedNote.result.product && (
-                        <span className="rounded-full px-3 py-1.5 text-[11px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
-                          {selectedNote.result.product}
+                        <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
+                          🧪 {selectedNote.result.product}
                         </span>
                       )}
                     </div>
@@ -610,7 +604,7 @@ export default function Home() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-bold text-zinc-700">
                               {note.result.contact ? getInitials(note.result.contact) : 'NA'}
                             </div>
                             <div className="min-w-0">

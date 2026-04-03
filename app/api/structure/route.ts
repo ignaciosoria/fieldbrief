@@ -48,7 +48,7 @@ Rules:
 - nextStep must be actionable and specific
 - Return valid JSON only, no backticks, no markdown
 - IMPORTANT: Always respond in the same language as the input note. If the note is in Spanish, all field values must be in Spanish. Never translate.
-- When nextStep includes a relative date (e.g. 'el martes', 'next Monday', 'la próxima semana'), convert it to an exact date based on today's date provided in the message. Format dates as 'day month' in the same language as the note (e.g. 'martes 8 de abril' or 'Tuesday April 8').`
+- When nextStep includes a relative date, convert it to exact date in format MM/DD/YYYY. For example: 'Llamar a Carlos el 04/08/2026'.`
 
 function extractJson(text: string): string {
   // Strip markdown code fences if present
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   try {
     const { note } = await request.json()
 
-    const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const today = new Date().toLocaleDateString('es-ES')
 
     if (!note || typeof note !== 'string') {
       return NextResponse.json({ error: 'Missing note' }, { status: 400 })
