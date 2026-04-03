@@ -301,13 +301,13 @@ export default function Home() {
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="flex flex-col items-center pt-6">
+          <div className="flex flex-col items-center justify-center min-h-[75vh]">
 
             {/* Mic button — circular */}
             <button
               onClick={toggleRecording}
               disabled={loading}
-              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:opacity-40"
+              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95"
               style={{
                 backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                 boxShadow: isRecording
@@ -374,8 +374,8 @@ export default function Home() {
               <button
                 onClick={processTypedNote}
                 disabled={loading || !input.trim()}
-                className="flex-1 rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
-                style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)'}}
+                className="flex-1 rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98] disabled:pointer-events-none"
+                style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)', opacity: (loading || !input.trim()) ? 0.45 : 1}}
               >
                 {loading ? 'Processing...' : 'Process Note'}
               </button>
