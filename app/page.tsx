@@ -266,7 +266,10 @@ export default function Home() {
           <span className="block h-[2px] w-5 rounded-full bg-zinc-500" />
           <span className="block h-[2px] w-3 rounded-full bg-zinc-500" />
         </button>
-        <span className="text-[12px] font-bold tracking-[0.25em] text-white uppercase">FieldBrief</span>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-[12px] font-bold tracking-[0.25em] text-white uppercase">FieldBrief</span>
+          <span className="text-[9px] tracking-[0.12em] text-zinc-600 uppercase">Talk. We'll handle the rest.</span>
+        </div>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-[12px] font-semibold text-indigo-300">
           IG
         </div>
@@ -277,32 +280,32 @@ export default function Home() {
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="flex flex-col items-center pt-4">
+          <div className="flex flex-col items-center pt-10">
 
             {/* Mic button */}
             <button
               onClick={toggleRecording}
               disabled={loading}
               className={`
-                relative mb-5 flex h-28 w-28 items-center justify-center rounded-3xl
+                relative mb-6 flex h-32 w-32 items-center justify-center rounded-[2rem]
                 transition-all duration-300 active:scale-95 disabled:opacity-40
                 ${isRecording
-                  ? 'bg-rose-600 shadow-[0_8px_40px_rgba(225,29,72,0.45)]'
-                  : 'bg-indigo-600 shadow-[0_8px_40px_rgba(99,102,241,0.4)] hover:bg-indigo-500'
+                  ? 'bg-rose-600 shadow-[0_12px_50px_rgba(225,29,72,0.5)]'
+                  : 'bg-indigo-600 shadow-[0_12px_50px_rgba(99,102,241,0.45)] hover:bg-indigo-500'
                 }
               `}
             >
               {isRecording && (
-                <span className="absolute inset-0 animate-ping rounded-3xl bg-rose-400/20" />
+                <span className="absolute inset-0 animate-ping rounded-[2rem] bg-rose-400/20" />
               )}
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="white">
                 <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
                 <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
               </svg>
             </button>
 
             {/* Timer / status */}
-            <div className="mb-3 h-14 flex items-center justify-center">
+            <div className="mb-4 h-12 flex items-center justify-center">
               {isRecording ? (
                 <span className="text-[48px] font-bold tabular-nums tracking-tight text-white leading-none">
                   {formatSeconds(recordingSeconds)}
@@ -316,22 +319,22 @@ export default function Home() {
               )}
             </div>
 
-            {/* Waveform */}
-            <div className="mb-6 flex h-7 items-end justify-center gap-[3px]">
-              {Array.from({ length: 22 }).map((_, i) => (
-                <span
-                  key={i}
-                  className={`w-[3px] rounded-full ${isRecording ? 'bg-indigo-400' : 'bg-zinc-800'}`}
-                  style={{
-                    height: isRecording ? undefined : '3px',
-                    animation: isRecording
-                      ? `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`
-                      : 'none',
-                    ...(isRecording ? {} : {}),
-                  }}
-                />
-              ))}
-            </div>
+            {/* Waveform — only visible while recording */}
+            {isRecording ? (
+              <div className="mb-6 flex h-7 items-end justify-center gap-[3px]">
+                {Array.from({ length: 22 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className="w-[3px] rounded-full bg-indigo-400"
+                    style={{
+                      animation: `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mb-4" />
+            )}
 
             {/* Textarea */}
             <textarea
@@ -391,6 +394,37 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                {/* Pills row — location, crop, product */}
+                {(result.location || result.crop || result.product) && (
+                  <div className="flex flex-wrap gap-2">
+                    {result.location && (
+                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                        </svg>
+                        {result.location}
+                      </span>
+                    )}
+                    {result.crop && (
+                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12c0-2.76 1.12-5.26 2.93-7.07"/>
+                          <path d="M12 6v6l4 2"/>
+                        </svg>
+                        {result.crop}
+                      </span>
+                    )}
+                    {result.product && (
+                      <span className="flex items-center gap-1.5 rounded-full border border-indigo-800/40 bg-indigo-950/40 px-3 py-1.5 text-[11px] text-indigo-400">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        </svg>
+                        {result.product}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Summary */}
                 {result.summary && (
@@ -474,6 +508,30 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Pills en history detail */}
+                  {(selectedNote.result.location || selectedNote.result.crop || selectedNote.result.product) && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedNote.result.location && (
+                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                          </svg>
+                          {selectedNote.result.location}
+                        </span>
+                      )}
+                      {selectedNote.result.crop && (
+                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400">
+                          {selectedNote.result.crop}
+                        </span>
+                      )}
+                      {selectedNote.result.product && (
+                        <span className="flex items-center gap-1.5 rounded-full border border-indigo-800/40 bg-indigo-950/40 px-3 py-1.5 text-[11px] text-indigo-400">
+                          {selectedNote.result.product}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {selectedNote.result.summary && (
                     <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5">
