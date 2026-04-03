@@ -17,7 +17,6 @@ export async function POST(request: Request) {
     const transcription = await client.audio.transcriptions.create({
       file,
       model: 'whisper-1',
-      language: 'en',
     })
 
     return NextResponse.json({ transcript: transcription.text })

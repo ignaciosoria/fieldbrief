@@ -39,7 +39,8 @@ Rules:
 - If a field is not mentioned, return ""
 - summary must be short and focused on the conversation only
 - nextStep must be actionable and specific
-- Return valid JSON only, no backticks, no markdown`
+- Return valid JSON only, no backticks, no markdown
+- IMPORTANT: Always respond in the same language as the input note. If the note is in Spanish, all field values must be in Spanish. Never translate.`
 
 function extractJson(text: string): string {
   // Strip markdown code fences if present
