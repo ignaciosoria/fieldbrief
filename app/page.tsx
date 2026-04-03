@@ -47,6 +47,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null)
   const [processingLinger, setProcessingLinger] = useState(false)
+  const [progressWidth, setProgressWidth] = useState(0)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -88,9 +89,23 @@ export default function Home() {
       setProcessingLinger(true)
       return
     }
-    const id = setTimeout(() => setProcessingLinger(false), 320)
+    // Complete to 100% then fade out
+    setProgressWidth(100)
+    const id = setTimeout(() => setProcessingLinger(false), 600)
     return () => clearTimeout(id)
   }, [loading])
+
+  useEffect(() => {
+    if (processingStep === 'transcribing') {
+      setProgressWidth(0)
+      const raf = requestAnimationFrame(() =>
+        requestAnimationFrame(() => setProgressWidth(60))
+      )
+      return () => cancelAnimationFrame(raf)
+    } else if (processingStep === 'structuring') {
+      setProgressWidth(95)
+    }
+  }, [processingStep])
 
   const saveNote = (res: StructureResult, tx: string) => {
     const note: SavedNote = {
@@ -328,12 +343,10 @@ export default function Home() {
                 <p className="mb-2 text-center text-[13px] text-zinc-400 transition-all duration-300 ease-out">
                   {processingStep === 'transcribing' ? 'Transcribing your note...' : 'Structuring...'}
                 </p>
-                <div className="h-[2px] w-full overflow-hidden rounded-full bg-zinc-800">
+                <div className="h-[3px] w-full overflow-hidden rounded-full bg-zinc-800/50">
                   <div
-                    className="progress-shimmer-fill h-full rounded-full transition-[width] duration-500 ease-out"
-                    style={{
-                      width: processingStep === 'transcribing' ? '40%' : '80%',
-                    }}
+                    className="progress-shimmer-fill h-full rounded-full transition-[width] duration-700 ease-out"
+                    style={{ width: `${progressWidth}%` }}
                   />
                 </div>
               </div>
@@ -731,18 +744,18 @@ export default function Home() {
           to   { height: 20px; opacity: 1; }
         }
         @keyframes progress-shimmer {
-          0% { background-position: 100% 0; }
-          100% { background-position: -100% 0; }
+          0% { background-position: -100% 0; }
+          100% { background-position: 100% 0; }
         }
         .progress-shimmer-fill {
           background: linear-gradient(
             90deg,
-            rgb(99 102 241),
+            rgb(49 46 129),
             rgb(129 140 248),
-            rgb(99 102 241)
+            rgb(49 46 129)
           );
           background-size: 200% 100%;
-          animation: progress-shimmer 1.2s linear infinite;
+          animation: progress-shimmer 1.4s linear infinite;
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
