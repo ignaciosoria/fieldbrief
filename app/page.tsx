@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
 
 type StructureResult = {
   customer: string
@@ -62,10 +63,42 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true)
-    try {
-      const stored = localStorage.getItem('fieldbrief-notes')
-      if (stored) setSavedNotes(JSON.parse(stored))
-    } catch {}
+    const loadNotes = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('notes')
+          .select('*')
+          .order('date', { ascending: false })
+        if (!error && data && data.length > 0) {
+          const mapped: SavedNote[] = data.map((n: any) => ({
+            id: n.id,
+            date: n.date,
+            transcript: n.transcript || '',
+            result: {
+              contact: n.contact || '',
+              customer: n.customer || '',
+              dealer: n.dealer || '',
+              summary: n.summary || '',
+              nextStep: n.next_step || '',
+              notes: n.notes || '',
+              crop: n.crop || '',
+              product: n.product || '',
+              location: n.location || '',
+              crmText: n.crm_text || '',
+            },
+          }))
+          setSavedNotes(mapped)
+          try { localStorage.setItem('fieldbrief-notes', JSON.stringify(mapped)) } catch {}
+          return
+        }
+      } catch {}
+      // Fallback to localStorage
+      try {
+        const stored = localStorage.getItem('fieldbrief-notes')
+        if (stored) setSavedNotes(JSON.parse(stored))
+      } catch {}
+    }
+    loadNotes()
   }, [])
 
   useEffect(() => {
@@ -84,7 +117,7 @@ export default function Home() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [isRecording])
 
-  const saveNote = (res: StructureResult, tx: string) => {
+  const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
@@ -96,16 +129,34 @@ export default function Home() {
     setNoteSaved(true)
     setTimeout(() => setNoteSaved(false), 2000)
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
+    try {
+      await supabase.from('notes').insert({
+        id: note.id,
+        date: note.date,
+        transcript: tx,
+        contact: res.contact,
+        customer: res.customer,
+        dealer: res.dealer || '',
+        summary: res.summary,
+        next_step: res.nextStep,
+        notes: res.notes,
+        crop: res.crop,
+        product: res.product,
+        location: res.location,
+        crm_text: res.crmText,
+      })
+    } catch {}
   }
 
-  const deleteNote = (id: string) => {
+  const deleteNote = async (id: string) => {
     const updated = savedNotes.filter((n) => n.id !== id)
     setSavedNotes(updated)
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
     if (selectedNote?.id === id) setSelectedNote(null)
+    try { await supabase.from('notes').delete().eq('id', id) } catch {}
   }
 
-  const updateNote = (id: string, res: StructureResult, tx: string) => {
+  const updateNote = async (id: string, res: StructureResult, tx: string) => {
     const updated = savedNotes.map((n) =>
       n.id === id ? { ...n, result: res, transcript: tx } : n
     )
@@ -113,6 +164,21 @@ export default function Home() {
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
     if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
     if (result) setResult(res)
+    try {
+      await supabase.from('notes').update({
+        transcript: tx,
+        contact: res.contact,
+        customer: res.customer,
+        dealer: res.dealer || '',
+        summary: res.summary,
+        next_step: res.nextStep,
+        notes: res.notes,
+        crop: res.crop,
+        product: res.product,
+        location: res.location,
+        crm_text: res.crmText,
+      }).eq('id', id)
+    } catch {}
   }
 
   const buildShareText = (r: StructureResult) => {
