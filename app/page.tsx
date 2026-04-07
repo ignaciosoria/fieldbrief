@@ -36,6 +36,88 @@ type SavedNote = {
   transcript: string
 }
 
+function isWeakNextStep(nextStep: string) {
+  if (!nextStep || !nextStep.trim()) return true
+
+  const weakPatterns = [
+    'call again',
+    'follow up later',
+    'check back',
+    'llamar nuevamente',
+    'seguir más tarde',
+    'ver qué pasa',
+  ]
+
+  const lower = nextStep.toLowerCase()
+  return weakPatterns.some((pattern) => lower.includes(pattern))
+}
+
+function hasStrongVerb(nextStep: string) {
+  if (!nextStep || !nextStep.trim()) return false
+
+  const verbs = [
+    'call',
+    'send',
+    'follow up',
+    'visit',
+    'confirm',
+    'review',
+    'schedule',
+    'llamar',
+    'enviar',
+    'hacer seguimiento',
+    'visitar',
+    'confirmar',
+    'revisar',
+    'agendar',
+  ]
+
+  const lower = nextStep.toLowerCase().trim()
+  return verbs.some((verb) => lower.startsWith(verb))
+}
+
+async function fixNextStep(result: {
+  nextStep?: string
+  customer?: string
+  dealer?: string
+  contact?: string
+}) {
+  const prompt = `
+Fix this next step so it becomes specific and directly usable as a calendar event title.
+
+Rules:
+- Use format: ACTION + TARGET + (COMPANY if available)
+- Keep it short
+- Use a strong verb
+- Avoid generic phrases
+- Keep the same language as the original
+- Return ONLY valid JSON with:
+  { "nextStep": "..." }
+
+Original next step:
+"${result.nextStep || ''}"
+
+Context:
+Customer: ${result.customer || ''}
+Dealer: ${result.dealer || ''}
+Contact: ${result.contact || ''}
+`
+
+  const res = await fetch('/api/structure', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: prompt }),
+  })
+
+  const data = await res.json()
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to fix next step.')
+  }
+
+  return data.nextStep || result.nextStep || ''
+}
+
 export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('record')
@@ -369,10 +451,38 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: tx }),
       })
+      
       const structureData = await structureRes.json()
-      if (!structureRes.ok) throw new Error(structureData.error || 'Failed to structure.')
-
+      if (!structureRes.ok) {
+        throw new Error(structureData.error || 'Failed to structure.')
+      }
+      
       const final = { ...emptyResult, ...structureData }
+      
+      if (isWeakNextStep(final.nextStep) || !hasStrongVerb(final.nextStep)) {
+        try {
+          const fixedNextStep = await fixNextStep({
+            nextStep: final.nextStep,
+            customer: final.customer,
+            dealer: final.dealer,
+            contact: final.contact,
+          })
+      
+          final.nextStep = fixedNextStep
+        } catch (error) {
+          console.error('Failed to auto-correct next step:', error)
+        }
+      }
+      
+      if (
+        final.nextStep &&
+        !final.nextStep.includes('(') &&
+        (final.customer || final.dealer)
+      ) {
+        const contextName = final.customer || final.dealer
+        final.nextStep = `${final.nextStep} (${contextName})`
+      }
+      
       await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, tx)
