@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+
+type MentionedEntity = { name: string; type: string }
 
 type StructureResult = {
   customer: string
@@ -9,6 +11,14 @@ type StructureResult = {
   contact: string
   summary: string
   nextStep: string
+  nextStepTitle: string
+  nextStepAction: string
+  nextStepTarget: string
+  nextStepDate: string
+  nextStepTimeHint: string
+  nextStepConfidence: string
+  ambiguityFlags: string[]
+  mentionedEntities: MentionedEntity[]
   notes: string
   crop: string
   product: string
@@ -24,6 +34,14 @@ const emptyResult: StructureResult = {
   contact: '',
   summary: '',
   nextStep: '',
+  nextStepTitle: '',
+  nextStepAction: '',
+  nextStepTarget: '',
+  nextStepDate: '',
+  nextStepTimeHint: '',
+  nextStepConfidence: '',
+  ambiguityFlags: [],
+  mentionedEntities: [],
   notes: '',
   crop: '',
   product: '',
@@ -45,6 +63,297 @@ function normalizeCrmFull(raw: unknown): string[] {
     return []
   }
   return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
+}
+
+function normalizeMentionedEntities(raw: unknown): MentionedEntity[] {
+  if (!Array.isArray(raw)) return []
+  const out: MentionedEntity[] = []
+  for (const item of raw) {
+    if (item && typeof item === 'object' && 'name' in item) {
+      const o = item as Record<string, unknown>
+      const name = typeof o.name === 'string' ? o.name.trim() : ''
+      const type = typeof o.type === 'string' ? o.type.trim() : 'other'
+      if (name) out.push({ name, type: type || 'other' })
+    }
+  }
+  return out
+}
+
+function normalizeAmbiguityFlags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
+}
+
+function normalizeConfidence(raw: unknown): string {
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+  if (s === 'high' || s === 'medium' || s === 'low') return s
+  return 'medium'
+}
+
+function normalizeStructureResult(m: StructureResult): StructureResult {
+  return {
+    ...emptyResult,
+    ...m,
+    crmFull: normalizeCrmFull(m.crmFull),
+    ambiguityFlags: normalizeAmbiguityFlags(m.ambiguityFlags),
+    mentionedEntities: normalizeMentionedEntities(m.mentionedEntities),
+    nextStepConfidence: normalizeConfidence(m.nextStepConfidence),
+  }
+}
+
+/** Structured calendar: derive wall-clock time from AI hint (default 9:00). */
+function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
+  const value = (hint || '').toLowerCase().trim()
+  if (value === 'morning') return { hour: 9, minute: 0 }
+  if (value === 'afternoon') return { hour: 15, minute: 0 }
+  if (value === 'noon') return { hour: 12, minute: 0 }
+  if (!value) return { hour: 9, minute: 0 }
+
+  const h24 = hint.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (h24) {
+    const hour = Math.min(23, Math.max(0, parseInt(h24[1], 10)))
+    const minute = Math.min(59, Math.max(0, parseInt(h24[2], 10)))
+    return { hour, minute }
+  }
+
+  const h12 = hint.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)\.?$/i)
+  if (h12) {
+    let hour = parseInt(h12[1], 10)
+    const minute = h12[2] ? parseInt(h12[2], 10) : 0
+    const ap = h12[3].toLowerCase()
+    if (ap === 'pm' && hour < 12) hour += 12
+    if (ap === 'am' && hour === 12) hour = 0
+    return { hour: Math.min(23, hour), minute: Math.min(59, minute) }
+  }
+
+  const compact = hint.trim().match(/^(\d{1,2})\s*(pm|am)$/i)
+  if (compact) {
+    let hour = parseInt(compact[1], 10)
+    if (compact[2].toLowerCase() === 'pm' && hour < 12) hour += 12
+    if (compact[2].toLowerCase() === 'am' && hour === 12) hour = 0
+    return { hour: Math.min(23, hour), minute: 0 }
+  }
+
+  return { hour: 9, minute: 0 }
+}
+
+function pad2(n: number) {
+  return n.toString().padStart(2, '0')
+}
+
+/**
+ * If the resolved local date+time is already past (e.g. "Tuesday morning" when it is
+ * Tuesday afternoon), shift forward by 7 days so the event is never in the past.
+ */
+function ensureCalendarDateTimeNotPast(
+  dateMmddyyyy: string,
+  hour: number,
+  minute: number,
+): { dateMmddyyyy: string; hour: number; minute: number } {
+  const ds = dateMmddyyyy.trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) {
+    return { dateMmddyyyy: ds, hour, minute }
+  }
+  const [mm, dd, yyyy] = ds.split('/').map((x) => parseInt(x, 10))
+  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) {
+    return { dateMmddyyyy: ds, hour, minute }
+  }
+  const event = new Date(yyyy, mm - 1, dd, hour, minute, 0, 0)
+  const now = new Date()
+  if (event.getTime() >= now.getTime()) {
+    return { dateMmddyyyy: ds, hour, minute }
+  }
+  event.setDate(event.getDate() + 7)
+  return {
+    dateMmddyyyy: `${pad2(event.getMonth() + 1)}/${pad2(event.getDate())}/${event.getFullYear()}`,
+    hour: event.getHours(),
+    minute: event.getMinutes(),
+  }
+}
+
+/** MM/DD/YYYY → YYYY-MM-DD for date input (YYYY-MM-DD). */
+function mmddyyyyToIsoDate(mmddyyyy: string): string | null {
+  const t = mmddyyyy.trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return null
+  const [mm, dd, yyyy] = t.split('/')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function isoDateToMmddyyyy(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return ''
+  return `${m}/${d}/${y}`
+}
+
+function todayIsoDate() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+function hourMinuteToTimeInput(hour: number, minute: number) {
+  return `${pad2(hour)}:${pad2(minute)}`
+}
+
+function timeInputToHourMinute(value: string): { hour: number; minute: number } {
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!m) return { hour: 9, minute: 0 }
+  return {
+    hour: Math.min(23, Math.max(0, parseInt(m[1], 10))),
+    minute: Math.min(59, Math.max(0, parseInt(m[2], 10))),
+  }
+}
+
+type CalendarTimeInput =
+  | { kind: 'hint'; hint: string }
+  | { kind: 'clock'; hour: number; minute: number }
+
+/** Build Google Calendar `dates` segment; 30-minute duration. Requires MM/DD/YYYY. */
+function buildGoogleCalendarDateRangeParts(
+  dateMmddyyyy: string,
+  time: CalendarTimeInput,
+): { start: string; end: string } | null {
+  const ds = dateMmddyyyy.trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) return null
+  const resolved =
+    time.kind === 'hint'
+      ? resolveTimeFromHint(time.hint)
+      : { hour: time.hour, minute: time.minute }
+  const bumped = ensureCalendarDateTimeNotPast(ds, resolved.hour, resolved.minute)
+  const hour = bumped.hour
+  const minute = bumped.minute
+  const [mm, dd, yyyy] = bumped.dateMmddyyyy.split('/')
+  let endH = hour
+  let endM = minute + 30
+  if (endM >= 60) {
+    endH = Math.min(23, endH + 1)
+    endM -= 60
+  }
+  return {
+    start: `${yyyy}${mm}${dd}T${pad2(hour)}${pad2(minute)}00`,
+    end: `${yyyy}${mm}${dd}T${pad2(endH)}${pad2(endM)}00`,
+  }
+}
+
+/** Strip pictographic / emoji chars for plain-text calendar bodies. */
+function stripEmojisForCalendar(s: string): string {
+  return s
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/\uFE0F/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function formatCalendarContactLine(
+  data: Pick<StructureResult, 'contact' | 'customer'>,
+): string {
+  const contact = stripEmojisForCalendar(data.contact || '')
+  const customer = stripEmojisForCalendar(data.customer || '')
+  if (contact && customer) return `${contact} (${customer})`
+  if (contact) return contact
+  if (customer) return customer
+  return ''
+}
+
+/** One readable context line; keeps first sentence when long, else soft-truncates. */
+function shortCalendarContext(raw: string): string {
+  let s = stripEmojisForCalendar(raw)
+  if (!s) return ''
+  if (s.length <= 280) return s
+  const sentence = s.match(/^.{20,320}?[.!?](?:\s|$)/)
+  if (sentence) return sentence[0].trim()
+  const cut = s.slice(0, 260)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > 48 ? cut.slice(0, sp) : cut) + '…'
+}
+
+/** Strip emoji/bullets; trim a leading arrow so we can re-add a single →. */
+function cleanCalendarBulletLine(raw: string): string {
+  return stripEmojisForCalendar(raw)
+    .replace(/^[\s•\u2022\u25AA\-–—→]+\s*/u, '')
+    .trim()
+}
+
+/** Multi-line summary/crmText → → bullets; single block → short prose (no emojis). */
+function formatCalendarContextBlock(crmText: string, summary: string): string {
+  const raw = (crmText || summary || '').trim()
+  if (!raw) return ''
+  const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length > 1) {
+    return lines
+      .map((l) => {
+        const c = cleanCalendarBulletLine(l)
+        return c ? `→ ${c}` : ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  const prose = shortCalendarContext(raw)
+  return prose ? `→ ${prose}` : ''
+}
+
+/** Google Calendar event title: short structured title first, then long next step. */
+function calendarEventTitle(r: StructureResult): string {
+  const t = (r.nextStepTitle || '').trim()
+  if (t) return t
+  return (r.nextStep || '').trim()
+}
+
+function buildCalendarDescription(
+  data: Pick<
+    StructureResult,
+    'crmText' | 'summary' | 'crmFull' | 'contact' | 'customer'
+  >,
+) {
+  const contactLine = formatCalendarContactLine(data)
+  const contextBlock = formatCalendarContextBlock(data.crmText || '', data.summary || '')
+  const insightLines = (data.crmFull || [])
+    .slice(0, 3)
+    .map((i) => cleanCalendarBulletLine(i))
+    .filter(Boolean)
+    .map((line) => `→ ${line}`)
+
+  const headParts: string[] = []
+  if (contactLine) headParts.push(contactLine)
+  if (contextBlock) headParts.push(contextBlock)
+  const head = headParts.join('\n\n')
+
+  if (insightLines.length === 0) return head
+  return head ? `${head}\n\n${insightLines.join('\n')}` : insightLines.join('\n')
+}
+
+function needsCalendarConfirmation(r: StructureResult): boolean {
+  const conf = (r.nextStepConfidence || '').toLowerCase()
+  const hasDate = !!(r.nextStepDate || '').trim() && /^\d{2}\/\d{2}\/\d{4}$/.test((r.nextStepDate || '').trim())
+  const hasTarget = !!(r.nextStepTarget || '').trim()
+  const flags = r.ambiguityFlags?.length ?? 0
+  return conf !== 'high' || !hasDate || !hasTarget || flags > 0
+}
+
+function needsTargetPicker(r: StructureResult): boolean {
+  if ((r.mentionedEntities?.length ?? 0) > 1) return true
+  const f = r.ambiguityFlags || []
+  return f.some(
+    (x) =>
+      x.includes('unclear_target') ||
+      x.includes('multiple_people') ||
+      x.includes('multiple_people_mentioned'),
+  )
+}
+
+function openGoogleCalendarWindow(opts: {
+  title: string
+  dateMmddyyyy: string
+  details: string
+  time: CalendarTimeInput
+}) {
+  const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+  if (!range) return
+  const title = encodeURIComponent(opts.title.trim())
+  const details = encodeURIComponent(opts.details)
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${range.start}/${range.end}&details=${details}`
+  window.open(url, '_blank')
 }
 
 /** Only pricing pressure, risk, and blockers/urgency use tinted backgrounds. */
@@ -74,6 +383,92 @@ function getInsightStyle(text: string) {
   return `${ink} bg-transparent`
 }
 
+function insightsCollapsedMaxPx(): number {
+  if (typeof window === 'undefined') return 400
+  const vh = window.innerHeight
+  return Math.min(Math.max(vh * 0.38, 200), 520)
+}
+
+function KeyInsightsList({
+  lines,
+  gapClass,
+  lineClassName,
+  expanded,
+  onToggle,
+  buttonMarginClass,
+  buttonTextClass,
+}: {
+  lines: string[]
+  gapClass: string
+  lineClassName: string
+  expanded: boolean
+  onToggle: () => void
+  buttonMarginClass: string
+  buttonTextClass: string
+}) {
+  const measureRef = useRef<HTMLDivElement>(null)
+  const [collapsedMaxPx, setCollapsedMaxPx] = useState(() => insightsCollapsedMaxPx())
+  const [needsToggle, setNeedsToggle] = useState(false)
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      setCollapsedMaxPx(insightsCollapsedMaxPx())
+      const el = measureRef.current
+      if (!el) return
+      const cap = insightsCollapsedMaxPx()
+      setNeedsToggle(el.offsetHeight > cap + 2)
+    }
+    measure()
+    const onResize = () => measure()
+    window.addEventListener('resize', onResize)
+    const ro = new ResizeObserver(measure)
+    if (measureRef.current) ro.observe(measureRef.current)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      ro.disconnect()
+    }
+  }, [lines])
+
+  const showCollapsed = needsToggle && !expanded
+
+  return (
+    <>
+      <div className="relative">
+        <div
+          ref={measureRef}
+          className={`pointer-events-none absolute left-0 right-0 top-0 -z-10 flex flex-col ${gapClass} opacity-0`}
+          aria-hidden
+        >
+          {lines.map((line, i) => (
+            <p key={i} className={`${lineClassName} ${getInsightStyle(line)}`}>
+              {line}
+            </p>
+          ))}
+        </div>
+        <div
+          className={`flex flex-col ${gapClass} ${showCollapsed ? 'overflow-hidden' : ''}`}
+          style={showCollapsed ? { maxHeight: collapsedMaxPx } : undefined}
+        >
+          {lines.map((line, i) => (
+            <p key={i} className={`${lineClassName} ${getInsightStyle(line)}`}>
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
+      {needsToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`${buttonMarginClass} ${buttonTextClass} font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60`}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </>
+  )
+}
+
 type Tab = 'record' | 'history' | 'settings'
 
 type SavedNote = {
@@ -81,6 +476,16 @@ type SavedNote = {
   date: string
   result: StructureResult
   transcript: string
+}
+
+type CalendarConfirmState = {
+  title: string
+  dateIso: string
+  timeStr: string
+  target: string
+  showTarget: boolean
+  targetOptions: string[]
+  baseDescription: string
 }
 
 function isWeakNextStep(nextStep: string) {
@@ -121,6 +526,129 @@ function hasStrongVerb(nextStep: string) {
 
   const lower = nextStep.toLowerCase().trim()
   return verbs.some((verb) => lower.startsWith(verb))
+}
+
+/** Loose match: is this contact name tied to this org string (same token / substring)? */
+function contactAlignsWithOrg(contact: string, org: string): boolean {
+  const c = contact.trim().toLowerCase()
+  const o = org.trim().toLowerCase()
+  if (!c || !o) return false
+  if (c === o) return true
+  if (o.includes(c) || c.includes(o)) return true
+  const cWords = c.split(/\s+/).filter((w) => w.length > 2)
+  const oWords = o.split(/\s+/).filter((w) => w.length > 2)
+  for (const cw of cWords) {
+    for (const ow of oWords) {
+      if (ow.includes(cw) || cw.includes(ow)) return true
+    }
+  }
+  return false
+}
+
+/**
+ * Company in nextStepTitle parens = org the direct contact belongs to (dealer vs customer).
+ * Never default to "dealer first" when both exist — only the matching side, else fall back to API title.
+ */
+function companyForDirectContact(r: StructureResult): string {
+  const contact = (r.nextStepTarget || r.contact || '').trim()
+  const dealer = (r.dealer || '').trim()
+  const customer = (r.customer || '').trim()
+
+  if (!dealer && !customer) return ''
+  if (dealer && !customer) return dealer
+  if (customer && !dealer) return customer
+
+  const alignDealer = contactAlignsWithOrg(contact, dealer)
+  const alignCustomer = contactAlignsWithOrg(contact, customer)
+
+  if (alignDealer && !alignCustomer) return dealer
+  if (alignCustomer && !alignDealer) return customer
+  if (alignDealer && alignCustomer) return ''
+
+  return ''
+}
+
+/** Affiliation-based org, then API title parens, then location. */
+function resolveCompanyForTitle(r: StructureResult): string {
+  const affiliated = companyForDirectContact(r)
+  if (affiliated) return affiliated
+  const fromTitle = (r.nextStepTitle || '').match(/\(([^)]+)\)\s*$/)
+  if (fromTitle) return fromTitle[1].trim()
+  return (r.location || '').trim()
+}
+
+/**
+ * True if `action` already ends with the full target (e.g. action "Call Mike", target "Mike").
+ */
+function actionAlreadyEndsWithTarget(action: string, target: string): boolean {
+  const a = action.trim()
+  const t = target.trim()
+  if (!a || !t) return false
+  const aLower = a.toLowerCase()
+  const tLower = t.toLowerCase()
+  if (aLower === tLower) return true
+  if (!aLower.endsWith(tLower)) return false
+  const prefix = a.slice(0, a.length - t.length)
+  return prefix === '' || /\s$/.test(prefix)
+}
+
+/** Collapse repeated identical token at end ("Mike Mike" → "Mike"). */
+function dedupeTrailingRepeatedWords(s: string): string {
+  const parts = s.trim().split(/\s+/)
+  if (parts.length < 2) return s.trim()
+  let i = parts.length - 1
+  while (i > 0 && parts[i].toLowerCase() === parts[i - 1].toLowerCase()) {
+    parts.splice(i, 1)
+    i--
+  }
+  return parts.join(' ')
+}
+
+function joinActionAndTarget(action: string, target: string): string {
+  const a = action.trim()
+  const t = target.trim()
+  if (!a) return t
+  if (!t) return a
+
+  if (actionAlreadyEndsWithTarget(a, t)) {
+    return dedupeTrailingRepeatedWords(a)
+  }
+
+  if (a.toLowerCase() === 'llamar' && !/^llamar\s+a\b/i.test(a)) {
+    return dedupeTrailingRepeatedWords(`Llamar a ${t}`)
+  }
+  return dedupeTrailingRepeatedWords(`${a} ${t}`.replace(/\s+/g, ' ').trim())
+}
+
+/**
+ * Calendar-only title: VERB + CONTACT + (COMPANY). Company = org the direct contact belongs to (dealer or customer).
+ * Does not use enrichNextStep (avoids stacking customer/dealer/contact/location).
+ */
+function buildCleanNextStepTitle(r: StructureResult): string {
+  const action = (r.nextStepAction || '').trim()
+  const target = (r.nextStepTarget || r.contact || '').trim()
+  const company = resolveCompanyForTitle(r)
+
+  if (action || target) {
+    const core = joinActionAndTarget(action, target)
+    if (!core) {
+      return dedupeTrailingRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
+    }
+
+    if (company) {
+      const coreLower = core.toLowerCase()
+      const companyLower = company.toLowerCase()
+      if (coreLower.includes(`(${companyLower})`)) {
+        return core
+      }
+      return `${core} (${company})`
+    }
+    const preserved = (r.nextStepTitle || '').trim()
+    if (preserved) return dedupeTrailingRepeatedWords(preserved)
+    return core
+  }
+
+  return dedupeTrailingRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
 }
 
 function enrichNextStep(
@@ -187,6 +715,15 @@ function forceLanguage(nextStep: string, originalText: string) {
   return nextStep
 }
 
+function finalizeNextStepFields(res: StructureResult, sourceText: string): StructureResult {
+  const base = { ...res }
+  let nextLine = enrichNextStep(base.nextStep, base)
+  let nextTitle = buildCleanNextStepTitle(base)
+  nextLine = forceLanguage(nextLine, sourceText)
+  nextTitle = forceLanguage(nextTitle, sourceText)
+  return { ...base, nextStep: nextLine, nextStepTitle: nextTitle }
+}
+
 async function fixNextStep(result: {
   nextStep?: string
   customer?: string
@@ -248,6 +785,7 @@ export default function Home() {
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
+  const [calendarConfirm, setCalendarConfirm] = useState<CalendarConfirmState | null>(null)
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [resultSummaryExpanded, setResultSummaryExpanded] = useState(false)
@@ -278,7 +816,8 @@ export default function Home() {
             id: n.id,
             date: n.date,
             transcript: n.transcript || '',
-            result: {
+            result: normalizeStructureResult({
+              ...emptyResult,
               contact: n.contact || '',
               customer: n.customer || '',
               dealer: n.dealer || '',
@@ -291,7 +830,7 @@ export default function Home() {
               acreage: n.acreage || '',
               crmText: n.crm_text || '',
               crmFull: normalizeCrmFull(n.crm_full),
-            },
+            }),
           }))
           setSavedNotes(mapped)
           try { localStorage.setItem('fieldbrief-notes', JSON.stringify(mapped)) } catch {}
@@ -306,11 +845,11 @@ export default function Home() {
           setSavedNotes(
             parsed.map((n) => ({
               ...n,
-              result: {
+              result: normalizeStructureResult({
                 ...emptyResult,
                 ...n.result,
                 crmFull: normalizeCrmFull(n.result.crmFull),
-              },
+              }),
             })),
           )
         }
@@ -421,7 +960,8 @@ export default function Home() {
     const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, r.product && `🧪 ${r.product}`].filter(Boolean)
     if (pills.length) lines.push(pills.join('  '))
     if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
-    if (r.nextStep) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(r.nextStep) }
+    const stepLine = (r.nextStepTitle || r.nextStep).trim()
+    if (stepLine) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(stepLine) }
     if (r.crmFull.length > 0) {
       lines.push('')
       lines.push('CRM DETAIL')
@@ -480,8 +1020,8 @@ export default function Home() {
           })
           const strData = await strRes.json()
           if (!strRes.ok) throw new Error(strData.error)
-          const merged = { ...emptyResult, ...strData }
-          const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
+          let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
+          final = finalizeNextStepFields(final, combined)
           await awaitMinProcessingDisplay()
           updateNote(noteId, final, combined)
         } catch (err: any) {
@@ -615,8 +1155,7 @@ export default function Home() {
         throw new Error(structureData.error || 'Failed to structure.')
       }
       
-      const merged = { ...emptyResult, ...structureData }
-      const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
+      let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
 
       if (isWeakNextStep(final.nextStep) || !hasStrongVerb(final.nextStep)) {
         try {
@@ -626,15 +1165,14 @@ export default function Home() {
             dealer: final.dealer,
             contact: final.contact,
           })
-      
-          final.nextStep = fixedNextStep
+
+          final = { ...final, nextStep: fixedNextStep }
         } catch (error) {
           console.error('Failed to auto-correct next step:', error)
         }
       }
 
-      final.nextStep = enrichNextStep(final.nextStep, final)
-      final.nextStep = forceLanguage(final.nextStep, tx)
+      final = finalizeNextStepFields(final, tx)
 
       await awaitMinProcessingDisplay()
       setResult(final)
@@ -662,8 +1200,8 @@ export default function Home() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
-      const merged = { ...emptyResult, ...data }
-      const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
+      let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
+      final = finalizeNextStepFields(final, input)
       await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, input)
@@ -694,6 +1232,49 @@ export default function Home() {
     setSelectedNote(null)
     setShowEditArea(false)
     setShowCalendarToast(false)
+    setCalendarConfirm(null)
+  }
+
+  const openCalendarFromStructuredResult = (r: StructureResult) => {
+    if (needsCalendarConfirmation(r)) {
+      const title = calendarEventTitle(r)
+      const mmddRaw = (r.nextStepDate || '').trim()
+      const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
+        ? mmddRaw
+        : isoDateToMmddyyyy(todayIsoDate())
+      const resolved = resolveTimeFromHint(r.nextStepTimeHint || '')
+      const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+      const dateIso = mmddyyyyToIsoDate(adj.dateMmddyyyy) ?? todayIsoDate()
+      const timeStr = hourMinuteToTimeInput(adj.hour, adj.minute)
+      const showTarget = needsTargetPicker(r)
+      const targetOptions = [
+        ...new Set(
+          [
+            (r.nextStepTarget || '').trim(),
+            ...r.mentionedEntities.map((e) => e.name.trim()),
+          ].filter(Boolean),
+        ),
+      ]
+      const target = (r.nextStepTarget || targetOptions[0] || '').trim()
+      setCalendarConfirm({
+        title,
+        dateIso,
+        timeStr,
+        target,
+        showTarget,
+        targetOptions,
+        baseDescription: buildCalendarDescription(r),
+      })
+      return
+    }
+    const dateMmdd = (r.nextStepDate || '').trim()
+    openGoogleCalendarWindow({
+      title: calendarEventTitle(r),
+      dateMmddyyyy: dateMmdd,
+      details: buildCalendarDescription(r),
+      time: { kind: 'hint', hint: r.nextStepTimeHint || '' },
+    })
+    setShowCalendarToast(true)
   }
 
   if (!mounted) return null
@@ -793,12 +1374,155 @@ export default function Home() {
         </div>
       )}
 
+      {/* Confirm calendar — bottom sheet when AI output needs review */}
+      {calendarConfirm && (
+        <div
+          className="fixed inset-0 z-[102] flex flex-col justify-end bg-black/45 px-0 pt-8 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="calendar-confirm-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close"
+            onClick={() => setCalendarConfirm(null)}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-zinc-200/90 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-8px_32px_rgba(0,0,0,0.12)]">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
+            <h2
+              id="calendar-confirm-title"
+              className="mb-3 text-center text-[15px] font-bold tracking-tight text-zinc-900"
+            >
+              Confirm next step
+            </h2>
+            <label className="mb-2 block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                Next step title
+              </span>
+              <input
+                type="text"
+                value={calendarConfirm.title}
+                onChange={(e) =>
+                  setCalendarConfirm((c) => (c ? { ...c, title: e.target.value } : c))
+                }
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none ring-0 focus:border-emerald-300/80"
+              />
+            </label>
+            <div className="mb-2 flex gap-2">
+              <label className="min-w-0 flex-1">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Date
+                </span>
+                <input
+                  type="date"
+                  value={calendarConfirm.dateIso}
+                  onChange={(e) =>
+                    setCalendarConfirm((c) => (c ? { ...c, dateIso: e.target.value } : c))
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-2 py-2.5 text-[13px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                />
+              </label>
+              <label className="min-w-0 w-[8.5rem]">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Time
+                </span>
+                <input
+                  type="time"
+                  value={calendarConfirm.timeStr}
+                  onChange={(e) =>
+                    setCalendarConfirm((c) => (c ? { ...c, timeStr: e.target.value } : c))
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-2 py-2.5 text-[13px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                />
+              </label>
+            </div>
+            {calendarConfirm.showTarget ? (
+              <label className="mb-4 block">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  Target
+                </span>
+                {calendarConfirm.targetOptions.length > 1 ? (
+                  <select
+                    value={calendarConfirm.target}
+                    onChange={(e) =>
+                      setCalendarConfirm((c) =>
+                        c ? { ...c, target: e.target.value } : c,
+                      )
+                    }
+                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                  >
+                    {calendarConfirm.targetOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={calendarConfirm.target}
+                    onChange={(e) =>
+                      setCalendarConfirm((c) =>
+                        c ? { ...c, target: e.target.value } : c,
+                      )
+                    }
+                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                    placeholder="Who is this for?"
+                  />
+                )}
+              </label>
+            ) : (
+              <div className="mb-4" />
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCalendarConfirm(null)}
+                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3 text-[14px] font-semibold text-zinc-700 transition-colors active:scale-[0.99]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const c = calendarConfirm
+                  const mmdd = isoDateToMmddyyyy(c.dateIso)
+                  if (!mmdd) return
+                  const { hour, minute } = timeInputToHourMinute(c.timeStr)
+                  let details = c.baseDescription
+                  if (c.showTarget && c.target.trim()) {
+                    const line = `Target: ${c.target.trim()}`
+                    details = details ? `${details}\n\n${line}` : line
+                  }
+                  openGoogleCalendarWindow({
+                    title: c.title.trim(),
+                    dateMmddyyyy: mmdd,
+                    details,
+                    time: { kind: 'clock', hour, minute },
+                  })
+                  setCalendarConfirm(null)
+                  setShowCalendarToast(true)
+                }}
+                className="flex-[1.15] rounded-xl py-3 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
+                style={{ backgroundColor: '#1a4d2e' }}
+              >
+                Confirm and add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto pb-28 px-5">
+      <div className="flex-1 overflow-y-auto px-5 pb-28">
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="relative flex flex-col" style={{minHeight: 'calc(100vh - 132px)'}}>
+          <div
+            className="relative flex flex-col"
+            style={result ? undefined : { minHeight: 'calc(100vh - 132px)' }}
+          >
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
@@ -927,14 +1651,14 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col px-0 pt-2 pb-10"
+                className="flex flex-col px-0 pt-1 pb-2"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
                 {/* 1 — Next step + calendar (sticky) */}
-                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-4 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
-                  <div className="mb-2.5 flex justify-end">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
+                  <div className="mb-1.5 flex justify-end">
                     <button
                       type="button"
                       onClick={handleReset}
@@ -945,58 +1669,30 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {result.nextStep && (
+                  {(result.nextStep || result.nextStepTitle) && (
                     <>
                       <div
-                        className="rounded-2xl px-5 py-[0.95rem] min-[390px]:px-5 min-[390px]:py-[1.15rem] text-center shadow-[0_6px_28px_rgba(26,77,46,0.09),0_2px_8px_rgba(26,77,46,0.05),inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-emerald-100/40 border border-emerald-200/90"
+                        className="rounded-2xl px-4 py-3 text-center shadow-[0_6px_28px_rgba(26,77,46,0.09),0_2px_8px_rgba(26,77,46,0.05),inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-emerald-100/40 border border-emerald-200/90"
                         style={{ background: 'linear-gradient(165deg, #e8f6ed 0%, #dbece3 100%)' }}
                       >
-                        <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
+                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
                           Next step
                         </p>
                         <p
-                          className="text-[23px] min-[390px]:text-[27px] font-black leading-[1.14] tracking-[-0.02em] antialiased"
+                          className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] antialiased"
                           style={{ color: '#0a2e1a' }}
                         >
-                          {result.nextStep}
+                          {result.nextStepTitle || result.nextStep}
                         </p>
                       </div>
 
                       <button
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(10)
-                          const text = result.nextStep
-                          const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
-                          let startDate = ''
-                          if (dateMatch) {
-                            const [m, d, y] = dateMatch[0].split('/')
-                            startDate = `${y}${m}${d}T090000`
-                          } else {
-                            const now = new Date()
-                            startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
-                          }
-                          const endDate = startDate.replace('T090000', 'T093000')
-                          const cleanTitle = text.replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '').replace(/\s+/g, ' ').trim()
-                          const title = encodeURIComponent(cleanTitle)
-                          const descLines = []
-                          if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
-                          const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
-                          if (pills.length) descLines.push(pills.join('  '))
-                          if (result.crmFull.length > 0) {
-                            descLines.push('')
-                            descLines.push(...result.crmFull)
-                          }
-                          if (result.crmText) {
-                            descLines.push('')
-                            descLines.push(result.crmText)
-                          }
-                          const details = encodeURIComponent(descLines.join('\n'))
-                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
-                          window.open(url, '_blank')
-                          setShowCalendarToast(true)
+                          openCalendarFromStructuredResult(result)
                         }}
                         type="button"
-                        className="group mt-3 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3 min-[400px]:py-[0.85rem] pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(26,77,46,0.28),0_2px_8px_rgba(26,77,46,0.12),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(26,77,46,0.32),0_2px_10px_rgba(26,77,46,0.14),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(26,77,46,0.22),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
+                        className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(26,77,46,0.28),0_2px_8px_rgba(26,77,46,0.12),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(26,77,46,0.32),0_2px_10px_rgba(26,77,46,0.14),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(26,77,46,0.22),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
@@ -1008,44 +1704,44 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 2 — Contact & company → 3 — Insights → 4 — Summary */}
-                <div className="mt-7 space-y-7">
+                {/* 2 — Contact & company → 3 — Insights → 4 — Summary → actions */}
+                <div className="mt-3 flex flex-col gap-1.5">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-4 py-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                        Visit
-                      </p>
+                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-3 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
                       {result.contact ? (
-                        <p className="text-[17px] font-semibold leading-snug tracking-tight text-zinc-900">
+                        <p className="text-[16px] font-bold leading-snug tracking-tight text-zinc-900">
                           {result.contact}
                         </p>
                       ) : (
                         <p
-                          className={`text-[17px] font-semibold leading-snug tracking-tight ${result.customer ? 'text-zinc-900' : 'text-zinc-400'}`}
+                          className={`text-[16px] font-bold leading-snug tracking-tight ${result.customer ? 'text-zinc-900' : 'text-zinc-400'}`}
                         >
                           {result.customer || '—'}
                         </p>
                       )}
-                      {result.contact && result.customer ? (
-                        <p className="mt-2 text-[14px] font-medium leading-snug text-zinc-500">
+                      {result.contact &&
+                      result.customer &&
+                      result.contact.trim().toLowerCase() !==
+                        result.customer.trim().toLowerCase() ? (
+                        <p className="mt-0.5 text-[13px] font-medium leading-snug text-zinc-500">
                           {result.customer}
                         </p>
                       ) : null}
                       {(result.location || result.crop || result.product) && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {result.location ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
+                            <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
                               📍 {result.location}
                             </span>
                           ) : null}
                           {result.crop ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
+                            <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
                               🌱 {result.crop}
                             </span>
                           ) : null}
-                          {result.product ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
-                              🧪 {result.product}
+                          {(result.product || '').trim() ? (
+                            <span className="inline-flex max-w-full min-w-0 items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                              🧪 {(result.product || '').trim()}
                             </span>
                           ) : null}
                         </div>
@@ -1054,37 +1750,24 @@ export default function Home() {
                   )}
 
                   {result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
                         Key insights
                       </p>
-                      <div className="flex flex-col gap-4">
-                        {(resultInsightsExpanded
-                          ? result.crmFull
-                          : result.crmFull.slice(0, 3)
-                        ).map((line, i) => (
-                          <p
-                            key={i}
-                            className={`rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight ${getInsightStyle(line)}`}
-                          >
-                            {line}
-                          </p>
-                        ))}
-                      </div>
-                      {result.crmFull.length > 3 ? (
-                        <button
-                          type="button"
-                          onClick={() => setResultInsightsExpanded((e) => !e)}
-                          className="mt-3 text-[12px] font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60"
-                        >
-                          {resultInsightsExpanded ? 'Show less' : 'Show more'}
-                        </button>
-                      ) : null}
+                      <KeyInsightsList
+                        lines={result.crmFull}
+                        gapClass="gap-1.5"
+                        lineClassName="rounded-lg px-2 py-1.5 text-[12px] font-medium leading-[1.5] tracking-tight"
+                        expanded={resultInsightsExpanded}
+                        onToggle={() => setResultInsightsExpanded((e) => !e)}
+                        buttonMarginClass="mt-2"
+                        buttonTextClass="text-[11px]"
+                      />
                     </div>
                   )}
 
                   {result.summary && (
-                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                       <button
                         type="button"
                         onClick={() => setResultSummaryExpanded((e) => !e)}
@@ -1109,54 +1792,68 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Secondary actions */}
-                  <div className="border-t border-zinc-100/90 pt-7">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
-                        className="flex h-11 flex-[1.12] items-center justify-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white text-[12px] font-medium text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700 active:scale-[0.98]"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50">
-                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  {/* Copy / Share / Correct — inline, directly under content */}
+                  <div className="flex items-center gap-2 border-t border-zinc-100/90 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(5)
+                        handleCopy()
+                      }}
+                      className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-zinc-200/90 bg-white text-[11px] font-medium text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700 active:scale-[0.98]"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-50">
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      {copied ? 'Copied' : 'Copy CRM'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => result && handleShare(result)}
+                      className="flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-600 active:scale-[0.98]"
+                      aria-label="Share"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60">
+                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+                        <polyline points="16 6 12 2 8 6" />
+                        <line x1="12" y1="2" x2="12" y2="15" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savedNotes.length === 0}
+                      onClick={() => {
+                        const latest = savedNotes[0]
+                        if (!latest) return
+                        if (isCorrectingRecording) stopCorrectionRecording()
+                        else startCorrectionRecording(latest.id, latest.transcript)
+                      }}
+                      className={`flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border text-white transition-all active:scale-[0.98] shadow-[0_2px_8px_rgba(217,119,6,0.18)] ${
+                        savedNotes.length === 0
+                          ? 'cursor-not-allowed border-amber-100/80 bg-amber-400/35 opacity-50'
+                          : 'border-amber-200/60 bg-amber-600/90 hover:bg-amber-600 active:bg-amber-700'
+                      }`}
+                      aria-label="Correct"
+                    >
+                      {isCorrectingRecording ? (
+                        <span className="flex items-center gap-0.5 text-white">
+                          <span className="text-[9px] tabular-nums">
+                            {String(Math.floor(correctingSeconds / 60)).padStart(2, '0')}:
+                            {String(correctingSeconds % 60).padStart(2, '0')}
+                          </span>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
-                        {copied ? 'Copied' : 'Copy CRM'}
-                      </button>
-                      <button
-                        onClick={() => result && handleShare(result)}
-                        className="flex h-11 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-600 active:scale-[0.98]"
-                        aria-label="Share"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60">
-                          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
-                        </svg>
-                      </button>
-                      {savedNotes.length > 0 && (
-                        <button
-                          onClick={() => {
-                            const latest = savedNotes[0]
-                            if (isCorrectingRecording) stopCorrectionRecording()
-                            else startCorrectionRecording(latest.id, latest.transcript)
-                          }}
-                          className="flex h-11 w-12 shrink-0 items-center justify-center rounded-xl border border-amber-200/60 bg-amber-600/90 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_8px_rgba(217,119,6,0.2)]"
-                          aria-label="Correct"
-                        >
-                          {isCorrectingRecording ? (
-                            <span className="flex items-center gap-1 text-white">
-                              <span className="text-[10px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                            </span>
-                          ) : (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                          )}
-                        </button>
                       )}
-                    </div>
+                    </button>
                   </div>
-
-                  <div className="min-h-[2rem]" aria-hidden />
                 </div>
               </div>
             )}
@@ -1207,11 +1904,11 @@ export default function Home() {
                           🌱 {selectedNote.result.crop}
                         </span>
                       )}
-                      {selectedNote.result.product && (
+                      {(selectedNote.result.product || '').trim() ? (
                         <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                          🧪 {selectedNote.result.product}
+                          🧪 {(selectedNote.result.product || '').trim()}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   )}
 
@@ -1220,28 +1917,15 @@ export default function Home() {
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
                         Key insights
                       </p>
-                      <div className="flex flex-col gap-4">
-                        {(historyInsightsExpanded
-                          ? selectedNote.result.crmFull
-                          : selectedNote.result.crmFull.slice(0, 3)
-                        ).map((line, i) => (
-                          <p
-                            key={i}
-                            className={`rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight ${getInsightStyle(line)}`}
-                          >
-                            {line}
-                          </p>
-                        ))}
-                      </div>
-                      {selectedNote.result.crmFull.length > 3 ? (
-                        <button
-                          type="button"
-                          onClick={() => setHistoryInsightsExpanded((e) => !e)}
-                          className="mt-3 text-[12px] font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60"
-                        >
-                          {historyInsightsExpanded ? 'Show less' : 'Show more'}
-                        </button>
-                      ) : null}
+                      <KeyInsightsList
+                        lines={selectedNote.result.crmFull}
+                        gapClass="gap-4"
+                        lineClassName="rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight"
+                        expanded={historyInsightsExpanded}
+                        onToggle={() => setHistoryInsightsExpanded((e) => !e)}
+                        buttonMarginClass="mt-3"
+                        buttonTextClass="text-[12px]"
+                      />
                     </div>
                   )}
 
@@ -1271,7 +1955,7 @@ export default function Home() {
                     </div>
                   )}
 
-                  {selectedNote.result.nextStep && (
+                  {(selectedNote.result.nextStep || selectedNote.result.nextStepTitle) && (
                     <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
                       <div className="mb-2 flex items-center gap-2">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
@@ -1279,7 +1963,9 @@ export default function Home() {
                         </svg>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
                       </div>
-                      <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>{selectedNote.result.nextStep}</p>
+                      <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>
+                        {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
+                      </p>
                     </div>
                   )}
 
@@ -1379,6 +2065,7 @@ export default function Home() {
                         note.result.product?.toLowerCase().includes(q) ||
                         note.result.location?.toLowerCase().includes(q) ||
                         note.result.nextStep?.toLowerCase().includes(q) ||
+                        note.result.nextStepTitle?.toLowerCase().includes(q) ||
                         note.result.crmFull.some((line) => line.toLowerCase().includes(q))
                       )
                     }).map((note) => (
@@ -1403,8 +2090,10 @@ export default function Home() {
                           </div>
                           <p className="shrink-0 text-[11px] text-zinc-400 mt-0.5">{formatDate(note.date)}</p>
                         </div>
-                        {note.result.nextStep && (
-                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#1a4d2e'}}>→ {note.result.nextStep}</p>
+                        {(note.result.nextStep || note.result.nextStepTitle) && (
+                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#1a4d2e'}}>
+                            → {note.result.nextStepTitle || note.result.nextStep}
+                          </p>
                         )}
                       </button>
                     ))}

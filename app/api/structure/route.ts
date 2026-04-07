@@ -1,12 +1,24 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
+type MentionedEntity = { name: string; type: string }
+
+type AdditionalStep = { action: string; date: string; time: string }
+
 type StructureBody = {
   customer: string
   dealer: string
   contact: string
   summary: string
   nextStep: string
+  nextStepTitle: string
+  nextStepAction: string
+  nextStepTarget: string
+  nextStepDate: string
+  nextStepTimeHint: string
+  nextStepConfidence: 'high' | 'medium' | 'low'
+  ambiguityFlags: string[]
+  mentionedEntities: MentionedEntity[]
   notes: string
   crop: string
   product: string
@@ -14,155 +26,206 @@ type StructureBody = {
   acreage: string
   crmText: string
   crmFull: string[]
+  additionalSteps: AdditionalStep[]
 }
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-const SYSTEM_PROMPT = `You are a CRM assistant for a B2B agricultural field sales rep based in California.
+const SYSTEM_PROMPT = `You are a CRM assistant for a B2B field sales rep.
 
-The rep dictates quick voice notes after each visit. Notes are informal, spoken-style, and may include slang or incomplete sentences.
+The rep dictates quick voice notes after each visit — informal, spoken, may have noise or incomplete sentences.
 
-Your job: extract structured CRM data. Return ONLY valid JSON.
-
-Fields:
-- customer
-- dealer
-- contact
-- summary
-- nextStep
-- notes
-- crop
-- product
-- location
-- acreage
-- crmText
-- crmFull (array of strings)
+Return ONLY valid JSON. No markdown. No explanation.
 
 ---
 
-LANGUAGE RULE (STRICT):
-- Detect the language of the input note
-- ALL output fields MUST be in the SAME language as the input
-- NEVER mix languages
-- If the input is in Spanish, every field value must be in Spanish
-- If the input is in English, every field value must be in English
-- This applies to nextStep, summary, notes, crmText, crmFull, crop, product, and location if generated from the note
-- Do not translate company names or product names, but keep surrounding wording in the correct language
+LANGUAGE RULE:
+Detect the language of the note. ALL fields must be in that same language. Never mix.
 
 ---
 
-RULES:
+ROLES (UNDERSTAND THESE BEFORE EXTRACTING):
 
-- customer = grower using the product (never dealer)
-- dealer = distributor visited (empty if direct grower visit)
-- If missing → return ""
-- Do NOT invent info
+There are 3 possible people in a note:
+1. THE REP — always "I/yo". Never extract as contact.
+2. CONTACT — the person the rep DIRECTLY spoke to. This is who nextStep targets.
+3. THIRD PARTY — someone mentioned but not present (e.g. "his grower Luis"). Never the nextStep target.
+
+- contact = person directly spoken to
+- dealer = distributor or intermediary visited
+- customer = named end-account ORGANIZATION only (grower farm, clinic, business name). Must be a real company/grower name when filled.
+
+CUSTOMER — NEVER RELATIONAL LABELS ALONE:
+- If the note only describes someone by relationship or generic role (e.g. "su cuñado", "su cliente", "un vecino", "their neighbor", "his client" with no actual farm/company name), set customer to "" (empty string).
+- Do NOT use customer for "who they are to someone" — only for a concrete end account you can name as an organization.
+
+CRITICAL: If rep says "Tyler told me about the grower at Laguna Farms" → contact=Tyler, customer=Laguna Farms, dealer=Coastal Growers
 
 ---
 
-SUMMARY:
+ABSOLUTE RULE — THIRD PARTIES (NEVER BREAK):
 
-- Quick context only: 2–3 short lines of plain text (compact, easy to scan at a glance)
-- NOT exhaustive—capture the essence of the visit; put granular commercial detail in crmFull instead
-- No bullet list in summary (continuous or softly line-broken prose only—not emoji lines)
-- Same language as the input note
+nextStepTitle AND nextStep MUST NEVER contain names of third parties (people the rep did NOT directly speak to in this visit).
+
+- If Luis was not present in the conversation, his name MUST NOT appear in nextStepTitle or nextStep under any circumstance — not in the verb line, not in parentheses, not as "context".
+- ONLY the direct contact's name may appear in nextStep and nextStepTitle (nextStepTitle MUST also always include exactly one company in parentheses — see nextStepTitle COMPANY RULE below).
+- Third-party names may appear in summary, crmText, crmFull, mentionedEntities — but NEVER in nextStep or nextStepTitle. Put named end-account organizations in customer only (never relational labels alone — see CUSTOMER rules above).
 
 ---
 
 NEXT STEP RULES:
 
-Format:
-ACTION + TARGET + (COMPANY)
+Extract ALL actions mentioned. Store them in additionalSteps array.
 
-No conditionals (STRICT):
-- nextStep must NEVER be tentative or conditional
-- Ban phrasing like "if I go", "if I can", "maybe", "si voy", "si puedo", "a ver si", "when I get a chance", etc.
-- When the rep expresses a tentative plan, rewrite it as ONE definitive, executable action using a strong opening verb and concrete details from the note (who, what, when, where)
-- Example (Spanish): if the note implies "si voy a Salinas el viernes" with contact Narciso → "Llamar a Narciso el viernes para confirmar visita en Salinas" (adjust names/dates to match the note)
-- Example (English): tentative "might swing by Salinas Friday" → "Call Narciso Friday to confirm Salinas visit"
+Then choose ONE as the primary nextStep using this priority:
+1. Most URGENT action (today/tomorrow beats next week)
+2. Calls/follow-ups beat sending info ONLY if they happen at the same time
+3. If sending info must happen BEFORE a call → sending info IS the primary nextStep
 
-Examples (English input):
-- "Call Alfonso Paniagua (Laguna Farms)"
-- "Send pricing to Tyler (Coastal Growers)"
-- "Follow up with Laguna Farms"
+NEVER pick a later action over an earlier one.
+NEVER use conditional language ("si puedo", "if I go"). Convert to definitive action.
 
-Examples (Spanish input):
-- "Llamar a Alfonso Paniagua (Laguna Farms)"
-- "Enviar precios a Tyler (Coastal Growers)"
-- "Hacer seguimiento con Laguna Farms"
+nextStepTitle — COMPANY RULE (MANDATORY):
+- Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
+- The name in parentheses MUST be the organization the DIRECT CONTACT works for — never mix dealer and customer incorrectly.
+- If the contact person belongs to the distributor (dealer) → use dealer inside the parentheses.
+- If the contact person belongs to the end account (grower / final customer) → use customer inside the parentheses.
+- Do NOT put customer in parentheses when the contact is a dealer rep; do NOT put dealer in parentheses when the contact is the grower. One org only, matching affiliation.
 
-Rules:
-
-- Must be short and executable
-- Must start with strong verb
-- The action verb in nextStep MUST be in the same language as the input note
-- Never generic:
-  - "call again"
-  - "follow up later"
-
-Fallbacks:
-
-1. If contact exists:
-   → CONTACT + (COMPANY)
-
-2. If only company:
-   → COMPANY only
-
-3. If none:
-   → ACTION + OBJECT
-
-Examples:
-- "Send proposal"
-- "Follow up on pricing"
-
-Verb inference (use equivalents in the input language—never mix):
-- no answer → Call / Llamar
-- waiting → Follow up / Hacer seguimiento
-- sending info → Send / Enviar
-- meeting → Schedule / Agendar
-
-Date:
-- If explicit → include MM/DD/YYYY
-- If relative → convert to exact date
+CORRECT: Dealer rep Tyler at Coastal → "Llamar a Tyler (Coastal Growers)" when dealer=Coastal Growers and Tyler is the dealer-side contact.
+CORRECT: Grower contact Alfonso at Laguna Farms → use (Laguna Farms) from customer when Alfonso is the grower-side contact.
+WRONG: "Enviar precios a Tyler" — missing (COMPANY)
+WRONG: "Llamar a Tyler (Luis)" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
+WRONG: "Llamar a Luis..." when Luis was only mentioned, not spoken to — use the direct contact name only
 
 ---
 
-CRM TEXT (narrative):
+DATE/TIME RULES:
 
-- 2–3 sentences only: clean, professional, story-style paragraph
-- Natural and CRM-ready
-- NO bullets, NO emoji lines, NO labels—plain prose only
-- crmText must be written fully in the same language as the input note
-- Never use English sentence structure for Spanish input
-- Never use Spanish verbs or phrasing for English input
-- Put exhaustive facts and bullet-style detail in crmFull—not in crmText
-- Example style (English input):
-
-"Left a voicemail for Alfonso Paniagua (Laguna Farms). Following up to confirm he received Tyler’s pricing."
+- "mañana por la mañana" → tomorrow 9:00am
+- "por la tarde" → 3:00pm
+- "al mediodía" → 12:00pm
+- "por la mañana" → 9:00am
+- Relative dates: calculate from today's date provided
+- If no date mentioned → ""
 
 ---
 
-CRM FULL (detailed — primary CRM facts):
+SUMMARY RULES:
 
-- JSON array of strings; each string is ONE short line (no long sentences)
-- Extract ALL important commercial details from the note: objections (price, concerns), quantities (lbs, acres), opportunities (new clients, interest), product usage, risks, pricing signals, key dates—nothing important omitted
-- Bullet-style lines with a leading emoji for clarity. Prefer these when they fit:
-  🌱 product / usage
-  💰 pricing / money
-  🌡️ risk / weather / concern
-  🤝 opportunity / deal / relationship
-  📦 quantity / volume
-- Use other emojis when needed for context
-- Same language as the input note (and do not translate proper names)
-- Example crmFull (Spanish):
+Extract ALL relevant details as bullet points with emojis.
+No prose. No text blocks. Each line = one fact.
+Emojis must match the content:
+🌱 crop/product info
+💰 price/quantity/deal info
+🤝 relationship/new client info
+📅 meeting/visit info
+⚠️ problem/concern/risk
+🆕 new opportunity
 
-["🌱 Aplicando Quantum Flower en fresas", "🌡️ Preocupación por calor y precio bajo", "🤝 Nuevo cliente: Foxy", "📦 300 libras de producto mencionadas"]
+THIRD-PARTY OPPORTUNITY (summary bullet — when applicable):
+- If the note mentions a THIRD person (not the direct contact) who shows potential interest, a problem your solution could address, or could realistically become a future customer, add ONE bullet using this label in the SAME language as the note:
+  - Spanish: 🆕 Oportunidad: [descripción breve — quién / interés o problema]
+  - English: 🆕 Opportunity: [short description — who / interest or problem]
+- Use this for referral-style or overheard leads; do NOT use it for the account you are actually visiting (use 🤝 or other lines for that). If no such third party appears, omit this bullet.
+
+Include everything mentioned: prices, quantities, problems, new clients, market context.
+Same language as note.
 
 ---
 
-Return ONLY JSON — crmFull MUST be a JSON array of strings.`
+CRM TEXT:
+2-3 natural sentences. No bullets in the main paragraph. Concise. Human tone.
+- If dealer is non-empty: you MUST mention the distributor in the prose (e.g. English: "Orders go through Pacific Ag.").
+- MANDATORY: always end crmText with a final line (after a blank line) that states the dealer again, in the same language as the note — e.g. English: "Orders go through [dealer]." Spanish: "Distribuidor: [nombre]." Never omit dealer from crmText when dealer exists.
+
+CRM FULL (Key insights):
+Array of short lines with emojis. All key business details.
+- If dealer is non-empty: you MUST include a separate line exactly in this form (its own bullet): 🏪 Dealer: [dealer name]
+- Never omit dealer from the output when dealer is detected.
+- If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
+
+---
+
+REQUIRED JSON KEYS (single object — include every key):
+
+contact, dealer, customer, location, crop, product, acreage,
+summary,
+nextStep,
+nextStepTitle,
+nextStepDate,
+nextStepTime,
+additionalSteps,
+crmText,
+crmFull,
+confidence,
+ambiguityFlags,
+
+Also include (same object) for the client app:
+nextStepAction,
+nextStepTarget,
+nextStepTimeHint,
+nextStepConfidence,
+mentionedEntities,
+notes
+
+Rules for the extra keys:
+- nextStepAction = single verb phrase for the PRIMARY next step only
+- nextStepTarget = contact name for that action only (never third party) — same ABSOLUTE RULE as nextStep / nextStepTitle
+- nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = dealer OR customer only — whichever org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
+- nextStepTimeHint = derive from nextStepTime: use "morning", "afternoon", "noon", or 24h "HH:MM" as appropriate
+- nextStepConfidence = same value as confidence (high | medium | low)
+- mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | dealer | company | other)
+- notes = "" or a very short string if needed
+
+additionalSteps = JSON array of objects: { "action", "date", "time" } for every other action mentioned (not the primary). Use "" for unknown date/time.
+
+Return ONLY valid JSON. No backticks. No explanation.`
+
+function isLikelySpanish(text: string): boolean {
+  if (!text.trim()) return false
+  return (
+    /[áéíóúñ¿¡]/i.test(text) ||
+    /\b(el|la|los|las|que|por|para|con|una|este|esta|distribuidor)\b/i.test(text)
+  )
+}
+
+/** Guarantee Key insights include 🏪 Dealer line when dealer is set. */
+function ensureDealerInCrmFull(crmFull: string[], dealer: string): string[] {
+  const d = dealer.trim()
+  if (!d) return [...crmFull]
+  const lines = crmFull.map((s) => s.trim()).filter(Boolean)
+  const dLower = d.toLowerCase()
+  const hasDealerBullet = lines.some(
+    (line) => /🏪\s*Dealer\s*:/i.test(line) && line.toLowerCase().includes(dLower),
+  )
+  if (hasDealerBullet) return lines
+  return [`🏪 Dealer: ${d}`, ...lines]
+}
+
+/** Guarantee crmText ends with a dealer line; prose should already mention dealer per prompt. */
+function ensureDealerInCrmText(crmText: string, dealer: string, sourceNote: string): string {
+  const d = dealer.trim()
+  if (!d) return crmText.trim()
+  const text = crmText.trim()
+  const spanish = isLikelySpanish(sourceNote)
+  const closing = spanish ? `Distribuidor: ${d}.` : `Orders go through ${d}.`
+
+  if (text.toLowerCase().endsWith(closing.toLowerCase())) return text
+
+  const lineLines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  const lastLine = lineLines[lineLines.length - 1] || ''
+  if (
+    lastLine.toLowerCase().includes(d.toLowerCase()) &&
+    (/\borders go through\b/i.test(lastLine) || /^distribuidor\s*:/i.test(lastLine))
+  ) {
+    return text
+  }
+
+  return `${text}\n\n${closing}`
+}
 
 function extractJson(text: string): string {
   // Strip markdown code fences if present
@@ -185,9 +248,178 @@ function parseCrmFull(value: unknown): string[] {
     .filter(Boolean)
 }
 
+function parseAmbiguityFlags(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function parseMentionedEntities(value: unknown): MentionedEntity[] {
+  if (!Array.isArray(value)) return []
+  const out: MentionedEntity[] = []
+  for (const item of value) {
+    if (item && typeof item === 'object' && 'name' in item) {
+      const o = item as Record<string, unknown>
+      const name = typeof o.name === 'string' ? o.name.trim() : ''
+      const type = typeof o.type === 'string' ? o.type.trim() : 'other'
+      if (name) out.push({ name, type: type || 'other' })
+    } else if (typeof item === 'string' && item.trim()) {
+      out.push({ name: item.trim(), type: 'other' })
+    }
+  }
+  return out
+}
+
+function parseConfidence(value: unknown): 'high' | 'medium' | 'low' {
+  if (value === 'high' || value === 'medium' || value === 'low') return value
+  return 'medium'
+}
+
+/** Map nextStepTime strings to hints the client calendar layer understands. */
+function normalizeTimeToHint(nextStepTime: string, existingHint: string): string {
+  const hint = existingHint.trim()
+  if (hint) return hint
+  const t = nextStepTime.trim()
+  if (!t) return ''
+  const lower = t.toLowerCase()
+  if (lower === '9:00am' || lower === '9:00 am' || /\bpor la mañana\b/.test(lower)) {
+    return 'morning'
+  }
+  if (
+    lower === '3:00pm' ||
+    lower === '3:00 pm' ||
+    /\bpor la tarde\b/.test(lower) ||
+    lower.includes('afternoon')
+  ) {
+    return 'afternoon'
+  }
+  if (
+    lower === '12:00pm' ||
+    lower === '12:00 pm' ||
+    /\bmediodía\b/.test(lower) ||
+    lower.includes('noon')
+  ) {
+    return 'noon'
+  }
+  const m = t.match(/^(\d{1,2}):(\d{2})\s*(am|pm)\b/i)
+  if (m) {
+    let h = parseInt(m[1], 10)
+    const min = m[2]
+    const ap = m[3].toLowerCase()
+    if (ap === 'pm' && h < 12) h += 12
+    if (ap === 'am' && h === 12) h = 0
+    return `${String(h).padStart(2, '0')}:${min}`
+  }
+  if (/^\d{1,2}:\d{2}$/.test(t.trim())) return t.trim()
+  return t
+}
+
+/** YYYY-MM-DD → MM/DD/YYYY for client calendar fields. */
+function normalizeNextStepDate(d: string): string {
+  const t = d.trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const [y, m, day] = t.slice(0, 10).split('-')
+    return `${m}/${day}/${y}`
+  }
+  return t
+}
+
+/**
+ * customer must be a real org/grower name. If the model returns only a relational
+ * description ("su cuñado", "un vecino", "their client"), treat as empty.
+ */
+function isRelationalCustomerOnly(value: string): boolean {
+  const t = value.trim().replace(/\s+/g, ' ')
+  if (!t) return false
+  const lower = t.toLowerCase()
+
+  const singleTokens = new Set([
+    'cliente',
+    'client',
+    'clientes',
+    'clients',
+    'vecino',
+    'vecina',
+    'vecinos',
+    'neighbor',
+    'neighbors',
+    'neighbour',
+    'neighbours',
+  ])
+  if (singleTokens.has(lower)) return true
+
+  const phraseRes = [
+    /^su\s+cuñad[oa]$/i,
+    /^su\s+cliente$/i,
+    /^su\s+vecin[oa]$/i,
+    /^un\s+vecin[oa]$/i,
+    /^el\s+vecin[oa]$/i,
+    /^la\s+vecina$/i,
+    /^un\s+cliente$/i,
+    /^el\s+cliente$/i,
+    /^una\s+clienta$/i,
+    /^su\s+herman[oa]$/i,
+    /^su\s+primo$/i,
+    /^su\s+prima$/i,
+    /^su\s+contacto$/i,
+    /^su\s+amig[oa]$/i,
+    /^su\s+pariente$/i,
+    /^su\s+familiar$/i,
+    /^his\s+client$/i,
+    /^her\s+client$/i,
+    /^their\s+client$/i,
+    /^a\s+neighbor$/i,
+    /^the\s+neighbor$/i,
+    /^his\s+brother/i,
+    /^her\s+sister/i,
+    /^their\s+neighbor$/i,
+  ]
+  if (phraseRes.some((re) => re.test(t))) return true
+
+  const twoWord = new RegExp(
+    `^(su|el|la|un|una|los|las|mi|tu|mis|tus|his|her|their|a|the|my|our)\\s+` +
+      `(cuñado|cuñada|vecino|vecina|cliente|clientes|hermano|hermana|primo|prima|tío|tía|amigo|amiga|contacto|referido|referida|pariente|familiar|client|clients|neighbor|neighbours|brother|sister|cousin|friend)s?$`,
+    'i',
+  )
+  if (twoWord.test(lower)) return true
+
+  return false
+}
+
+function sanitizeCustomerField(value: string): string {
+  const t = value.trim()
+  if (!t) return ''
+  return isRelationalCustomerOnly(t) ? '' : t
+}
+
+function parseAdditionalSteps(value: unknown): AdditionalStep[] {
+  if (!Array.isArray(value)) return []
+  const out: AdditionalStep[] = []
+  for (const item of value) {
+    if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>
+      const action = typeof o.action === 'string' ? o.action.trim() : ''
+      if (!action) continue
+      out.push({
+        action,
+        date: typeof o.date === 'string' ? o.date.trim() : '',
+        time: typeof o.time === 'string' ? o.time.trim() : '',
+      })
+    }
+  }
+  return out
+}
+
 function parseStructureJson(text: string): StructureBody {
   const clean = extractJson(text)
   const parsed = JSON.parse(clean) as Record<string, unknown>
+
+  const nextStepTimeRaw =
+    typeof parsed.nextStepTime === 'string' ? parsed.nextStepTime.trim() : ''
+  const nextStepTimeHintRaw =
+    typeof parsed.nextStepTimeHint === 'string' ? parsed.nextStepTimeHint.trim() : ''
 
   return {
     customer: typeof parsed.customer === 'string' ? parsed.customer : '',
@@ -195,6 +427,17 @@ function parseStructureJson(text: string): StructureBody {
     contact: typeof parsed.contact === 'string' ? parsed.contact : '',
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     nextStep: typeof parsed.nextStep === 'string' ? parsed.nextStep : '',
+    nextStepTitle: typeof parsed.nextStepTitle === 'string' ? parsed.nextStepTitle : '',
+    nextStepAction: typeof parsed.nextStepAction === 'string' ? parsed.nextStepAction : '',
+    nextStepTarget: typeof parsed.nextStepTarget === 'string' ? parsed.nextStepTarget : '',
+    nextStepDate:
+      typeof parsed.nextStepDate === 'string'
+        ? normalizeNextStepDate(parsed.nextStepDate)
+        : '',
+    nextStepTimeHint: normalizeTimeToHint(nextStepTimeRaw, nextStepTimeHintRaw),
+    nextStepConfidence: parseConfidence(parsed.confidence ?? parsed.nextStepConfidence),
+    ambiguityFlags: parseAmbiguityFlags(parsed.ambiguityFlags),
+    mentionedEntities: parseMentionedEntities(parsed.mentionedEntities),
     notes: typeof parsed.notes === 'string' ? parsed.notes : '',
     crop: typeof parsed.crop === 'string' ? parsed.crop : '',
     product: typeof parsed.product === 'string' ? parsed.product : '',
@@ -202,6 +445,7 @@ function parseStructureJson(text: string): StructureBody {
     acreage: typeof parsed.acreage === 'string' ? parsed.acreage : '',
     crmText: typeof parsed.crmText === 'string' ? parsed.crmText : '',
     crmFull: parseCrmFull(parsed.crmFull),
+    additionalSteps: parseAdditionalSteps(parsed.additionalSteps),
   }
 }
 
@@ -241,40 +485,50 @@ export async function POST(request: Request) {
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
+    const titleCaseWords = (s: string) =>
+      s
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ')
+
     const capitalized = {
       ...result,
-      contact: result.contact
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      customer: result.customer
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      dealer: result.dealer
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      summary: capitalize(result.summary),
+      contact: titleCaseWords(result.contact),
+      customer: sanitizeCustomerField(titleCaseWords(result.customer)),
+      dealer: titleCaseWords(result.dealer),
+      summary: result.summary.trim(),
       nextStep: capitalize(result.nextStep),
+      nextStepTitle: capitalize(result.nextStepTitle),
+      nextStepAction: result.nextStepAction.trim(),
+      nextStepTarget: titleCaseWords(result.nextStepTarget),
+      nextStepDate: result.nextStepDate.trim(),
+      nextStepTimeHint: result.nextStepTimeHint.trim(),
+      nextStepConfidence: result.nextStepConfidence,
+      ambiguityFlags: result.ambiguityFlags,
+      mentionedEntities: result.mentionedEntities.map((e) => ({
+        name: titleCaseWords(e.name),
+        type: e.type,
+      })),
       notes: capitalize(result.notes),
-      crop: result.crop
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      product: result.product
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      location: result.location
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
+      crop: titleCaseWords(result.crop),
+      product: titleCaseWords(result.product),
+      location: titleCaseWords(result.location),
       acreage: result.acreage,
       crmText: capitalize(result.crmText),
+      additionalSteps: result.additionalSteps.map((s) => ({
+        action: capitalize(s.action.trim()),
+        date: s.date.trim(),
+        time: s.time.trim(),
+      })),
     }
 
-    return NextResponse.json(capitalized)
+    const enriched = {
+      ...capitalized,
+      crmFull: ensureDealerInCrmFull(capitalized.crmFull, capitalized.dealer),
+      crmText: ensureDealerInCrmText(capitalized.crmText, capitalized.dealer, note),
+    }
+
+    return NextResponse.json(enriched)
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || 'Something went wrong' },
