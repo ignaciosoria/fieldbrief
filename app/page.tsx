@@ -536,7 +536,12 @@ export default function Home() {
                   style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
                 >
                   {isCorrectingRecording ? (
-                    <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      </svg>
+                    </span>
                   ) : (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -813,10 +818,12 @@ export default function Home() {
                     style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
                   >
                     {isCorrectingRecording ? (
-                      <>
+                      <span className="flex items-center gap-2">
                         <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
-                        Stop Correction
-                      </>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        </svg>
+                      </span>
                     ) : (
                       <>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
