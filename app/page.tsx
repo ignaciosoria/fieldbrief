@@ -593,45 +593,29 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col justify-between px-1 pt-1 pb-2"
+                className="flex flex-col px-1 pt-0 pb-2"
                 style={{
                   animation: 'slideUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards',
-                  minHeight: 'calc(100vh - 140px)',
                 }}
               >
-                {/* Top — contact + pills (secondary) */}
-                <div>
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-medium text-zinc-600">
-                        {result.contact || '—'}
-                        {result.customer ? <span className="font-normal text-zinc-400"> · {result.customer}</span> : null}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0">
-                        {result.location && <span className="text-[10px] text-zinc-400/80">📍 {result.location}</span>}
-                        {result.crop && <span className="text-[10px] text-zinc-400/80">🌱 {result.crop}</span>}
-                        {result.product && <span className="text-[10px] text-zinc-400/80">🧪 {result.product}</span>}
-                      </div>
-                    </div>
+                {/* Sticky stack: actions stay visible on small screens when scrolling context */}
+                <div className="sticky top-0 z-20 -mx-5 mb-1 border-b border-zinc-100/80 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+                  <div className="mb-1.5 flex justify-end">
                     <button onClick={handleReset} className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 active:scale-95">
                       New
                     </button>
                   </div>
 
-                  {/* Next step — HERO */}
-                  {result.nextStep && (
-                    <div
-                      className="rounded-[1.35rem] px-6 py-6 mb-2 shadow-[0_4px_24px_rgba(26,77,46,0.12),0_1px_0_rgba(255,255,255,0.6)_inset] border border-emerald-200/80"
-                      style={{ background: 'linear-gradient(165deg, #ecf8f0 0%, #e4f3ea 100%)' }}
-                    >
-                      <p className="text-[9px] font-semibold uppercase tracking-[0.22em] mb-3 text-emerald-800/80">Next step</p>
-                      <p className="text-[24px] font-extrabold leading-[1.2] tracking-tight" style={{ color: '#14532d' }}>{result.nextStep}</p>
-                    </div>
-                  )}
-
-                  {/* Add to Calendar — MAIN CTA (hero action, tight to next step) */}
                   {result.nextStep && (
                     <>
+                      <div
+                        className="rounded-[1.15rem] px-4 py-4 mb-1.5 shadow-[0_4px_20px_rgba(26,77,46,0.1),0_1px_0_rgba(255,255,255,0.6)_inset] border border-emerald-200/80"
+                        style={{ background: 'linear-gradient(165deg, #ecf8f0 0%, #e4f3ea 100%)' }}
+                      >
+                        <p className="text-[9px] font-semibold uppercase tracking-[0.2em] mb-2 text-emerald-800/80">Next step</p>
+                        <p className="text-[20px] font-extrabold leading-[1.22] tracking-tight sm:text-[22px]" style={{ color: '#14532d' }}>{result.nextStep}</p>
+                      </div>
+
                       <button
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(10)
@@ -659,10 +643,10 @@ export default function Home() {
                           setLastCalendarUrl(url)
                           setCalendarSuccessTick((n) => n + 1)
                         }}
-                        className="flex w-full items-center justify-center gap-2.5 rounded-2xl py-[18px] text-[17px] font-bold text-white transition-all hover:brightness-110 active:scale-[0.98] active:brightness-95 shadow-[0_10px_32px_rgba(26,77,46,0.38),0_2px_0_rgba(0,0,0,0.06)_inset]"
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[16px] font-bold text-white shadow-[0_8px_28px_rgba(26,77,46,0.35),0_1px_0_rgba(255,255,255,0.12)_inset] transition-all hover:brightness-105 active:scale-[0.98] active:brightness-95 min-[400px]:py-4 min-[400px]:text-[17px]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-95">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-95 shrink-0">
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
                         Add to Calendar
@@ -670,12 +654,12 @@ export default function Home() {
 
                       {(lastCalendarUrl || calendarSuccessTick > 0) && (
                         <div
-                          className="mt-2.5 overflow-hidden rounded-xl border border-emerald-200/70 bg-emerald-50/90 px-4 py-3"
+                          className="mt-1.5 overflow-hidden rounded-lg border border-emerald-200/70 bg-emerald-50/90 px-3 py-2"
                           style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.45s ease-out' } : undefined}
                         >
-                          <div className="flex items-center gap-2 text-[13px] font-semibold text-emerald-900">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
+                          <div className="flex items-center gap-2 text-[12px] font-semibold text-emerald-900">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                                 <path d="M20 6L9 17l-5-5"/>
                               </svg>
                             </span>
@@ -686,10 +670,10 @@ export default function Home() {
                               href={lastCalendarUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-2 transition-opacity hover:opacity-80"
+                              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-2 transition-opacity hover:opacity-80"
                             >
                               View in Calendar
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
                               </svg>
                             </a>
@@ -698,18 +682,35 @@ export default function Home() {
                       )}
                     </>
                   )}
+                </div>
 
-                  {/* Summary — supporting context (below actions flow: next → calendar → then context) */}
+                {/* Context below fold — metadata de-prioritized */}
+                <div className="mt-2 space-y-3">
+                  {(result.contact || result.customer || result.location || result.crop || result.product) && (
+                    <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 px-3 py-2">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Visit</p>
+                      <p className="truncate text-[11px] text-zinc-500">
+                        {result.contact || '—'}
+                        {result.customer ? <span className="text-zinc-400"> · {result.customer}</span> : null}
+                      </p>
+                      {(result.location || result.crop || result.product) && (
+                        <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-zinc-400/90">
+                          {[result.location && `📍 ${result.location}`, result.crop && `🌱 ${result.crop}`, result.product && `🧪 ${result.product}`].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {result.summary && (
-                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/80 px-3.5 py-2.5 mt-4 shadow-sm">
-                      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 mb-1">Summary</p>
-                      <p className="text-[12px] leading-snug text-zinc-500">{result.summary}</p>
+                    <div className="rounded-xl border border-zinc-100/90 bg-zinc-50/70 px-3 py-2 shadow-sm">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 mb-0.5">Summary</p>
+                      <p className="text-[12px] leading-snug text-zinc-500 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Secondary row — Copy CRM + Share + Correct */}
-                <div className="mt-5 space-y-2">
+                <div className="mt-4 space-y-2">
                   <div className="flex items-stretch gap-2">
                     <button
                       onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
