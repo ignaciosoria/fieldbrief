@@ -636,8 +636,8 @@ export default function Home() {
                           }
                           const endDate = startDate.replace('T090000', 'T093000')
                           const cleanTitle = text
-                            .replace(/\bon\s+\d{2}\/\d{2}\/\d{4}/i, '')
-                            .replace(/\bto\s+.+$/i, '')
+                            .replace(/\s*(\bon\b|\bel\b)\s+\d{2}\/\d{2}\/\d{4}/i, '')
+                            .replace(/\s*(\bto\b|\bpara\b)\s+.+$/i, '')
                             .replace(/\s+/g, ' ')
                             .trim()
                           const title = encodeURIComponent(cleanTitle)
