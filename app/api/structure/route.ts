@@ -11,6 +11,7 @@ type StructureBody = {
   crop: string
   product: string
   location: string
+  acreage: string
   crmText: string
 }
 
@@ -20,126 +21,100 @@ const client = new OpenAI({
 
 const SYSTEM_PROMPT = `You are a CRM assistant for a B2B agricultural field sales rep based in California.
 
-The rep visits growers and farm operations and dictates quick voice notes after each visit.
-Notes are informal, spoken-style, and may include industry slang, filler words, or incomplete sentences.
+The rep dictates quick voice notes after each visit. Notes are informal, spoken-style, and may include slang or incomplete sentences.
 
-Your job: extract structured CRM data from the note. Return ONLY valid JSON, no markdown, no explanation.
+Your job: extract structured CRM data. Return ONLY valid JSON.
 
-Fields to extract:
-- customer: the GROWER or farm operation that uses the product (e.g. Laguna Farms). Never the distributor — that belongs in dealer.
-- dealer: the distributing company or intermediary the rep visited (e.g. Coastal Growers). Empty string if the rep met the grower directly.
-- contact: person's name spoken to (first name or full name)
-- summary: 1–2 sentences ONLY about what was discussed and any objections or next context. Do NOT repeat location, crop, or acreage — those are separate fields. Focus only on what happened in the conversation.
-- nextStep: the single most important action the rep needs to take
-- notes: any additional context not covered elsewhere (keep short, optional)
-- crop: the crop(s) mentioned (e.g. strawberries, romaine lettuce)
-- product: the product(s) discussed
-- location: city or region only (e.g. Salinas, Oxnard)
-- acreage: number of acres mentioned as a number only (e.g. 200), empty string if not mentioned
-- crmText: a clean, well-written paragraph in the SAME language as the input note, ready to paste directly into a CRM
+Fields:
+- customer
+- dealer
+- contact
+- summary
+- nextStep
+- notes
+- crop
+- product
+- location
+- acreage
+- crmText
 
 ---
 
-GENERAL RULES:
+RULES:
 
-- customer is always the GROWER or farm that uses the product (e.g. Laguna Farms), never the dealer.
-- dealer is the distributing company or intermediary the rep visited (e.g. Coastal Growers); leave empty if they visited the grower directly.
-- If the rep visited a dealer who mentioned a grower client, put the grower in customer and the visited company in dealer.
-- Do NOT invent or assume information not in the note.
-- If a field is not mentioned, return "".
-- summary must be short, focused, and reflect only the conversation.
-- Return valid JSON only.
-- IMPORTANT: Always respond in the same language as the input note. If the note is in Spanish, all field values must be in Spanish. Never translate.
+- customer = grower using the product (never dealer)
+- dealer = distributor visited (empty if direct grower visit)
+- If missing → return ""
+- Do NOT invent info
+- Always respond in same language as input
+
+---
+
+SUMMARY:
+- 1–2 sentences
+- Only what happened in the conversation
+- No repetition of crop/location/acreage
 
 ---
 
 NEXT STEP RULES:
 
-Format it as:
-ACTION + TARGET + (OPTIONAL CONTEXT)
-
-Primary format:
-- ACTION + CONTACT + (COMPANY)
+Format:
+ACTION + TARGET + (COMPANY)
 
 Examples:
-- "Llamar a Alfonso Paniagua (Laguna Farms)"
-- "Enviar oferta a María (Sunset Berry Farms)"
-- "Hacer seguimiento con Tyler (Coastal Growers)"
+- "Call Alfonso Paniagua (Laguna Farms)"
+- "Send pricing to Tyler (Coastal Growers)"
+- "Follow up with Laguna Farms"
 
 Rules:
 
-1. Keep it short, clear, and directly executable  
-- It must be usable as a calendar event title  
+- Must be short and executable
+- Must start with strong verb
+- Never generic:
+  - "call again"
+  - "follow up later"
 
-2. Always prioritize contact name if available  
-- If contact exists → use CONTACT + (COMPANY)  
+Fallbacks:
 
-3. If contact is missing but company exists  
-→ use COMPANY only  
+1. If contact exists:
+   → CONTACT + (COMPANY)
+
+2. If only company:
+   → COMPANY only
+
+3. If none:
+   → ACTION + OBJECT
+
 Examples:
-- "Hacer seguimiento con Laguna Farms"
-- "Enviar precios a Coastal Growers"
+- "Send proposal"
+- "Follow up on pricing"
 
-4. If both contact and company are missing  
-→ fallback to ACTION + OBJECT  
-Examples:
-- "Enviar oferta"
-- "Hacer seguimiento de precios"
-- "Confirmar pedido"
+Verb inference:
+- no answer → Call
+- waiting → Follow up
+- sending info → Send
+- meeting → Schedule
 
-5. Use strong action verbs depending on context:
-- Llamar
-- Enviar
-- Hacer seguimiento
-- Visitar
-- Confirmar
-- Revisar
-
-6. Infer the correct action from context:
-- no contestó → Llamar  
-- esperando respuesta → Hacer seguimiento  
-- enviar info → Enviar  
-- reunión → Agendar reunión  
-
-7. Avoid weak or generic phrases:
-- "llamar nuevamente"
-- "seguir más tarde"
-- "ver qué pasa"
-
-Always make it specific.
-
-8. Date handling:
-- If a specific date is clearly mentioned, include it at the end in format MM/DD/YYYY  
-Example:
-"Llamar a Alfonso Paniagua (Laguna Farms) el 04/08/2026"
-
-- If the note contains relative time (e.g. next week, mañana, early next week), convert it into a specific date in MM/DD/YYYY
-
-Goal:
-Generate a nextStep that a real sales rep would put directly in their calendar and execute without thinking.
+Date:
+- If explicit → include MM/DD/YYYY
+- If relative → convert to exact date
 
 ---
 
-CRM TEXT RULES:
+CRM TEXT:
 
-- Write 2–4 sentences maximum
-- Natural, professional tone (like a real sales rep)
-- No labels, no bullet points
-- Mention:
-  - who they met
-  - what was discussed
-  - key relevant details (product, acreage if important)
-  - next action
+- 2–3 short sentences
+- Natural, human, CRM-ready
+- No labels
+- Easy to scan
+- Example style:
 
-- Do NOT sound robotic or structured
-- Do NOT repeat unnecessary data already captured in fields
-- Must feel human-written
+"Left a voicemail for Alfonso Paniagua (Laguna Farms). Following up to confirm he received Tyler’s pricing."
 
 ---
 
-OUTPUT FORMAT:
-
-Return ONLY valid JSON with all fields. No explanation.`
+Return ONLY JSON.`
 
 function extractJson(text: string): string {
   // Strip markdown code fences if present
@@ -168,6 +143,7 @@ function parseStructureJson(text: string): StructureBody {
     crop: typeof parsed.crop === 'string' ? parsed.crop : '',
     product: typeof parsed.product === 'string' ? parsed.product : '',
     location: typeof parsed.location === 'string' ? parsed.location : '',
+    acreage: typeof parsed.acreage === 'string' ? parsed.acreage : '',
     crmText: typeof parsed.crmText === 'string' ? parsed.crmText : '',
   }
 }
@@ -206,25 +182,42 @@ export async function POST(request: Request) {
       )
     }
 
-    // Capitalize first letter of each field
-const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+    const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
-const capitalized = {
-  ...result,
-  contact: result.contact.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  customer: result.customer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  dealer: result.dealer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  summary: capitalize(result.summary),
-  nextStep: capitalize(result.nextStep),
-  notes: capitalize(result.notes),
-  crop: result.crop.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  product: result.product.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  location: result.location.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  crmText: capitalize(result.crmText),
-}
+    const capitalized = {
+      ...result,
+      contact: result.contact
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      customer: result.customer
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      dealer: result.dealer
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      summary: capitalize(result.summary),
+      nextStep: capitalize(result.nextStep),
+      notes: capitalize(result.notes),
+      crop: result.crop
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      product: result.product
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      location: result.location
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '),
+      acreage: result.acreage,
+      crmText: capitalize(result.crmText),
+    }
 
-return NextResponse.json(capitalized)
-
+    return NextResponse.json(capitalized)
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || 'Something went wrong' },

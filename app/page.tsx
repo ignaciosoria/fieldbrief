@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 
 type StructureResult = {
   customer: string
+  dealer: string
   contact: string
   summary: string
   nextStep: string
@@ -12,11 +13,13 @@ type StructureResult = {
   crop: string
   product: string
   location: string
+  acreage: string
   crmText: string
 }
 
 const emptyResult: StructureResult = {
   customer: '',
+  dealer: '',
   contact: '',
   summary: '',
   nextStep: '',
@@ -24,6 +27,7 @@ const emptyResult: StructureResult = {
   crop: '',
   product: '',
   location: '',
+  acreage: '',
   crmText: '',
 }
 
@@ -74,6 +78,35 @@ function hasStrongVerb(nextStep: string) {
 
   const lower = nextStep.toLowerCase().trim()
   return verbs.some((verb) => lower.startsWith(verb))
+}
+
+function enrichNextStep(
+  nextStep: string,
+  data: { contact?: string; customer?: string; dealer?: string },
+) {
+  if (!nextStep) return nextStep
+
+  const contact = data.contact || ''
+  const company = data.customer || data.dealer || ''
+
+  let enriched = nextStep.trim()
+
+  const hasCompany = enriched.includes(')')
+  const hasContact =
+    contact && enriched.toLowerCase().includes(contact.toLowerCase())
+
+  if (contact && !hasContact) {
+    const parts = enriched.split(' ')
+    if (parts.length > 1) {
+      enriched = `${parts[0]} ${contact} ${parts.slice(1).join(' ')}`
+    }
+  }
+
+  if (company && !hasCompany) {
+    enriched = `${enriched} (${company})`
+  }
+
+  return enriched
 }
 
 async function fixNextStep(result: {
@@ -173,6 +206,7 @@ export default function Home() {
               crop: n.crop || '',
               product: n.product || '',
               location: n.location || '',
+              acreage: n.acreage || '',
               crmText: n.crm_text || '',
             },
           }))
@@ -473,16 +507,9 @@ export default function Home() {
           console.error('Failed to auto-correct next step:', error)
         }
       }
-      
-      if (
-        final.nextStep &&
-        !final.nextStep.includes('(') &&
-        (final.customer || final.dealer)
-      ) {
-        const contextName = final.customer || final.dealer
-        final.nextStep = `${final.nextStep} (${contextName})`
-      }
-      
+
+      final.nextStep = enrichNextStep(final.nextStep, final)
+
       await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, tx)
