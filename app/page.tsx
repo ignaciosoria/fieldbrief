@@ -476,32 +476,32 @@ export default function Home() {
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-6 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 opacity: result ? 0 : 1,
                 transform: result ? 'translateY(-16px)' : 'translateY(0)',
                 pointerEvents: result ? 'none' : 'auto',
               }}
             >
-              <div className="mb-5 max-w-[20rem] text-center">
+              <div className="mb-4 max-w-[20rem] text-center">
                 <h2 className="text-xl font-semibold leading-tight tracking-tight text-zinc-800 sm:text-2xl">
                   Speak your visit
                 </h2>
-                <p className="mt-2.5 text-sm leading-snug text-zinc-500/85 sm:text-[15px]">
-                  We&apos;ll turn it into a follow-up
+                <p className="mt-2 text-sm leading-snug text-zinc-500/78 sm:text-[15px]">
+                  We turn it into a follow-up you can run
                 </p>
               </div>
               {/* Mic button */}
               <button
                 onClick={toggleRecording}
                 disabled={loading}
-                className="relative z-[1] mb-3 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
+                className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                   boxShadow: isRecording
-                    ? '0 12px 44px rgba(220,38,38,0.38), 0 4px 14px rgba(220,38,38,0.18), 0 0 0 1px rgba(220,38,38,0.12)'
+                    ? '0 8px 32px rgba(220,38,38,0.22), 0 2px 10px rgba(220,38,38,0.11), 0 0 0 1px rgba(220,38,38,0.08)'
                     : '0 12px 44px rgba(26,77,46,0.34), 0 4px 16px rgba(26,77,46,0.16), 0 0 0 1px rgba(26,77,46,0.1)',
-                  transform: isRecording ? 'scale(1.02)' : 'scale(1)',
+                  transform: isRecording ? 'scale(1.01)' : 'scale(1)',
                 }}
               >
                 {!isRecording && !loading && (
@@ -512,10 +512,16 @@ export default function Home() {
                   />
                 )}
                 {isRecording && (
-                  <>
-                    <span className="absolute -inset-1 rounded-full opacity-30" style={{ animation: 'mic-ring-pulse 2s ease-out infinite', boxShadow: '0 0 0 3px rgba(220,38,38,0.45)' }} />
-                    <span className="absolute inset-0 animate-ping rounded-full opacity-25" style={{backgroundColor: '#dc2626', animationDuration: '1.8s'}} />
-                  </>
+                  <span
+                    className="pointer-events-none absolute rounded-full"
+                    style={{
+                      inset: '-4px',
+                      animation: 'mic-ring-pulse 2.5s ease-in-out infinite',
+                      border: '1px solid rgba(248,113,113,0.32)',
+                      boxShadow: '0 0 16px 0 rgba(220,38,38,0.07)',
+                    }}
+                    aria-hidden
+                  />
                 )}
                 {loading && (
                   <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
@@ -529,17 +535,14 @@ export default function Home() {
               </button>
 
               {/* Timer / status */}
-              <div className="mb-2 min-h-[48px] flex flex-col items-center justify-center gap-1">
+              <div className="mb-2 min-h-[44px] flex flex-col items-center justify-center">
                 {isRecording ? (
-                  <>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-500/90">Recording</span>
-                    <span
-                      className="text-[52px] font-bold tabular-nums tracking-tight leading-none text-zinc-900 transition-transform duration-300"
-                      style={{ animation: 'recording-timer-breathe 2.2s ease-in-out infinite' }}
-                    >
-                      {formatSeconds(recordingSeconds)}
-                    </span>
-                  </>
+                  <span
+                    className="text-[48px] font-semibold tabular-nums tracking-tight leading-none text-zinc-900 transition-transform duration-300 sm:text-[52px]"
+                    style={{ animation: 'recording-timer-breathe 3s ease-in-out infinite' }}
+                  >
+                    {formatSeconds(recordingSeconds)}
+                  </span>
                 ) : loading ? (
                   <span className="text-[14px] font-medium animate-pulse" style={{color: '#1a4d2e'}}>
                     {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
@@ -549,20 +552,24 @@ export default function Home() {
 
               {/* Waveform */}
               {isRecording && (
-                <div className="mb-3 flex h-8 items-end justify-center gap-[3px]">
-                  {Array.from({ length: 22 }).map((_, i) => (
-                    <span key={i} className="w-[3px] rounded-full" style={{backgroundColor: '#dc2626', opacity: 0.85, animation: `pulse-bar ${0.45 + (i % 5) * 0.09}s ease-in-out ${i * 0.035}s infinite alternate`}} />
+                <div className="mb-2 flex h-6 items-end justify-center gap-0.5">
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="w-[2px] max-w-[2px] rounded-full bg-red-600/55"
+                      style={{ animation: `pulse-bar ${0.5 + (i % 5) * 0.08}s ease-in-out ${i * 0.03}s infinite alternate` }}
+                    />
                   ))}
                 </div>
               )}
 
               {/* Recording hints */}
               {isRecording && (
-                <div className="mb-3 w-full px-2">
-                  <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
-                  <div className="flex flex-wrap justify-center gap-1.5">
+                <div className="mb-2 w-full px-2">
+                  <p className="mb-1.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-zinc-400/65">Mention in your note</p>
+                  <div className="flex flex-wrap justify-center gap-1">
                     {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
-                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium text-emerald-900/60" style={{borderColor:'rgba(167,243,208,0.4)',backgroundColor:'rgba(236,253,245,0.5)',animation:'fadeIn 0.4s ease forwards'}}>
+                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1 py-px text-[8px] font-medium text-emerald-900/42 sm:text-[8.5px]" style={{borderColor:'rgba(167,243,208,0.28)',backgroundColor:'rgba(236,253,245,0.38)',animation:'fadeIn 0.4s ease forwards'}}>
                         {h.icon} {h.label}
                       </span>
                     ))}
@@ -572,10 +579,10 @@ export default function Home() {
 
               {/* Manual textarea */}
               {!isRecording && !loading && (
-                <div className="mt-1 w-full max-w-md px-1">
+                <div className="mt-1.5 w-full max-w-md px-1">
                   <textarea
-                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200/80 bg-zinc-50/40 px-3.5 py-3 text-[13px] leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400/45 min-h-[68px] shadow-inner shadow-zinc-100/80"
-                    placeholder="Type instead…"
+                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200/80 bg-zinc-50/40 px-3.5 py-3 text-[13px] leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400/32 min-h-[68px] shadow-inner shadow-zinc-100/80"
+                    placeholder="Or type a note…"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                   />
@@ -1057,8 +1064,8 @@ export default function Home() {
 
       <style jsx global>{`
         @keyframes pulse-bar {
-          from { height: 3px; opacity: 0.5; }
-          to   { height: 20px; opacity: 1; }
+          from { height: 2px; opacity: 0.32; }
+          to   { height: 12px; opacity: 0.62; }
         }
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -1082,12 +1089,12 @@ export default function Home() {
           100% { transform: scale(1); opacity: 1; }
         }
         @keyframes mic-ring-pulse {
-          0%, 100% { transform: scale(1); opacity: 0.35; }
-          50% { transform: scale(1.06); opacity: 0.55; }
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 0.88; }
         }
         @keyframes recording-timer-breathe {
           0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.03); }
+          50% { transform: scale(1.006); }
         }
         @keyframes mic-idle-glow {
           0%, 100% { box-shadow: 0 0 0 0 rgba(26, 77, 46, 0); opacity: 1; }
