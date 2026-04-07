@@ -303,11 +303,11 @@ export default function Home() {
         {activeTab === 'record' && (
           <div className="flex flex-col items-center justify-center min-h-[75vh]">
 
-            {/* Mic button — circular */}
+            {/* Mic button — animated states */}
             <button
               onClick={toggleRecording}
               disabled={loading}
-              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95"
+              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-500 active:scale-95 disabled:pointer-events-none"
               style={{
                 backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                 boxShadow: isRecording
@@ -318,10 +318,19 @@ export default function Home() {
               {isRecording && (
                 <span className="absolute inset-0 animate-ping rounded-full opacity-20" style={{backgroundColor: '#dc2626'}} />
               )}
-              <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
-                <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
-                <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
-              </svg>
+              {loading && (
+                <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
+              )}
+              {loading ? null : result && !isRecording ? (
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5"/>
+                </svg>
+              ) : (
+                <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                  <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
+                </svg>
+              )}
             </button>
 
             {/* Timer / status */}
@@ -331,9 +340,11 @@ export default function Home() {
                   {formatSeconds(recordingSeconds)}
                 </span>
               ) : loading ? (
-                <span className="text-[14px] animate-pulse" style={{color: '#1a4d2e'}}>
+                <span className="text-[14px] font-medium" style={{color: '#1a4d2e'}}>
                   {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
                 </span>
+              ) : result ? (
+                <span className="text-[14px] font-medium" style={{color: '#1a4d2e'}}>Tap to record again</span>
               ) : (
                 <span className="text-[14px] text-zinc-400">Tap to record</span>
               )}
@@ -449,11 +460,38 @@ export default function Home() {
                 {/* Next Step */}
                 {result.nextStep && (
                   <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
-                    <div className="mb-2 flex items-center gap-2">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                      </svg>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                        </svg>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const text = result.nextStep
+                          const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
+                          let startDate = ''
+                          if (dateMatch) {
+                            const [m, d, y] = dateMatch[0].split('/')
+                            startDate = `${y}${m}${d}T090000`
+                          } else {
+                            const now = new Date()
+                            startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
+                          }
+                          const endDate = startDate.replace('T090000', 'T093000')
+                          const title = encodeURIComponent(text)
+                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}`
+                          window.open(url, '_blank')
+                        }}
+                        className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all active:scale-95"
+                        style={{backgroundColor: '#1a4d2e', color: 'white'}}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        Add to Calendar
+                      </button>
                     </div>
                     <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>{result.nextStep}</p>
                   </div>
@@ -704,6 +742,10 @@ export default function Home() {
         @keyframes pulse-bar {
           from { height: 3px; opacity: 0.5; }
           to   { height: 20px; opacity: 1; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>

@@ -30,7 +30,7 @@ Fields to extract:
 - dealer: the distributing company or intermediary the rep visited (e.g. Coastal Growers). Empty string if the rep met the grower directly.
 - contact: person's name spoken to (first name or full name)
 - summary: 1-2 sentences ONLY about what was discussed and any objections or next context. Do NOT repeat location, crop, or acreage — those are separate fields. Focus only on what happened in the conversation.
-- nextStep: the single most important action the rep needs to take, starting with a verb
+- nextStep: the single most important action the rep needs to take. Must include: verb + person name + exact date in MM/DD/YYYY format (if a date was mentioned) + brief context of WHY (what to discuss, send, or follow up on). Example: "Call Carlos on 04/08/2026 to send Quantum Flower pricing list". NEVER just "Call X" without context. NEVER just a name and date without the reason.
 - notes: any additional context not covered elsewhere
 - crop: the crop(s) mentioned (e.g. strawberries, romaine lettuce)
 - product: the product(s) discussed
@@ -45,17 +45,15 @@ Rules:
 - Do NOT invent or assume information not in the note
 - If a field is not mentioned, return ""
 - summary must be short and focused on the conversation only
-- nextStep must be actionable and specific
+- nextStep must ALWAYS include context — never just a name and date
 - Return valid JSON only, no backticks, no markdown
 - IMPORTANT: Always respond in the same language as the input note. If the note is in Spanish, all field values must be in Spanish. Never translate.
-- When nextStep includes a relative date, convert it to exact date in format MM/DD/YYYY. For example: 'Llamar a Carlos el 04/08/2026'.`
+- The user message starts with today's exact date in English. Use it to convert ALL relative dates (e.g. "el martes", "el martes que viene", "next Monday", "la próxima semana", "mañana", "en dos días") into exact dates in MM/DD/YYYY format. Calculate carefully — if today is Sunday April 6 2026, "next Tuesday" is 04/08/2026.`
 
 function extractJson(text: string): string {
-  // Strip markdown code fences if present
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fenceMatch) return fenceMatch[1].trim()
 
-  // Find first { to last } in case there's extra text
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start !== -1 && end !== -1) return text.slice(start, end + 1)
@@ -89,14 +87,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing note' }, { status: 400 })
     }
 
-    const today = new Date().toLocaleDateString('es-ES')
+    const now = new Date()
+    const todayStr = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Hoy es ${today}.\n\n${note}` },
+        { role: 'user', content: `Today is ${todayStr}.\n\n${note}` },
       ],
     })
 
@@ -113,24 +117,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // Capitalize first letter of each field
-const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+    const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+    const titleCase = (s: string) => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 
-const capitalized = {
-  ...result,
-  contact: result.contact.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  customer: result.customer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  dealer: result.dealer.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  summary: capitalize(result.summary),
-  nextStep: capitalize(result.nextStep),
-  notes: capitalize(result.notes),
-  crop: result.crop.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  product: result.product.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  location: result.location.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-  crmText: capitalize(result.crmText),
-}
+    const capitalized = {
+      ...result,
+      contact: titleCase(result.contact),
+      customer: titleCase(result.customer),
+      dealer: titleCase(result.dealer),
+      summary: capitalize(result.summary),
+      nextStep: capitalize(result.nextStep),
+      notes: capitalize(result.notes),
+      crop: titleCase(result.crop),
+      product: titleCase(result.product),
+      location: titleCase(result.location),
+      crmText: capitalize(result.crmText),
+    }
 
-return NextResponse.json(capitalized)
+    return NextResponse.json(capitalized)
 
   } catch (error: any) {
     return NextResponse.json(
