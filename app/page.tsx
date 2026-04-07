@@ -55,6 +55,8 @@ export default function Home() {
   const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
+  const [lastCalendarUrl, setLastCalendarUrl] = useState<string | null>(null)
+  const [calendarSuccessTick, setCalendarSuccessTick] = useState(0)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -116,6 +118,12 @@ export default function Home() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [isRecording])
+
+  useEffect(() => {
+    if (calendarSuccessTick === 0) return
+    const t = setTimeout(() => setCalendarSuccessTick(0), 3200)
+    return () => clearTimeout(t)
+  }, [calendarSuccessTick])
 
   const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
@@ -415,6 +423,8 @@ export default function Home() {
     setCopied(false)
     setSelectedNote(null)
     setShowEditArea(false)
+    setLastCalendarUrl(null)
+    setCalendarSuccessTick(0)
   }
 
   if (!mounted) return null
@@ -466,27 +476,34 @@ export default function Home() {
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-500"
+              className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 opacity: result ? 0 : 1,
-                transform: result ? 'translateY(-30px) scale(0.97)' : 'translateY(0) scale(1)',
+                transform: result ? 'translateY(-20px)' : 'translateY(0)',
                 pointerEvents: result ? 'none' : 'auto',
               }}
             >
+              <p className="mb-5 max-w-[280px] text-center text-[13px] font-medium leading-snug text-zinc-500">
+                Tap and describe the visit — we will turn it into a follow-up you can run.
+              </p>
               {/* Mic button */}
               <button
                 onClick={toggleRecording}
                 disabled={loading}
-                className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-500 active:scale-95 disabled:pointer-events-none"
+                className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:pointer-events-none"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                   boxShadow: isRecording
-                    ? '0 8px 32px rgba(220,38,38,0.3)'
-                    : '0 8px 32px rgba(26,77,46,0.3)',
+                    ? '0 10px 40px rgba(220,38,38,0.38), 0 0 0 1px rgba(220,38,38,0.15)'
+                    : '0 10px 40px rgba(26,77,46,0.32), 0 0 0 1px rgba(26,77,46,0.12)',
+                  transform: isRecording ? 'scale(1.02)' : 'scale(1)',
                 }}
               >
                 {isRecording && (
-                  <span className="absolute inset-0 animate-ping rounded-full opacity-20" style={{backgroundColor: '#dc2626'}} />
+                  <>
+                    <span className="absolute -inset-1 rounded-full opacity-30" style={{ animation: 'mic-ring-pulse 2s ease-out infinite', boxShadow: '0 0 0 3px rgba(220,38,38,0.45)' }} />
+                    <span className="absolute inset-0 animate-ping rounded-full opacity-25" style={{backgroundColor: '#dc2626', animationDuration: '1.8s'}} />
+                  </>
                 )}
                 {loading && (
                   <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
@@ -500,25 +517,31 @@ export default function Home() {
               </button>
 
               {/* Timer / status */}
-              <div className="mb-4 h-12 flex items-center justify-center">
+              <div className="mb-4 min-h-[56px] flex flex-col items-center justify-center gap-1">
                 {isRecording ? (
-                  <span className="text-[48px] font-bold tabular-nums tracking-tight text-zinc-900 leading-none">
-                    {formatSeconds(recordingSeconds)}
-                  </span>
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-500/90">Recording</span>
+                    <span
+                      className="text-[52px] font-bold tabular-nums tracking-tight leading-none text-zinc-900 transition-transform duration-300"
+                      style={{ animation: 'recording-timer-breathe 2.2s ease-in-out infinite' }}
+                    >
+                      {formatSeconds(recordingSeconds)}
+                    </span>
+                  </>
                 ) : loading ? (
                   <span className="text-[14px] font-medium animate-pulse" style={{color: '#1a4d2e'}}>
                     {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
                   </span>
                 ) : (
-                  <span className="text-[14px] text-zinc-400">Tap to record</span>
+                  <span className="text-[13px] font-medium text-zinc-400">Tap the mic to speak your visit note</span>
                 )}
               </div>
 
               {/* Waveform */}
               {isRecording && (
-                <div className="mb-4 flex h-7 items-end justify-center gap-[3px]">
+                <div className="mb-4 flex h-8 items-end justify-center gap-[3px]">
                   {Array.from({ length: 22 }).map((_, i) => (
-                    <span key={i} className="w-[3px] rounded-full" style={{backgroundColor: '#1a4d2e', animation: `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`}} />
+                    <span key={i} className="w-[3px] rounded-full" style={{backgroundColor: '#dc2626', opacity: 0.85, animation: `pulse-bar ${0.45 + (i % 5) * 0.09}s ease-in-out ${i * 0.035}s infinite alternate`}} />
                   ))}
                 </div>
               )}
@@ -570,103 +593,139 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col justify-between px-1 pt-4 pb-2"
+                className="flex flex-col justify-between px-1 pt-1 pb-2"
                 style={{
-                  animation: 'slideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                  animation: 'slideUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards',
                   minHeight: 'calc(100vh - 140px)',
                 }}
               >
-                {/* Top — contact + pills */}
+                {/* Top — contact + pills (secondary) */}
                 <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-[13px] font-semibold text-zinc-900">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-medium text-zinc-600">
                         {result.contact || '—'}
                         {result.customer ? <span className="font-normal text-zinc-400"> · {result.customer}</span> : null}
                       </p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {result.location && <span className="text-[11px] text-zinc-400">📍 {result.location}</span>}
-                        {result.crop && <span className="text-[11px] text-zinc-400">🌱 {result.crop}</span>}
-                        {result.product && <span className="text-[11px] text-zinc-400">🧪 {result.product}</span>}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0">
+                        {result.location && <span className="text-[10px] text-zinc-400/80">📍 {result.location}</span>}
+                        {result.crop && <span className="text-[10px] text-zinc-400/80">🌱 {result.crop}</span>}
+                        {result.product && <span className="text-[10px] text-zinc-400/80">🧪 {result.product}</span>}
                       </div>
                     </div>
-                    <button onClick={handleReset} className="text-[12px] text-zinc-400 hover:text-zinc-600 px-2 py-1">
-                      ✕ New
+                    <button onClick={handleReset} className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 active:scale-95">
+                      New
                     </button>
                   </div>
 
                   {/* Next step — HERO */}
                   {result.nextStep && (
-                    <div className="rounded-3xl px-5 py-5 mb-3" style={{backgroundColor: '#f0f7f2', border: '1.5px solid #c8e6d0'}}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] mb-2" style={{color: '#1a4d2e'}}>⚡ Next step</p>
-                      <p className="text-[22px] font-bold leading-tight" style={{color: '#1a4d2e'}}>{result.nextStep}</p>
+                    <div
+                      className="rounded-[1.35rem] px-6 py-6 mb-2 shadow-[0_4px_24px_rgba(26,77,46,0.12),0_1px_0_rgba(255,255,255,0.6)_inset] border border-emerald-200/80"
+                      style={{ background: 'linear-gradient(165deg, #ecf8f0 0%, #e4f3ea 100%)' }}
+                    >
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.22em] mb-3 text-emerald-800/80">Next step</p>
+                      <p className="text-[24px] font-extrabold leading-[1.2] tracking-tight" style={{ color: '#14532d' }}>{result.nextStep}</p>
                     </div>
                   )}
 
-                  {/* Summary — secondary */}
+                  {/* Add to Calendar — MAIN CTA (hero action, tight to next step) */}
+                  {result.nextStep && (
+                    <>
+                      <button
+                        onClick={() => {
+                          if (navigator.vibrate) navigator.vibrate(10)
+                          const text = result.nextStep
+                          const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
+                          let startDate = ''
+                          if (dateMatch) {
+                            const [m, d, y] = dateMatch[0].split('/')
+                            startDate = `${y}${m}${d}T090000`
+                          } else {
+                            const now = new Date()
+                            startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
+                          }
+                          const endDate = startDate.replace('T090000', 'T093000')
+                          const cleanTitle = text.replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '').replace(/\s+/g, ' ').trim()
+                          const title = encodeURIComponent(cleanTitle)
+                          const descLines = []
+                          if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
+                          const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
+                          if (pills.length) descLines.push(pills.join('  '))
+                          if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
+                          const details = encodeURIComponent(descLines.join('\n'))
+                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
+                          window.open(url, '_blank')
+                          setLastCalendarUrl(url)
+                          setCalendarSuccessTick((n) => n + 1)
+                        }}
+                        className="flex w-full items-center justify-center gap-2.5 rounded-2xl py-[18px] text-[17px] font-bold text-white transition-all hover:brightness-110 active:scale-[0.98] active:brightness-95 shadow-[0_10px_32px_rgba(26,77,46,0.38),0_2px_0_rgba(0,0,0,0.06)_inset]"
+                        style={{ backgroundColor: '#1a4d2e' }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-95">
+                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        Add to Calendar
+                      </button>
+
+                      {(lastCalendarUrl || calendarSuccessTick > 0) && (
+                        <div
+                          className="mt-2.5 overflow-hidden rounded-xl border border-emerald-200/70 bg-emerald-50/90 px-4 py-3"
+                          style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.45s ease-out' } : undefined}
+                        >
+                          <div className="flex items-center gap-2 text-[13px] font-semibold text-emerald-900">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
+                                <path d="M20 6L9 17l-5-5"/>
+                              </svg>
+                            </span>
+                            Event created
+                          </div>
+                          {lastCalendarUrl ? (
+                            <a
+                              href={lastCalendarUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-2 transition-opacity hover:opacity-80"
+                            >
+                              View in Calendar
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
+                              </svg>
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Summary — supporting context (below actions flow: next → calendar → then context) */}
                   {result.summary && (
-                    <div className="rounded-2xl bg-zinc-50 border border-zinc-100 px-4 py-3 mb-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400 mb-1">Summary</p>
-                      <p className="text-[13px] leading-relaxed text-zinc-600">{result.summary}</p>
+                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/80 px-3.5 py-2.5 mt-4 shadow-sm">
+                      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 mb-1">Summary</p>
+                      <p className="text-[12px] leading-snug text-zinc-500">{result.summary}</p>
                     </div>
                   )}
                 </div>
 
-                {/* Bottom — action buttons */}
-                <div className="space-y-2.5 pt-2">
-                  {/* Add to Calendar — MAIN CTA */}
-                  {result.nextStep && (
-                    <button
-                      onClick={() => {
-                        if (navigator.vibrate) navigator.vibrate(10)
-                        const text = result.nextStep
-                        const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
-                        let startDate = ''
-                        if (dateMatch) {
-                          const [m, d, y] = dateMatch[0].split('/')
-                          startDate = `${y}${m}${d}T090000`
-                        } else {
-                          const now = new Date()
-                          startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
-                        }
-                        const endDate = startDate.replace('T090000', 'T093000')
-                        const cleanTitle = text.replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '').replace(/\s+/g, ' ').trim()
-                        const title = encodeURIComponent(cleanTitle)
-                        const descLines = []
-                        if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
-                        const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
-                        if (pills.length) descLines.push(pills.join('  '))
-                        if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
-                        const details = encodeURIComponent(descLines.join('\n'))
-                        const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
-                        window.open(url, '_blank')
-                      }}
-                      className="flex w-full items-center justify-center gap-2.5 rounded-2xl py-4 text-[16px] font-bold text-white transition-all active:scale-[0.98]"
-                      style={{backgroundColor: '#1a4d2e', boxShadow: '0 6px 24px rgba(26,77,46,0.3)'}}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                      </svg>
-                      Add to Calendar
-                    </button>
-                  )}
-
-                  {/* Secondary row — Copy CRM + Correct + Share */}
-                  <div className="flex gap-2">
+                {/* Secondary row — Copy CRM + Share + Correct */}
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-stretch gap-2">
                     <button
                       onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white py-3 text-[13px] font-medium text-zinc-600 shadow-sm transition-all active:scale-[0.98]"
+                      className="flex flex-[1.15] items-center justify-center gap-1.5 rounded-xl border border-transparent bg-zinc-100/80 py-2.5 text-[12px] font-medium text-zinc-500 transition-all hover:bg-zinc-100 hover:text-zinc-700 active:scale-[0.98]"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-70">
                         <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                       </svg>
-                      {copied ? 'Copied!' : 'Copy CRM'}
+                      {copied ? 'Copied' : 'Copy CRM'}
                     </button>
                     <button
                       onClick={() => result && handleShare(result)}
-                      className="flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
+                      className="flex items-center justify-center rounded-xl border border-zinc-200/90 bg-white px-3 py-2.5 text-zinc-400 shadow-sm transition-all hover:border-zinc-300 hover:text-zinc-600 active:scale-[0.98]"
+                      aria-label="Share"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
                       </svg>
                     </button>
@@ -677,16 +736,17 @@ export default function Home() {
                           if (isCorrectingRecording) stopCorrectionRecording()
                           else startCorrectionRecording(latest.id, latest.transcript)
                         }}
-                        className="flex items-center justify-center rounded-2xl px-3.5 py-3 text-white shadow-sm transition-all active:scale-[0.98]"
-                        style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
+                        className="flex items-center justify-center rounded-xl border border-amber-200/80 bg-amber-500/95 px-3 py-2.5 text-white shadow-sm transition-all hover:bg-amber-500 active:scale-[0.98] active:bg-amber-600"
+                        style={{ boxShadow: '0 2px 8px rgba(217,119,6,0.25)' }}
+                        aria-label="Correct"
                       >
                         {isCorrectingRecording ? (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 text-white">
                             <span className="text-[10px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
                           </span>
                         ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                           </svg>
@@ -982,12 +1042,24 @@ export default function Home() {
           to   { transform: rotate(360deg); }
         }
         @keyframes slideUp {
-          from { opacity: 0; transform: translateY(40px) scale(0.97); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(4px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes calendarSuccessIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes mic-ring-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.35; }
+          50% { transform: scale(1.06); opacity: 0.55; }
+        }
+        @keyframes recording-timer-breathe {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.03); }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
