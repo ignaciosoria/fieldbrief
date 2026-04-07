@@ -134,6 +134,8 @@ export default function Home() {
     }
   }
 
+  const correctRecorderRef = useRef<MediaRecorder | null>(null)
+
   const startCorrectionRecording = async (noteId: string, originalTranscript: string) => {
     try {
       setError('')
@@ -141,6 +143,7 @@ export default function Home() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = pickSupportedMimeType()
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      correctRecorderRef.current = recorder
       const chunks: Blob[] = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
       recorder.onstop = async () => {
@@ -187,8 +190,9 @@ export default function Home() {
   }
 
   const stopCorrectionRecording = () => {
-    // stored in ref via closure in startCorrectionRecording
+    try { correctRecorderRef.current?.stop() } catch {}
     setIsCorrectingRecording(false)
+    clearInterval(correctTimerRef.current!)
   }
 
   const activeResult = selectedNote?.result ?? result
@@ -443,7 +447,7 @@ export default function Home() {
 
             {/* Waveform — only while recording */}
             {isRecording ? (
-              <div className="mb-5 flex h-7 items-end justify-center gap-[3px]">
+              <div className="mb-4 flex h-7 items-end justify-center gap-[3px]">
                 {Array.from({ length: 22 }).map((_, i) => (
                   <span
                     key={i}
@@ -457,6 +461,36 @@ export default function Home() {
               </div>
             ) : (
               <div className="mb-3" />
+            )}
+
+            {/* Recording hints — shown while recording */}
+            {isRecording && (
+              <div className="mb-4 w-full">
+                <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {[
+                    { icon: '🏢', label: 'Company' },
+                    { icon: '👤', label: 'Contact' },
+                    { icon: '🌱', label: 'Crop' },
+                    { icon: '🧪', label: 'Product' },
+                    { icon: '📍', label: 'Location' },
+                    { icon: '📅', label: 'Next step' },
+                  ].map((hint) => (
+                    <span
+                      key={hint.label}
+                      className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                      style={{
+                        borderColor: '#c8e6d0',
+                        backgroundColor: '#f0f7f2',
+                        color: '#1a4d2e',
+                        animation: 'fadeIn 0.4s ease forwards',
+                      }}
+                    >
+                      {hint.icon} {hint.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* Textarea */}
@@ -481,6 +515,30 @@ export default function Home() {
               >
                 {loading ? 'Processing...' : 'Process Note'}
               </button>
+              {result && savedNotes.length > 0 && (
+                <button
+                  onClick={() => {
+                    const latest = savedNotes[0]
+                    if (isCorrectingRecording) {
+                      stopCorrectionRecording()
+                    } else {
+                      startCorrectionRecording(latest.id, latest.transcript)
+                    }
+                  }}
+                  disabled={loading}
+                  className="rounded-2xl px-4 text-[13px] font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40"
+                  style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
+                >
+                  {isCorrectingRecording ? (
+                    <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  )}
+                </button>
+              )}
               {(input || result) && (
                 <button
                   onClick={handleReset}
@@ -610,37 +668,7 @@ export default function Home() {
                     </svg>
                   </button>
                 </div>
-                {/* Correct button */}
-                {savedNotes.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const noteId = savedNotes[0].id
-                      const tx = savedNotes[0].transcript
-                      if (isCorrectingRecording) {
-                        stopCorrectionRecording()
-                      } else {
-                        startCorrectionRecording(noteId, tx)
-                      }
-                    }}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white transition-all active:scale-[0.98]"
-                    style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
-                  >
-                    {isCorrectingRecording ? (
-                      <>
-                        <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
-                        Stop Correction
-                      </>
-                    ) : (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                        Correct with voice
-                      </>
-                    )}
-                  </button>
-                )}
+
 
               </div>
             )}
@@ -925,6 +953,10 @@ export default function Home() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
