@@ -13,6 +13,7 @@ type StructureBody = {
   location: string
   acreage: string
   crmText: string
+  crmFull: string[]
 }
 
 const client = new OpenAI({
@@ -37,6 +38,7 @@ Fields:
 - location
 - acreage
 - crmText
+- crmFull (array of strings)
 
 ---
 
@@ -46,7 +48,7 @@ LANGUAGE RULE (STRICT):
 - NEVER mix languages
 - If the input is in Spanish, every field value must be in Spanish
 - If the input is in English, every field value must be in English
-- This applies to nextStep, summary, notes, crmText, crop, product, and location if generated from the note
+- This applies to nextStep, summary, notes, crmText, crmFull, crop, product, and location if generated from the note
 - Do not translate company names or product names, but keep surrounding wording in the correct language
 
 ---
@@ -61,9 +63,11 @@ RULES:
 ---
 
 SUMMARY:
-- 1–2 sentences
-- Only what happened in the conversation
-- No repetition of crop/location/acreage
+
+- Quick context only: 2–3 short lines of plain text (compact, easy to scan at a glance)
+- NOT exhaustive—capture the essence of the visit; put granular commercial detail in crmFull instead
+- No bullet list in summary (continuous or softly line-broken prose only—not emoji lines)
+- Same language as the input note
 
 ---
 
@@ -71,6 +75,13 @@ NEXT STEP RULES:
 
 Format:
 ACTION + TARGET + (COMPANY)
+
+No conditionals (STRICT):
+- nextStep must NEVER be tentative or conditional
+- Ban phrasing like "if I go", "if I can", "maybe", "si voy", "si puedo", "a ver si", "when I get a chance", etc.
+- When the rep expresses a tentative plan, rewrite it as ONE definitive, executable action using a strong opening verb and concrete details from the note (who, what, when, where)
+- Example (Spanish): if the note implies "si voy a Salinas el viernes" with contact Narciso → "Llamar a Narciso el viernes para confirmar visita en Salinas" (adjust names/dates to match the note)
+- Example (English): tentative "might swing by Salinas Friday" → "Call Narciso Friday to confirm Salinas visit"
 
 Examples (English input):
 - "Call Alfonso Paniagua (Laguna Farms)"
@@ -118,22 +129,40 @@ Date:
 
 ---
 
-CRM TEXT:
+CRM TEXT (narrative):
 
-- 2–3 short sentences
-- Natural, human, CRM-ready
-- No labels
-- Easy to scan
+- 2–3 sentences only: clean, professional, story-style paragraph
+- Natural and CRM-ready
+- NO bullets, NO emoji lines, NO labels—plain prose only
 - crmText must be written fully in the same language as the input note
 - Never use English sentence structure for Spanish input
 - Never use Spanish verbs or phrasing for English input
+- Put exhaustive facts and bullet-style detail in crmFull—not in crmText
 - Example style (English input):
 
 "Left a voicemail for Alfonso Paniagua (Laguna Farms). Following up to confirm he received Tyler’s pricing."
 
 ---
 
-Return ONLY JSON.`
+CRM FULL (detailed — primary CRM facts):
+
+- JSON array of strings; each string is ONE short line (no long sentences)
+- Extract ALL important commercial details from the note: objections (price, concerns), quantities (lbs, acres), opportunities (new clients, interest), product usage, risks, pricing signals, key dates—nothing important omitted
+- Bullet-style lines with a leading emoji for clarity. Prefer these when they fit:
+  🌱 product / usage
+  💰 pricing / money
+  🌡️ risk / weather / concern
+  🤝 opportunity / deal / relationship
+  📦 quantity / volume
+- Use other emojis when needed for context
+- Same language as the input note (and do not translate proper names)
+- Example crmFull (Spanish):
+
+["🌱 Aplicando Quantum Flower en fresas", "🌡️ Preocupación por calor y precio bajo", "🤝 Nuevo cliente: Foxy", "📦 300 libras de producto mencionadas"]
+
+---
+
+Return ONLY JSON — crmFull MUST be a JSON array of strings.`
 
 function extractJson(text: string): string {
   // Strip markdown code fences if present
@@ -146,6 +175,14 @@ function extractJson(text: string): string {
   if (start !== -1 && end !== -1) return text.slice(start, end + 1)
 
   return text.trim()
+}
+
+function parseCrmFull(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 function parseStructureJson(text: string): StructureBody {
@@ -164,6 +201,7 @@ function parseStructureJson(text: string): StructureBody {
     location: typeof parsed.location === 'string' ? parsed.location : '',
     acreage: typeof parsed.acreage === 'string' ? parsed.acreage : '',
     crmText: typeof parsed.crmText === 'string' ? parsed.crmText : '',
+    crmFull: parseCrmFull(parsed.crmFull),
   }
 }
 

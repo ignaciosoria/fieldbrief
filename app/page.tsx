@@ -15,6 +15,7 @@ type StructureResult = {
   location: string
   acreage: string
   crmText: string
+  crmFull: string[]
 }
 
 const emptyResult: StructureResult = {
@@ -29,6 +30,21 @@ const emptyResult: StructureResult = {
   location: '',
   acreage: '',
   crmText: '',
+  crmFull: [],
+}
+
+function normalizeCrmFull(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        return normalizeCrmFull(JSON.parse(raw))
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+  return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
 }
 
 type Tab = 'record' | 'history' | 'settings'
@@ -243,6 +259,7 @@ export default function Home() {
               location: n.location || '',
               acreage: n.acreage || '',
               crmText: n.crm_text || '',
+              crmFull: normalizeCrmFull(n.crm_full),
             },
           }))
           setSavedNotes(mapped)
@@ -253,7 +270,19 @@ export default function Home() {
       // Fallback to localStorage
       try {
         const stored = localStorage.getItem('fieldbrief-notes')
-        if (stored) setSavedNotes(JSON.parse(stored))
+        if (stored) {
+          const parsed = JSON.parse(stored) as SavedNote[]
+          setSavedNotes(
+            parsed.map((n) => ({
+              ...n,
+              result: {
+                ...emptyResult,
+                ...n.result,
+                crmFull: normalizeCrmFull(n.result.crmFull),
+              },
+            })),
+          )
+        }
       } catch {}
     }
     loadNotes()
@@ -307,6 +336,7 @@ export default function Home() {
         product: res.product,
         location: res.location,
         crm_text: res.crmText,
+        crm_full: res.crmFull,
       })
     } catch {}
   }
@@ -339,6 +369,7 @@ export default function Home() {
         product: res.product,
         location: res.location,
         crm_text: res.crmText,
+        crm_full: res.crmFull,
       }).eq('id', id)
     } catch {}
   }
@@ -350,7 +381,16 @@ export default function Home() {
     if (pills.length) lines.push(pills.join('  '))
     if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
     if (r.nextStep) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(r.nextStep) }
-    if (r.crmText) { lines.push(''); lines.push('─────────────────'); lines.push(r.crmText) }
+    if (r.crmFull.length > 0) {
+      lines.push('')
+      lines.push('CRM DETAIL')
+      lines.push(...r.crmFull)
+    }
+    if (r.crmText) {
+      lines.push('')
+      lines.push('NOTE')
+      lines.push(r.crmText)
+    }
     return lines.join('\n')
   }
 
@@ -399,7 +439,8 @@ export default function Home() {
           })
           const strData = await strRes.json()
           if (!strRes.ok) throw new Error(strData.error)
-          const final = { ...emptyResult, ...strData }
+          const merged = { ...emptyResult, ...strData }
+          const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
           await awaitMinProcessingDisplay()
           updateNote(noteId, final, combined)
         } catch (err: any) {
@@ -429,7 +470,14 @@ export default function Home() {
   const copyText = useMemo(() => {
     const r = activeResult
     if (!r) return ''
-    return r.crmText || ''
+    const parts: string[] = []
+    if (r.crmFull.length > 0) parts.push(...r.crmFull)
+    const narrative = r.crmText?.trim()
+    if (narrative) {
+      if (parts.length) parts.push('')
+      parts.push(narrative)
+    }
+    return parts.join('\n')
   }, [activeResult])
 
   const formatSeconds = (s: number) => {
@@ -526,8 +574,9 @@ export default function Home() {
         throw new Error(structureData.error || 'Failed to structure.')
       }
       
-      const final = { ...emptyResult, ...structureData }
-      
+      const merged = { ...emptyResult, ...structureData }
+      const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
+
       if (isWeakNextStep(final.nextStep) || !hasStrongVerb(final.nextStep)) {
         try {
           const fixedNextStep = await fixNextStep({
@@ -572,7 +621,8 @@ export default function Home() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
-      const final = { ...emptyResult, ...data }
+      const merged = { ...emptyResult, ...data }
+      const final = { ...merged, crmFull: normalizeCrmFull(merged.crmFull) }
       await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, input)
@@ -891,7 +941,14 @@ export default function Home() {
                           if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
                           const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
                           if (pills.length) descLines.push(pills.join('  '))
-                          if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
+                          if (result.crmFull.length > 0) {
+                            descLines.push('')
+                            descLines.push(...result.crmFull)
+                          }
+                          if (result.crmText) {
+                            descLines.push('')
+                            descLines.push(result.crmText)
+                          }
                           const details = encodeURIComponent(descLines.join('\n'))
                           const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
                           window.open(url, '_blank')
@@ -961,11 +1018,35 @@ export default function Home() {
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
                         Summary
                       </p>
-                      <p className="text-[13px] leading-[1.65] text-zinc-600/88 line-clamp-6 sm:line-clamp-none">
+                      <p className="whitespace-pre-line text-[13px] leading-[1.65] text-zinc-600/88">
                         {result.summary}
                       </p>
                     </div>
                   )}
+
+                  {result.crmFull.length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/90 bg-white px-5 py-5 shadow-sm">
+                      <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
+                        CRM detail
+                      </p>
+                      <ul className="space-y-2.5">
+                        {result.crmFull.map((line, i) => (
+                          <li key={i} className="text-[13px] leading-snug text-zinc-700">
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {result.crmText ? (
+                    <div className="rounded-2xl border border-zinc-100/95 bg-zinc-50/30 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
+                        Note
+                      </p>
+                      <p className="text-[13px] leading-[1.65] text-zinc-600/90">{result.crmText}</p>
+                    </div>
+                  ) : null}
 
                   {/* 4 — Secondary actions */}
                   <div className="border-t border-zinc-100/90 pt-9">
@@ -1076,9 +1157,29 @@ export default function Home() {
                   {selectedNote.result.summary && (
                     <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
-                      <p className="text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.summary}</p>
+                      <p className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.summary}</p>
                     </div>
                   )}
+
+                  {selectedNote.result.crmFull.length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/90 bg-white px-4 py-4 shadow-sm">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">CRM detail</p>
+                      <ul className="space-y-2">
+                        {selectedNote.result.crmFull.map((line, i) => (
+                          <li key={i} className="text-[13px] leading-snug text-zinc-700">
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {selectedNote.result.crmText ? (
+                    <div className="rounded-2xl border border-zinc-100 bg-zinc-50/50 px-4 py-4 shadow-sm">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Note</p>
+                      <p className="text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.crmText}</p>
+                    </div>
+                  ) : null}
 
                   {selectedNote.result.nextStep && (
                     <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
@@ -1187,7 +1288,8 @@ export default function Home() {
                         note.result.customer?.toLowerCase().includes(q) ||
                         note.result.product?.toLowerCase().includes(q) ||
                         note.result.location?.toLowerCase().includes(q) ||
-                        note.result.nextStep?.toLowerCase().includes(q)
+                        note.result.nextStep?.toLowerCase().includes(q) ||
+                        note.result.crmFull.some((line) => line.toLowerCase().includes(q))
                       )
                     }).map((note) => (
                       <button
