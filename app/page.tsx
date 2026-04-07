@@ -12,6 +12,7 @@ type StructureResult = {
   crop: string
   product: string
   location: string
+  dealer: string
   crmText: string
 }
 
@@ -24,6 +25,7 @@ const emptyResult: StructureResult = {
   crop: '',
   product: '',
   location: '',
+  dealer: '',
   crmText: '',
 }
 
