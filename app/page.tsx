@@ -47,6 +47,33 @@ function normalizeCrmFull(raw: unknown): string[] {
   return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
 }
 
+/** Only pricing pressure, risk, and blockers/urgency use tinted backgrounds. */
+function getInsightTone(text: string): 'negative' | 'neutral' {
+  const t = text.trimStart()
+  if (
+    t.startsWith('💰') ||
+    t.startsWith('🌡️') ||
+    t.startsWith('🌡') ||
+    t.startsWith('❗') ||
+    t.startsWith('⚠️')
+  ) {
+    return 'negative'
+  }
+  return 'neutral'
+}
+
+function getInsightStyle(text: string) {
+  const ink = 'text-zinc-900'
+  const t = text.trimStart()
+  if (getInsightTone(text) === 'negative') {
+    if (t.startsWith('💰')) return `${ink} bg-red-50`
+    if (t.startsWith('🌡️') || t.startsWith('🌡')) return `${ink} bg-orange-50`
+    if (t.startsWith('❗') || t.startsWith('⚠️')) return `${ink} bg-amber-50`
+    return `${ink} bg-amber-50`
+  }
+  return `${ink} bg-transparent`
+}
+
 type Tab = 'record' | 'history' | 'settings'
 
 type SavedNote = {
@@ -221,6 +248,10 @@ export default function Home() {
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
+  const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
+  const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
+  const [resultSummaryExpanded, setResultSummaryExpanded] = useState(false)
+  const [historySummaryExpanded, setHistorySummaryExpanded] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -309,6 +340,16 @@ export default function Home() {
     const t = setTimeout(() => setShowCalendarToast(false), 2100)
     return () => clearTimeout(t)
   }, [showCalendarToast])
+
+  useEffect(() => {
+    setResultInsightsExpanded(false)
+    setResultSummaryExpanded(false)
+  }, [result])
+
+  useEffect(() => {
+    setHistoryInsightsExpanded(false)
+    setHistorySummaryExpanded(false)
+  }, [selectedNote?.id])
 
   const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
@@ -886,14 +927,14 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col px-0 pt-2 pb-14"
+                className="flex flex-col px-0 pt-2 pb-10"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
                 {/* 1 — Next step + calendar (sticky) */}
-                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-7 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
-                  <div className="mb-4 flex justify-end">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-4 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
+                  <div className="mb-2.5 flex justify-end">
                     <button
                       type="button"
                       onClick={handleReset}
@@ -907,14 +948,14 @@ export default function Home() {
                   {result.nextStep && (
                     <>
                       <div
-                        className="rounded-2xl px-5 py-7 min-[390px]:px-6 min-[390px]:py-8 text-center shadow-[0_10px_40px_rgba(26,77,46,0.14),0_2px_12px_rgba(26,77,46,0.07),inset_0_1px_0_rgba(255,255,255,0.72)] ring-1 ring-emerald-100/50 border border-emerald-200/95"
+                        className="rounded-2xl px-5 py-[0.95rem] min-[390px]:px-5 min-[390px]:py-[1.15rem] text-center shadow-[0_6px_28px_rgba(26,77,46,0.09),0_2px_8px_rgba(26,77,46,0.05),inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-emerald-100/40 border border-emerald-200/90"
                         style={{ background: 'linear-gradient(165deg, #e8f6ed 0%, #dbece3 100%)' }}
                       >
-                        <p className="mb-3 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
+                        <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
                           Next step
                         </p>
                         <p
-                          className="text-[28px] min-[390px]:text-[33px] font-black leading-[1.12] tracking-[-0.02em] antialiased"
+                          className="text-[23px] min-[390px]:text-[27px] font-black leading-[1.14] tracking-[-0.02em] antialiased"
                           style={{ color: '#0a2e1a' }}
                         >
                           {result.nextStep}
@@ -955,10 +996,10 @@ export default function Home() {
                           setShowCalendarToast(true)
                         }}
                         type="button"
-                        className="group mt-5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-2xl py-[18px] min-[400px]:py-5 pl-5 pr-5 text-[16px] font-extrabold leading-none text-white antialiased shadow-[0_14px_44px_-10px_rgba(26,77,46,0.5),0_4px_14px_-4px_rgba(26,77,46,0.18),inset_0_1px_0_rgba(255,255,255,0.22)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_18px_48px_-10px_rgba(26,77,46,0.52),0_6px_16px_-4px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.26)] hover:brightness-[1.03] active:translate-y-px active:scale-[0.976] active:shadow-[0_6px_20px_-8px_rgba(26,77,46,0.32),inset_0_2px_5px_rgba(0,0,0,0.18)] active:brightness-[0.88] min-[400px]:text-[17px]"
+                        className="group mt-3 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3 min-[400px]:py-[0.85rem] pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(26,77,46,0.28),0_2px_8px_rgba(26,77,46,0.12),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(26,77,46,0.32),0_2px_10px_rgba(26,77,46,0.14),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(26,77,46,0.22),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-5 w-5 shrink-0 opacity-[0.98]" aria-hidden>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
                         <span className="tracking-tight">Add to Calendar</span>
@@ -968,10 +1009,10 @@ export default function Home() {
                 </div>
 
                 {/* 2 — Contact & company → 3 — Insights → 4 — Summary */}
-                <div className="mt-12 space-y-12">
+                <div className="mt-7 space-y-7">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-5 py-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
-                      <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-4 py-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
                         Visit
                       </p>
                       {result.contact ? (
@@ -991,19 +1032,19 @@ export default function Home() {
                         </p>
                       ) : null}
                       {(result.location || result.crop || result.product) && (
-                        <div className="mt-5 flex flex-wrap gap-2">
+                        <div className="mt-3 flex flex-wrap gap-1.5">
                           {result.location ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
                               📍 {result.location}
                             </span>
                           ) : null}
                           {result.crop ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
                               🌱 {result.crop}
                             </span>
                           ) : null}
                           {result.product ? (
-                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
                               🧪 {result.product}
                             </span>
                           ) : null}
@@ -1013,42 +1054,63 @@ export default function Home() {
                   )}
 
                   {result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-5 py-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-                      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
                         Key insights
                       </p>
                       <div className="flex flex-col gap-4">
-                        {result.crmFull.map((line, i) => (
-                          <p key={i} className="text-[15px] font-medium leading-[1.55] tracking-tight text-zinc-800">
+                        {(resultInsightsExpanded
+                          ? result.crmFull
+                          : result.crmFull.slice(0, 3)
+                        ).map((line, i) => (
+                          <p
+                            key={i}
+                            className={`rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight ${getInsightStyle(line)}`}
+                          >
                             {line}
                           </p>
                         ))}
                       </div>
+                      {result.crmFull.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setResultInsightsExpanded((e) => !e)}
+                          className="mt-3 text-[12px] font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60"
+                        >
+                          {resultInsightsExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      ) : null}
                     </div>
                   )}
 
                   {result.summary && (
-                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/35 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.028)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/75">
-                        Summary
-                      </p>
-                      <p className="whitespace-pre-line text-[12.5px] font-normal leading-[1.62] text-zinc-500/88">
-                        {result.summary}
-                      </p>
+                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                      <button
+                        type="button"
+                        onClick={() => setResultSummaryExpanded((e) => !e)}
+                        className="text-[12px] font-medium text-zinc-500/90 transition-colors hover:text-zinc-700"
+                      >
+                        {resultSummaryExpanded ? 'Hide summary' : 'View summary'}
+                      </button>
+                      <div
+                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${resultSummaryExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div
+                            className={`origin-top pt-3 transition-all duration-300 ease-out ${resultSummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
+                            style={{ pointerEvents: resultSummaryExpanded ? 'auto' : 'none' }}
+                          >
+                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-zinc-500/85">
+                              {result.summary}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
-                  {result.crmText ? (
-                    <div className="rounded-2xl border border-zinc-100/80 bg-zinc-50/25 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/70">
-                        Note
-                      </p>
-                      <p className="text-[12px] leading-[1.62] text-zinc-500/85">{result.crmText}</p>
-                    </div>
-                  ) : null}
-
                   {/* Secondary actions */}
-                  <div className="border-t border-zinc-100/90 pt-11">
+                  <div className="border-t border-zinc-100/90 pt-7">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
@@ -1154,35 +1216,60 @@ export default function Home() {
                   )}
 
                   {selectedNote.result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-5 py-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-                      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
                         Key insights
                       </p>
                       <div className="flex flex-col gap-4">
-                        {selectedNote.result.crmFull.map((line, i) => (
-                          <p key={i} className="text-[15px] font-medium leading-[1.55] tracking-tight text-zinc-800">
+                        {(historyInsightsExpanded
+                          ? selectedNote.result.crmFull
+                          : selectedNote.result.crmFull.slice(0, 3)
+                        ).map((line, i) => (
+                          <p
+                            key={i}
+                            className={`rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight ${getInsightStyle(line)}`}
+                          >
                             {line}
                           </p>
                         ))}
                       </div>
+                      {selectedNote.result.crmFull.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setHistoryInsightsExpanded((e) => !e)}
+                          className="mt-3 text-[12px] font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60"
+                        >
+                          {historyInsightsExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      ) : null}
                     </div>
                   )}
 
                   {selectedNote.result.summary && (
-                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/35 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.028)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/75">Summary</p>
-                      <p className="whitespace-pre-line text-[12.5px] font-normal leading-[1.62] text-zinc-500/88">
-                        {selectedNote.result.summary}
-                      </p>
+                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                      <button
+                        type="button"
+                        onClick={() => setHistorySummaryExpanded((e) => !e)}
+                        className="text-[12px] font-medium text-zinc-500/90 transition-colors hover:text-zinc-700"
+                      >
+                        {historySummaryExpanded ? 'Hide summary' : 'View summary'}
+                      </button>
+                      <div
+                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${historySummaryExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div
+                            className={`origin-top pt-3 transition-all duration-300 ease-out ${historySummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
+                            style={{ pointerEvents: historySummaryExpanded ? 'auto' : 'none' }}
+                          >
+                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-zinc-500/85">
+                              {selectedNote.result.summary}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
-
-                  {selectedNote.result.crmText ? (
-                    <div className="rounded-2xl border border-zinc-100 bg-zinc-50/50 px-4 py-4 shadow-sm">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Note</p>
-                      <p className="text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.crmText}</p>
-                    </div>
-                  ) : null}
 
                   {selectedNote.result.nextStep && (
                     <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
