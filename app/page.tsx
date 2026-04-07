@@ -435,14 +435,14 @@ export default function Home() {
     <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-12 pb-3 bg-white">
-        <button className="flex flex-col gap-[5px] p-1" aria-label="Menu">
+      <header className="flex items-center justify-between px-5 pt-9 pb-2 bg-white">
+        <button className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
-        <span className="text-[15px] font-bold tracking-[0.2em] text-zinc-900 uppercase">FieldBrief</span>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>
+        <span className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">FieldBrief</span>
+        <div className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{backgroundColor: '#1a4d2e'}}>
           IG
         </div>
       </header>
@@ -483,14 +483,14 @@ export default function Home() {
                 pointerEvents: result ? 'none' : 'auto',
               }}
             >
-              <p className="mb-5 max-w-[280px] text-center text-[13px] font-medium leading-snug text-zinc-500">
+              <p className="mb-4 max-w-[280px] text-center text-[13px] font-medium leading-snug text-zinc-500">
                 Tap and describe the visit — we will turn it into a follow-up you can run.
               </p>
               {/* Mic button */}
               <button
                 onClick={toggleRecording}
                 disabled={loading}
-                className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:pointer-events-none"
+                className="relative mb-4 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:pointer-events-none"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                   boxShadow: isRecording
@@ -517,7 +517,7 @@ export default function Home() {
               </button>
 
               {/* Timer / status */}
-              <div className="mb-4 min-h-[56px] flex flex-col items-center justify-center gap-1">
+              <div className="mb-3 min-h-[52px] flex flex-col items-center justify-center gap-1">
                 {isRecording ? (
                   <>
                     <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-500/90">Recording</span>
@@ -539,7 +539,7 @@ export default function Home() {
 
               {/* Waveform */}
               {isRecording && (
-                <div className="mb-4 flex h-8 items-end justify-center gap-[3px]">
+                <div className="mb-3 flex h-8 items-end justify-center gap-[3px]">
                   {Array.from({ length: 22 }).map((_, i) => (
                     <span key={i} className="w-[3px] rounded-full" style={{backgroundColor: '#dc2626', opacity: 0.85, animation: `pulse-bar ${0.45 + (i % 5) * 0.09}s ease-in-out ${i * 0.035}s infinite alternate`}} />
                   ))}
@@ -548,11 +548,11 @@ export default function Home() {
 
               {/* Recording hints */}
               {isRecording && (
-                <div className="mb-4 w-full px-2">
+                <div className="mb-3 w-full px-2">
                   <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
-                      <span key={h.label} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{borderColor:'#c8e6d0',backgroundColor:'#f0f7f2',color:'#1a4d2e',animation:'fadeIn 0.4s ease forwards'}}>
+                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium text-emerald-900/75" style={{borderColor:'rgba(167,243,208,0.55)',backgroundColor:'rgba(236,253,245,0.65)',animation:'fadeIn 0.4s ease forwards'}}>
                         {h.icon} {h.label}
                       </span>
                     ))}
@@ -599,9 +599,9 @@ export default function Home() {
                 }}
               >
                 {/* Sticky stack: actions stay visible on small screens when scrolling context */}
-                <div className="sticky top-0 z-20 -mx-5 mb-1 border-b border-zinc-100/80 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
-                  <div className="mb-1.5 flex justify-end">
-                    <button onClick={handleReset} className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 active:scale-95">
+                <div className="sticky top-0 z-20 -mx-5 mb-0.5 border-b border-zinc-100/70 bg-white/92 px-5 pb-1.5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
+                  <div className="mb-1 flex justify-end">
+                    <button onClick={handleReset} className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 active:scale-95">
                       New
                     </button>
                   </div>
@@ -609,11 +609,11 @@ export default function Home() {
                   {result.nextStep && (
                     <>
                       <div
-                        className="rounded-[1.15rem] px-4 py-4 mb-1.5 shadow-[0_4px_20px_rgba(26,77,46,0.1),0_1px_0_rgba(255,255,255,0.6)_inset] border border-emerald-200/80"
-                        style={{ background: 'linear-gradient(165deg, #ecf8f0 0%, #e4f3ea 100%)' }}
+                        className="rounded-t-[1.25rem] rounded-b-xl px-5 py-[18px] mb-0 shadow-[0_6px_32px_rgba(26,77,46,0.14),0_2px_8px_rgba(26,77,46,0.06),inset_0_1px_0_rgba(255,255,255,0.65)] border border-emerald-200"
+                        style={{ background: 'linear-gradient(165deg, #e8f6ee 0%, #dcefe4 100%)' }}
                       >
-                        <p className="text-[9px] font-semibold uppercase tracking-[0.2em] mb-2 text-emerald-800/80">Next step</p>
-                        <p className="text-[20px] font-extrabold leading-[1.22] tracking-tight sm:text-[22px]" style={{ color: '#14532d' }}>{result.nextStep}</p>
+                        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] mb-2.5 text-emerald-900/55">Next step</p>
+                        <p className="text-[23px] min-[390px]:text-[26px] font-black leading-[1.2] tracking-tight antialiased" style={{ color: '#0f3d24' }}>{result.nextStep}</p>
                       </div>
 
                       <button
@@ -643,10 +643,10 @@ export default function Home() {
                           setLastCalendarUrl(url)
                           setCalendarSuccessTick((n) => n + 1)
                         }}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[16px] font-bold text-white shadow-[0_8px_28px_rgba(26,77,46,0.35),0_1px_0_rgba(255,255,255,0.12)_inset] transition-all hover:brightness-105 active:scale-[0.98] active:brightness-95 min-[400px]:py-4 min-[400px]:text-[17px]"
+                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl rounded-b-2xl py-[17px] min-[400px]:py-[19px] text-[16px] font-extrabold text-white antialiased shadow-[0_14px_40px_rgba(26,77,46,0.42),0_4px_12px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-110 hover:shadow-[0_16px_44px_rgba(26,77,46,0.45)] active:scale-[0.98] active:brightness-95 min-[400px]:text-[17px]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-95 shrink-0">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-[0.97] shrink-0">
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
                         Add to Calendar
@@ -654,26 +654,29 @@ export default function Home() {
 
                       {(lastCalendarUrl || calendarSuccessTick > 0) && (
                         <div
-                          className="mt-1.5 overflow-hidden rounded-lg border border-emerald-200/70 bg-emerald-50/90 px-3 py-2"
-                          style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.45s ease-out' } : undefined}
+                          className="mt-2 overflow-hidden rounded-xl border border-emerald-200/65 bg-emerald-50/95 px-3.5 py-2.5 ring-1 ring-emerald-100/80"
+                          style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards' } : undefined}
                         >
-                          <div className="flex items-center gap-2 text-[12px] font-semibold text-emerald-900">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
+                          <div className="flex items-center gap-2.5 text-[13px] font-semibold text-emerald-950">
+                            <span
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md"
+                              style={calendarSuccessTick > 0 ? { animation: 'successIconPop 0.55s cubic-bezier(0.34, 1.2, 0.64, 1)' } : undefined}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                                 <path d="M20 6L9 17l-5-5"/>
                               </svg>
                             </span>
-                            Event created
+                            <span>Event created</span>
                           </div>
                           {lastCalendarUrl ? (
                             <a
                               href={lastCalendarUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-2 transition-opacity hover:opacity-80"
+                              className="mt-2 inline-flex items-center gap-1 rounded-lg text-[12px] font-semibold text-emerald-900 underline decoration-emerald-400/70 underline-offset-[3px] transition-opacity hover:opacity-80 active:opacity-70"
                             >
                               View in Calendar
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
                               </svg>
                             </a>
@@ -685,16 +688,16 @@ export default function Home() {
                 </div>
 
                 {/* Context below fold — metadata de-prioritized */}
-                <div className="mt-2 space-y-3">
+                <div className="mt-2.5 space-y-2.5">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 px-3 py-2">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Visit</p>
-                      <p className="truncate text-[11px] text-zinc-500">
+                    <div className="rounded-lg border border-zinc-100/80 bg-zinc-50/40 px-2.5 py-1.5 opacity-[0.94]">
+                      <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-zinc-400/75 mb-0.5">Visit</p>
+                      <p className="truncate text-[10px] text-zinc-500/90">
                         {result.contact || '—'}
-                        {result.customer ? <span className="text-zinc-400"> · {result.customer}</span> : null}
+                        {result.customer ? <span className="text-zinc-400/85"> · {result.customer}</span> : null}
                       </p>
                       {(result.location || result.crop || result.product) && (
-                        <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-zinc-400/90">
+                        <p className="mt-0.5 line-clamp-2 text-[9px] leading-relaxed text-zinc-400/75">
                           {[result.location && `📍 ${result.location}`, result.crop && `🌱 ${result.crop}`, result.product && `🧪 ${result.product}`].filter(Boolean).join(' · ')}
                         </p>
                       )}
@@ -702,31 +705,31 @@ export default function Home() {
                   )}
 
                   {result.summary && (
-                    <div className="rounded-xl border border-zinc-100/90 bg-zinc-50/70 px-3 py-2 shadow-sm">
-                      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 mb-0.5">Summary</p>
-                      <p className="text-[12px] leading-snug text-zinc-500 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
+                    <div className="rounded-lg border border-zinc-100/80 bg-zinc-50/55 px-2.5 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                      <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-zinc-400/80 mb-0.5">Summary</p>
+                      <p className="text-[11px] leading-snug text-zinc-500/88 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Secondary row — Copy CRM + Share + Correct */}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-stretch gap-2">
+                <div className="mt-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
-                      className="flex flex-[1.15] items-center justify-center gap-1.5 rounded-xl border border-transparent bg-zinc-100/80 py-2.5 text-[12px] font-medium text-zinc-500 transition-all hover:bg-zinc-100 hover:text-zinc-700 active:scale-[0.98]"
+                      className="flex h-[38px] flex-[1.12] items-center justify-center gap-1 rounded-[11px] border border-zinc-100/90 bg-zinc-50 text-[11px] font-normal text-zinc-400 transition-all hover:bg-zinc-100/90 hover:text-zinc-600 active:scale-[0.98]"
                     >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-70">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-55">
                         <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                       </svg>
                       {copied ? 'Copied' : 'Copy CRM'}
                     </button>
                     <button
                       onClick={() => result && handleShare(result)}
-                      className="flex items-center justify-center rounded-xl border border-zinc-200/90 bg-white px-3 py-2.5 text-zinc-400 shadow-sm transition-all hover:border-zinc-300 hover:text-zinc-600 active:scale-[0.98]"
+                      className="flex h-[38px] w-[46px] shrink-0 items-center justify-center rounded-[11px] border border-zinc-100/90 bg-white text-zinc-400 transition-all hover:border-zinc-200 hover:bg-zinc-50/80 hover:text-zinc-500 active:scale-[0.98]"
                       aria-label="Share"
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-75">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
                       </svg>
                     </button>
@@ -737,8 +740,7 @@ export default function Home() {
                           if (isCorrectingRecording) stopCorrectionRecording()
                           else startCorrectionRecording(latest.id, latest.transcript)
                         }}
-                        className="flex items-center justify-center rounded-xl border border-amber-200/80 bg-amber-500/95 px-3 py-2.5 text-white shadow-sm transition-all hover:bg-amber-500 active:scale-[0.98] active:bg-amber-600"
-                        style={{ boxShadow: '0 2px 8px rgba(217,119,6,0.25)' }}
+                        className="flex h-[38px] w-[46px] shrink-0 items-center justify-center rounded-[11px] border border-amber-200/70 bg-amber-600/88 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_6px_rgba(217,119,6,0.2)]"
                         aria-label="Correct"
                       >
                         {isCorrectingRecording ? (
@@ -1053,6 +1055,11 @@ export default function Home() {
         @keyframes calendarSuccessIn {
           from { opacity: 0; transform: translateY(8px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes successIconPop {
+          0% { transform: scale(0.5); opacity: 0.6; }
+          55% { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
         }
         @keyframes mic-ring-pulse {
           0%, 100% { transform: scale(1); opacity: 0.35; }
