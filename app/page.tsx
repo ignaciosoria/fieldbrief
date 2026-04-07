@@ -635,7 +635,12 @@ export default function Home() {
                             startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
                           }
                           const endDate = startDate.replace('T090000', 'T093000')
-                          const title = encodeURIComponent(text)
+                          const cleanTitle = text
+                            .replace(/\bon\s+\d{2}\/\d{2}\/\d{4}/i, '')
+                            .replace(/\bto\s+.+$/i, '')
+                            .replace(/\s+/g, ' ')
+                            .trim()
+                          const title = encodeURIComponent(cleanTitle)
                           const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}`
                           window.open(url, '_blank')
                         }}
