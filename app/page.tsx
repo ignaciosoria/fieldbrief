@@ -886,13 +886,13 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col px-0 pt-2 pb-10"
+                className="flex flex-col px-0 pt-2 pb-14"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
                 {/* 1 — Next step + calendar (sticky) */}
-                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-6 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-7 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
                   <div className="mb-4 flex justify-end">
                     <button
                       type="button"
@@ -967,10 +967,10 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 2 — Contact & company + chips */}
-                <div className="mt-10 space-y-10">
+                {/* 2 — Contact & company → 3 — Insights → 4 — Summary */}
+                <div className="mt-12 space-y-12">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-5 py-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-5 py-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
                       <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
                         Visit
                       </p>
@@ -1012,44 +1012,43 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* 3 — Summary */}
+                  {result.crmFull.length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-5 py-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+                      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                        Key insights
+                      </p>
+                      <div className="flex flex-col gap-4">
+                        {result.crmFull.map((line, i) => (
+                          <p key={i} className="text-[15px] font-medium leading-[1.55] tracking-tight text-zinc-800">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {result.summary && (
-                    <div className="rounded-2xl border border-zinc-100/95 bg-zinc-50/40 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.035)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
+                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/35 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.028)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/75">
                         Summary
                       </p>
-                      <p className="whitespace-pre-line text-[13px] leading-[1.65] text-zinc-600/88">
+                      <p className="whitespace-pre-line text-[12.5px] font-normal leading-[1.62] text-zinc-500/88">
                         {result.summary}
                       </p>
                     </div>
                   )}
 
-                  {result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/90 bg-white px-5 py-5 shadow-sm">
-                      <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
-                        CRM detail
-                      </p>
-                      <ul className="space-y-2.5">
-                        {result.crmFull.map((line, i) => (
-                          <li key={i} className="text-[13px] leading-snug text-zinc-700">
-                            {line}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
                   {result.crmText ? (
-                    <div className="rounded-2xl border border-zinc-100/95 bg-zinc-50/30 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
+                    <div className="rounded-2xl border border-zinc-100/80 bg-zinc-50/25 px-5 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/70">
                         Note
                       </p>
-                      <p className="text-[13px] leading-[1.65] text-zinc-600/90">{result.crmText}</p>
+                      <p className="text-[12px] leading-[1.62] text-zinc-500/85">{result.crmText}</p>
                     </div>
                   ) : null}
 
-                  {/* 4 — Secondary actions */}
-                  <div className="border-t border-zinc-100/90 pt-9">
+                  {/* Secondary actions */}
+                  <div className="border-t border-zinc-100/90 pt-11">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
@@ -1117,7 +1116,7 @@ export default function Home() {
                   Back to history
                 </button>
 
-                <div className="space-y-3">
+                <div className="space-y-5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">{formatDate(selectedNote.date)}</p>
 
                   <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
@@ -1154,23 +1153,27 @@ export default function Home() {
                     </div>
                   )}
 
-                  {selectedNote.result.summary && (
-                    <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
-                      <p className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-600">{selectedNote.result.summary}</p>
+                  {selectedNote.result.crmFull.length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-5 py-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+                      <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                        Key insights
+                      </p>
+                      <div className="flex flex-col gap-4">
+                        {selectedNote.result.crmFull.map((line, i) => (
+                          <p key={i} className="text-[15px] font-medium leading-[1.55] tracking-tight text-zinc-800">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {selectedNote.result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/90 bg-white px-4 py-4 shadow-sm">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">CRM detail</p>
-                      <ul className="space-y-2">
-                        {selectedNote.result.crmFull.map((line, i) => (
-                          <li key={i} className="text-[13px] leading-snug text-zinc-700">
-                            {line}
-                          </li>
-                        ))}
-                      </ul>
+                  {selectedNote.result.summary && (
+                    <div className="rounded-2xl border border-zinc-100/90 bg-zinc-50/35 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.028)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/75">Summary</p>
+                      <p className="whitespace-pre-line text-[12.5px] font-normal leading-[1.62] text-zinc-500/88">
+                        {selectedNote.result.summary}
+                      </p>
                     </div>
                   )}
 
