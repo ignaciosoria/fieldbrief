@@ -636,12 +636,17 @@ export default function Home() {
                           }
                           const endDate = startDate.replace('T090000', 'T093000')
                           const cleanTitle = text
-                            .replace(/\s*(\bon\b|\bel\b)\s+\d{2}\/\d{2}\/\d{4}/i, '')
-                            .replace(/\s*(\bto\b|\bpara\b)\s+.+$/i, '')
+                            .replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '')
                             .replace(/\s+/g, ' ')
                             .trim()
                           const title = encodeURIComponent(cleanTitle)
-                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}`
+                          const descLines = []
+                          if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
+                          const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
+                          if (pills.length) descLines.push(pills.join('  '))
+                          if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
+                          const details = encodeURIComponent(descLines.join('\n'))
+                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
                           window.open(url, '_blank')
                         }}
                         className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all active:scale-95"
