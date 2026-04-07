@@ -50,6 +50,7 @@ export default function Home() {
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
   const [noteSaved, setNoteSaved] = useState(false)
+  const [showEditArea, setShowEditArea] = useState(false)
   const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -349,6 +350,7 @@ export default function Home() {
     setTranscript('')
     setCopied(false)
     setSelectedNote(null)
+    setShowEditArea(false)
   }
 
   if (!mounted) return null
@@ -493,16 +495,20 @@ export default function Home() {
               </div>
             )}
 
-            {/* Textarea */}
-            <textarea
-              className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[90px] shadow-sm"
-              style={{'--tw-ring-color': '#1a4d2e'} as any}
-              placeholder="Add details manually..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            {transcript && (
-              <p className="mb-3 w-full text-[12px]" style={{color: '#1a4d2e'}}>✓ Transcript loaded</p>
+            {/* Textarea — hidden when result exists unless edit mode */}
+            {(!result || showEditArea) && (
+              <>
+                <textarea
+                  className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[90px] shadow-sm"
+                  style={{'--tw-ring-color': '#1a4d2e'} as any}
+                  placeholder="Add details manually..."
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+                {transcript && (
+                  <p className="mb-3 w-full text-[12px]" style={{color: '#1a4d2e'}}>✓ Transcript loaded</p>
+                )}
+              </>
             )}
 
             {/* Buttons */}
@@ -664,10 +670,22 @@ export default function Home() {
                     className="flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
                     </svg>
                   </button>
                 </div>
+
+                {/* Edit note toggle */}
+                <button
+                  onClick={() => setShowEditArea((v) => !v)}
+                  className="flex w-full items-center justify-center gap-1.5 py-2 text-[12px] font-medium text-zinc-400 transition-all hover:text-zinc-600"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  {showEditArea ? 'Hide editor' : 'Edit note manually'}
+                </button>
 
 
               </div>
