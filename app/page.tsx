@@ -42,7 +42,6 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [result, setResult] = useState<StructureResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [loadingStage, setLoadingStage] = useState<'transcribing' | 'structuring' | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -62,6 +61,13 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const processingStartedAtRef = useRef(0)
+
+  const awaitMinProcessingDisplay = async () => {
+    const minMs = 420
+    const elapsed = Date.now() - processingStartedAtRef.current
+    if (elapsed < minMs) await new Promise((r) => setTimeout(r, minMs - elapsed))
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -225,8 +231,8 @@ export default function Home() {
         clearInterval(correctTimerRef.current!)
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
         if (blob.size === 0) return
+        processingStartedAtRef.current = Date.now()
         setLoading(true)
-        setLoadingStage('transcribing')
         try {
           const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
           const file = new File([blob], `correction.${ext}`, { type: blob.type })
@@ -235,7 +241,6 @@ export default function Home() {
           const txRes = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const txData = await txRes.json()
           const correction = txData.transcript || txData.text || ''
-          setLoadingStage('structuring')
           const combined = `ORIGINAL NOTE: ${originalTranscript}\n\nCORRECTION: ${correction}`
           const strRes = await fetch('/api/structure', {
             method: 'POST',
@@ -245,12 +250,12 @@ export default function Home() {
           const strData = await strRes.json()
           if (!strRes.ok) throw new Error(strData.error)
           const final = { ...emptyResult, ...strData }
+          await awaitMinProcessingDisplay()
           updateNote(noteId, final, combined)
         } catch (err: any) {
           setError(err?.message || 'Correction failed.')
         } finally {
           setLoading(false)
-          setLoadingStage(null)
         }
       }
       setCorrectingSeconds(0)
@@ -341,8 +346,8 @@ export default function Home() {
   }
 
   const processRecordedAudio = async (blob: Blob) => {
+    processingStartedAtRef.current = Date.now()
     setLoading(true)
-    setLoadingStage('transcribing')
     setError('')
     setResult(null)
     try {
@@ -358,7 +363,6 @@ export default function Home() {
       const tx = transcribeData.transcript || transcribeData.text || ''
       setTranscript(tx)
       setInput(tx)
-      setLoadingStage('structuring')
 
       const structureRes = await fetch('/api/structure', {
         method: 'POST',
@@ -369,20 +373,20 @@ export default function Home() {
       if (!structureRes.ok) throw new Error(structureData.error || 'Failed to structure.')
 
       const final = { ...emptyResult, ...structureData }
+      await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, tx)
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
       setLoading(false)
-      setLoadingStage(null)
     }
   }
 
   const processTypedNote = async () => {
     if (!input.trim()) return
+    processingStartedAtRef.current = Date.now()
     setLoading(true)
-    setLoadingStage('structuring')
     setError('')
     setResult(null)
     setCopied(false)
@@ -395,13 +399,13 @@ export default function Home() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
       const final = { ...emptyResult, ...data }
+      await awaitMinProcessingDisplay()
       setResult(final)
       saveNote(final, input)
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
       setLoading(false)
-      setLoadingStage(null)
     }
   }
 
@@ -429,8 +433,6 @@ export default function Home() {
 
   if (!mounted) return null
 
-  const progressWidth = loadingStage === 'transcribing' ? '55%' : loadingStage === 'structuring' ? '85%' : '0%'
-
   return (
     <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
 
@@ -447,13 +449,41 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Progress bar */}
+      {/* Full-screen processing — single calm state */}
       {loading && (
-        <div className="h-[2px] w-full bg-zinc-100 overflow-hidden">
-          <div
-            className="h-full transition-all duration-700 ease-in-out rounded-full"
-            style={{ width: progressWidth, backgroundColor: '#1a4d2e' }}
-          />
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/[0.93] px-8 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards' }}
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex flex-col items-center">
+            <svg
+              className="text-[#1a4d2e]"
+              width="56"
+              height="56"
+              viewBox="0 0 56 56"
+              fill="none"
+              aria-hidden
+            >
+              <circle cx="28" cy="28" r="23" stroke="currentColor" strokeOpacity="0.11" strokeWidth="1.75" />
+              <g style={{ transformOrigin: 'center', animation: 'spin 1.15s linear infinite' }}>
+                <circle
+                  cx="28"
+                  cy="28"
+                  r="23"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeDasharray="36 110"
+                />
+              </g>
+            </svg>
+            <p className="mt-8 max-w-[16rem] text-center text-[15px] font-medium leading-snug tracking-tight text-zinc-600">
+              Creating your follow-up
+            </p>
+          </div>
         </div>
       )}
 
@@ -476,11 +506,11 @@ export default function Home() {
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
-                opacity: result ? 0 : 1,
-                transform: result ? 'translateY(-16px)' : 'translateY(0)',
-                pointerEvents: result ? 'none' : 'auto',
+                opacity: result || loading ? 0 : 1,
+                transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
+                pointerEvents: result || loading ? 'none' : 'auto',
               }}
             >
               <div className="mb-4 max-w-[20rem] text-center">
@@ -523,15 +553,10 @@ export default function Home() {
                     aria-hidden
                   />
                 )}
-                {loading && (
-                  <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
-                )}
-                {loading ? null : (
-                  <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
-                    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
-                    <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
-                  </svg>
-                )}
+                <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                  <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
+                </svg>
               </button>
 
               {/* Timer / status */}
@@ -542,10 +567,6 @@ export default function Home() {
                     style={{ animation: 'recording-timer-breathe 3s ease-in-out infinite' }}
                   >
                     {formatSeconds(recordingSeconds)}
-                  </span>
-                ) : loading ? (
-                  <span className="text-[14px] font-medium animate-pulse" style={{color: '#1a4d2e'}}>
-                    {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
                   </span>
                 ) : null}
               </div>
@@ -1063,6 +1084,10 @@ export default function Home() {
       </nav>
 
       <style jsx global>{`
+        @keyframes processingOverlayIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
         @keyframes pulse-bar {
           from { height: 2px; opacity: 0.32; }
           to   { height: 12px; opacity: 0.62; }
