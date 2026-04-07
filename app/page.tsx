@@ -54,8 +54,7 @@ export default function Home() {
   const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
-  const [lastCalendarUrl, setLastCalendarUrl] = useState<string | null>(null)
-  const [calendarSuccessTick, setCalendarSuccessTick] = useState(0)
+  const [showCalendarToast, setShowCalendarToast] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -126,10 +125,10 @@ export default function Home() {
   }, [isRecording])
 
   useEffect(() => {
-    if (calendarSuccessTick === 0) return
-    const t = setTimeout(() => setCalendarSuccessTick(0), 3200)
+    if (!showCalendarToast) return
+    const t = setTimeout(() => setShowCalendarToast(false), 2100)
     return () => clearTimeout(t)
-  }, [calendarSuccessTick])
+  }, [showCalendarToast])
 
   const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
@@ -430,8 +429,7 @@ export default function Home() {
     setCopied(false)
     setSelectedNote(null)
     setShowEditArea(false)
-    setLastCalendarUrl(null)
-    setCalendarSuccessTick(0)
+    setShowCalendarToast(false)
   }
 
   if (!mounted) return null
@@ -508,6 +506,26 @@ export default function Home() {
             </svg>
           </span>
           Note saved
+        </div>
+      )}
+
+      {/* Calendar — floating toast; no layout shift */}
+      {showCalendarToast && (
+        <div
+          className="pointer-events-none fixed left-1/2 z-[96] flex max-w-[min(18rem,92vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-200/85 bg-white/96 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-zinc-800 shadow-[0_4px_28px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.025)] backdrop-blur-sm"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom, 10px) + 5.5rem)',
+            animation: 'calendarEventToast 2s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#1a4d2e]">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </span>
+          Event created
         </div>
       )}
 
@@ -697,54 +715,17 @@ export default function Home() {
                           const details = encodeURIComponent(descLines.join('\n'))
                           const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
                           window.open(url, '_blank')
-                          setLastCalendarUrl(url)
-                          setCalendarSuccessTick((n) => n + 1)
+                          setShowCalendarToast(true)
                         }}
-                        className="mt-0 flex w-full items-center justify-center gap-2 rounded-xl rounded-b-2xl py-[19px] min-[400px]:py-[21px] text-[16px] font-extrabold text-white antialiased shadow-[0_16px_48px_rgba(26,77,46,0.48),0_6px_18px_rgba(26,77,46,0.28),0_1px_0_rgba(255,255,255,0.2)_inset] transition-all hover:brightness-110 hover:shadow-[0_18px_52px_rgba(26,77,46,0.5)] active:scale-[0.97] active:brightness-95 min-[400px]:text-[17px]"
+                        type="button"
+                        className="group mt-0 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl rounded-b-2xl py-[19px] min-[400px]:py-[21px] pl-5 pr-5 text-[16px] font-extrabold leading-none text-white antialiased shadow-[0_14px_44px_-10px_rgba(26,77,46,0.5),0_4px_14px_-4px_rgba(26,77,46,0.18),inset_0_1px_0_rgba(255,255,255,0.22)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_18px_48px_-10px_rgba(26,77,46,0.52),0_6px_16px_-4px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.26)] hover:brightness-[1.03] active:translate-y-px active:scale-[0.976] active:shadow-[0_6px_20px_-8px_rgba(26,77,46,0.32),inset_0_2px_5px_rgba(0,0,0,0.18)] active:brightness-[0.88] min-[400px]:text-[17px]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-[0.97] shrink-0">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-5 w-5 shrink-0 opacity-[0.98]" aria-hidden>
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
-                        Add to Calendar
+                        <span className="tracking-tight">Add to Calendar</span>
                       </button>
-
-                      {(lastCalendarUrl || calendarSuccessTick > 0) && (
-                        <div
-                          role="status"
-                          aria-live="polite"
-                          className="mt-2 overflow-hidden rounded-xl border border-emerald-200/55 bg-emerald-50/98 px-3.5 py-2.5 ring-1 ring-emerald-100/70"
-                          style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards' } : undefined}
-                        >
-                          <div className="flex items-center gap-2.5 text-[13px] font-semibold text-emerald-950">
-                            <span
-                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md"
-                              style={calendarSuccessTick > 0 ? { animation: 'successIconPop 0.55s cubic-bezier(0.34, 1.2, 0.64, 1)' } : undefined}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
-                                <path d="M20 6L9 17l-5-5"/>
-                              </svg>
-                            </span>
-                            <div className="flex flex-col gap-0.5">
-                              <span style={calendarSuccessTick > 0 ? { animation: 'successTextFade 0.6s ease-out' } : undefined}>Event created</span>
-                              <span className="text-[11px] font-medium text-emerald-800/75">You&apos;re all set</span>
-                            </div>
-                          </div>
-                          {lastCalendarUrl ? (
-                            <a
-                              href={lastCalendarUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-2 inline-flex items-center gap-1 rounded-lg text-[12px] font-semibold text-emerald-900 underline decoration-emerald-400/60 underline-offset-[3px] transition-opacity hover:opacity-85 active:opacity-70"
-                            >
-                              View in Calendar
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
-                              </svg>
-                            </a>
-                          ) : null}
-                        </div>
-                      )}
                     </>
                   )}
                 </div>
@@ -1128,14 +1109,11 @@ export default function Home() {
           from { opacity: 0; transform: translateY(4px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes calendarSuccessIn {
-          from { opacity: 0; transform: translateY(8px) scale(0.98); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes successIconPop {
-          0% { transform: scale(0.5); opacity: 0.6; }
-          55% { transform: scale(1.08); opacity: 1; }
-          100% { transform: scale(1); opacity: 1; }
+        @keyframes calendarEventToast {
+          0% { opacity: 0; }
+          11% { opacity: 1; }
+          84% { opacity: 1; }
+          100% { opacity: 0; }
         }
         @keyframes mic-ring-pulse {
           0%, 100% { opacity: 0.55; }
@@ -1148,10 +1126,6 @@ export default function Home() {
         @keyframes mic-idle-glow {
           0%, 100% { box-shadow: 0 0 0 0 rgba(26, 77, 46, 0); opacity: 1; }
           50% { box-shadow: 0 0 28px 4px rgba(26, 77, 46, 0.14); opacity: 1; }
-        }
-        @keyframes successTextFade {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
