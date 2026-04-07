@@ -64,7 +64,7 @@ export default function Home() {
   const processingStartedAtRef = useRef(0)
 
   const awaitMinProcessingDisplay = async () => {
-    const minMs = 420
+    const minMs = 400
     const elapsed = Date.now() - processingStartedAtRef.current
     if (elapsed < minMs) await new Promise((r) => setTimeout(r, minMs - elapsed))
   }
@@ -141,7 +141,7 @@ export default function Home() {
     const updated = [note, ...savedNotes]
     setSavedNotes(updated)
     setNoteSaved(true)
-    setTimeout(() => setNoteSaved(false), 2000)
+    setTimeout(() => setNoteSaved(false), 2300)
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
     try {
       await supabase.from('notes').insert({
@@ -255,6 +255,7 @@ export default function Home() {
         } catch (err: any) {
           setError(err?.message || 'Correction failed.')
         } finally {
+          await new Promise((r) => setTimeout(r, 72))
           setLoading(false)
         }
       }
@@ -379,6 +380,7 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
+      await new Promise((r) => setTimeout(r, 72))
       setLoading(false)
     }
   }
@@ -405,6 +407,7 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
+      await new Promise((r) => setTimeout(r, 72))
       setLoading(false)
     }
   }
@@ -452,47 +455,58 @@ export default function Home() {
       {/* Full-screen processing — single calm state */}
       {loading && (
         <div
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/[0.93] px-8 backdrop-blur-[2px]"
-          style={{ animation: 'processingOverlayIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards' }}
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/[0.94] px-8 backdrop-blur-[3px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
           role="status"
           aria-live="polite"
           aria-busy="true"
         >
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center gap-0">
             <svg
               className="text-[#1a4d2e]"
-              width="56"
-              height="56"
-              viewBox="0 0 56 56"
+              width="52"
+              height="52"
+              viewBox="0 0 52 52"
               fill="none"
               aria-hidden
             >
-              <circle cx="28" cy="28" r="23" stroke="currentColor" strokeOpacity="0.11" strokeWidth="1.75" />
-              <g style={{ transformOrigin: 'center', animation: 'spin 1.15s linear infinite' }}>
+              <circle cx="26" cy="26" r="21.5" stroke="currentColor" strokeOpacity="0.055" strokeWidth="1.05" />
+              <g style={{ transformOrigin: '26px 26px', animation: 'processingRingSpin 1.55s linear infinite' }}>
                 <circle
-                  cx="28"
-                  cy="28"
-                  r="23"
+                  cx="26"
+                  cy="26"
+                  r="21.5"
                   stroke="currentColor"
-                  strokeWidth="1.75"
+                  strokeOpacity="0.72"
+                  strokeWidth="1.2"
                   strokeLinecap="round"
-                  strokeDasharray="36 110"
+                  strokeDasharray="29 106"
                 />
               </g>
             </svg>
-            <p className="mt-8 max-w-[16rem] text-center text-[15px] font-medium leading-snug tracking-tight text-zinc-600">
+            <p className="mt-5 max-w-[17rem] text-center text-[14px] font-semibold leading-snug tracking-tight text-zinc-700/95">
               Creating your follow-up
             </p>
           </div>
         </div>
       )}
 
-      {/* Note saved toast */}
+      {/* Note saved — floating toast; no layout shift */}
       {noteSaved && (
-        <div className="mx-5 mt-3 flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium text-white" style={{backgroundColor: '#1a4d2e'}}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M20 6L9 17l-5-5"/>
-          </svg>
+        <div
+          className="pointer-events-none fixed left-1/2 z-[95] flex max-w-[min(20rem,90vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-200/80 bg-white/95 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-zinc-800 shadow-[0_4px_28px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.03)] backdrop-blur-sm"
+          style={{
+            top: 'calc(env(safe-area-inset-top, 8px) + 3.25rem)',
+            animation: 'noteSavedToast 2.1s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a4d2e]/95">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </span>
           Note saved
         </div>
       )}
@@ -506,7 +520,7 @@ export default function Home() {
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 opacity: result || loading ? 0 : 1,
                 transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
@@ -633,7 +647,7 @@ export default function Home() {
               <div
                 className="flex flex-col px-1 pt-0 pb-2"
                 style={{
-                  animation: 'slideUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+                  animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
                 {/* Sticky stack: actions stay visible on small screens when scrolling context */}
@@ -1088,6 +1102,16 @@ export default function Home() {
           from { opacity: 0; }
           to { opacity: 1; }
         }
+        @keyframes processingRingSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes noteSavedToast {
+          0% { opacity: 0; }
+          11% { opacity: 1; }
+          84% { opacity: 1; }
+          100% { opacity: 0; }
+        }
         @keyframes pulse-bar {
           from { height: 2px; opacity: 0.32; }
           to   { height: 12px; opacity: 0.62; }
@@ -1097,7 +1121,7 @@ export default function Home() {
           to   { transform: rotate(360deg); }
         }
         @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(12px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes fadeIn {
