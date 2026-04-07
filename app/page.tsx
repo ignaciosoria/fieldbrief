@@ -109,6 +109,41 @@ function enrichNextStep(
   return enriched
 }
 
+function isSpanish(text: string) {
+  if (!text) return false
+  return (
+    /[áéíóúñ]/i.test(text) ||
+    text.includes(' el ') ||
+    text.includes(' la ') ||
+    text.includes(' que ')
+  )
+}
+
+function forceLanguage(nextStep: string, originalText: string) {
+  if (!nextStep) return nextStep
+
+  const inputIsSpanish = isSpanish(originalText)
+  const outputIsSpanish = isSpanish(nextStep)
+
+  if (inputIsSpanish && !outputIsSpanish) {
+    return nextStep
+      .replace(/^call/i, 'Llamar')
+      .replace(/^send/i, 'Enviar')
+      .replace(/^follow up/i, 'Hacer seguimiento')
+      .replace(/^schedule/i, 'Agendar')
+  }
+
+  if (!inputIsSpanish && outputIsSpanish) {
+    return nextStep
+      .replace(/^llamar/i, 'Call')
+      .replace(/^enviar/i, 'Send')
+      .replace(/^hacer seguimiento/i, 'Follow up')
+      .replace(/^agendar/i, 'Schedule')
+  }
+
+  return nextStep
+}
+
 async function fixNextStep(result: {
   nextStep?: string
   customer?: string
@@ -509,6 +544,7 @@ export default function Home() {
       }
 
       final.nextStep = enrichNextStep(final.nextStep, final)
+      final.nextStep = forceLanguage(final.nextStep, tx)
 
       await awaitMinProcessingDisplay()
       setResult(final)
@@ -800,18 +836,18 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col px-1 pt-0 pb-2"
+                className="flex flex-col px-0 pt-2 pb-10"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
-                {/* Sticky stack: actions stay visible on small screens when scrolling context */}
-                <div className="sticky top-0 z-20 -mx-5 mb-0 border-b border-zinc-100/70 bg-white/92 px-5 pb-1.5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
-                  <div className="mb-0.5 flex justify-end">
+                {/* 1 — Next step + calendar (sticky) */}
+                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-6 pt-1 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
+                  <div className="mb-4 flex justify-end">
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-zinc-200/90 bg-white py-1 pl-2 pr-2.5 text-[11px] font-semibold text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.97]"
+                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-zinc-200/90 bg-white py-1.5 pl-2.5 pr-3 text-[11px] font-semibold text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.97]"
                     >
                       <span className="text-[13px] font-semibold leading-none text-zinc-700" aria-hidden>+</span>
                       New
@@ -821,11 +857,18 @@ export default function Home() {
                   {result.nextStep && (
                     <>
                       <div
-                        className="rounded-t-[1.25rem] rounded-b-xl px-5 py-[17px] shadow-[0_8px_36px_rgba(26,77,46,0.16),0_2px_10px_rgba(26,77,46,0.08),inset_0_1px_0_rgba(255,255,255,0.7)] border border-emerald-200/95"
-                        style={{ background: 'linear-gradient(165deg, #e6f5ec 0%, #d9ede2 100%)' }}
+                        className="rounded-2xl px-5 py-7 min-[390px]:px-6 min-[390px]:py-8 text-center shadow-[0_10px_40px_rgba(26,77,46,0.14),0_2px_12px_rgba(26,77,46,0.07),inset_0_1px_0_rgba(255,255,255,0.72)] ring-1 ring-emerald-100/50 border border-emerald-200/95"
+                        style={{ background: 'linear-gradient(165deg, #e8f6ed 0%, #dbece3 100%)' }}
                       >
-                        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] mb-2 text-emerald-900/50">Next step</p>
-                        <p className="text-[26px] min-[390px]:text-[30px] font-black leading-[1.18] tracking-tight antialiased" style={{ color: '#0a2e1a' }}>{result.nextStep}</p>
+                        <p className="mb-3 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
+                          Next step
+                        </p>
+                        <p
+                          className="text-[28px] min-[390px]:text-[33px] font-black leading-[1.12] tracking-[-0.02em] antialiased"
+                          style={{ color: '#0a2e1a' }}
+                        >
+                          {result.nextStep}
+                        </p>
                       </div>
 
                       <button
@@ -855,7 +898,7 @@ export default function Home() {
                           setShowCalendarToast(true)
                         }}
                         type="button"
-                        className="group mt-0 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl rounded-b-2xl py-[19px] min-[400px]:py-[21px] pl-5 pr-5 text-[16px] font-extrabold leading-none text-white antialiased shadow-[0_14px_44px_-10px_rgba(26,77,46,0.5),0_4px_14px_-4px_rgba(26,77,46,0.18),inset_0_1px_0_rgba(255,255,255,0.22)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_18px_48px_-10px_rgba(26,77,46,0.52),0_6px_16px_-4px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.26)] hover:brightness-[1.03] active:translate-y-px active:scale-[0.976] active:shadow-[0_6px_20px_-8px_rgba(26,77,46,0.32),inset_0_2px_5px_rgba(0,0,0,0.18)] active:brightness-[0.88] min-[400px]:text-[17px]"
+                        className="group mt-5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-2xl py-[18px] min-[400px]:py-5 pl-5 pr-5 text-[16px] font-extrabold leading-none text-white antialiased shadow-[0_14px_44px_-10px_rgba(26,77,46,0.5),0_4px_14px_-4px_rgba(26,77,46,0.18),inset_0_1px_0_rgba(255,255,255,0.22)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_18px_48px_-10px_rgba(26,77,46,0.52),0_6px_16px_-4px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.26)] hover:brightness-[1.03] active:translate-y-px active:scale-[0.976] active:shadow-[0_6px_20px_-8px_rgba(26,77,46,0.32),inset_0_2px_5px_rgba(0,0,0,0.18)] active:brightness-[0.88] min-[400px]:text-[17px]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-5 w-5 shrink-0 opacity-[0.98]" aria-hidden>
@@ -867,76 +910,111 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Context below fold — metadata de-prioritized */}
-                <div className="mt-2 space-y-2">
+                {/* 2 — Contact & company + chips */}
+                <div className="mt-10 space-y-10">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-lg border border-zinc-100/70 bg-zinc-50/35 px-2.5 py-1 opacity-[0.9]">
-                      <p className="text-[6.5px] font-semibold uppercase tracking-[0.2em] text-zinc-400/65 mb-0.5">Visit</p>
-                      <p className="truncate text-[9px] text-zinc-500/75">
-                        {result.contact || '—'}
-                        {result.customer ? <span className="text-zinc-400/75"> · {result.customer}</span> : null}
+                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-5 py-5 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                      <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                        Visit
                       </p>
-                      {(result.location || result.crop || result.product) && (
-                        <p className="mt-0.5 line-clamp-2 text-[8px] leading-relaxed text-zinc-400/65">
-                          {[result.location && `📍 ${result.location}`, result.crop && `🌱 ${result.crop}`, result.product && `🧪 ${result.product}`].filter(Boolean).join(' · ')}
+                      {result.contact ? (
+                        <p className="text-[17px] font-semibold leading-snug tracking-tight text-zinc-900">
+                          {result.contact}
                         </p>
+                      ) : (
+                        <p
+                          className={`text-[17px] font-semibold leading-snug tracking-tight ${result.customer ? 'text-zinc-900' : 'text-zinc-400'}`}
+                        >
+                          {result.customer || '—'}
+                        </p>
+                      )}
+                      {result.contact && result.customer ? (
+                        <p className="mt-2 text-[14px] font-medium leading-snug text-zinc-500">
+                          {result.customer}
+                        </p>
+                      ) : null}
+                      {(result.location || result.crop || result.product) && (
+                        <div className="mt-5 flex flex-wrap gap-2">
+                          {result.location ? (
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                              📍 {result.location}
+                            </span>
+                          ) : null}
+                          {result.crop ? (
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                              🌱 {result.crop}
+                            </span>
+                          ) : null}
+                          {result.product ? (
+                            <span className="inline-flex items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-3 py-1.5 text-[11px] font-medium text-zinc-600">
+                              🧪 {result.product}
+                            </span>
+                          ) : null}
+                        </div>
                       )}
                     </div>
                   )}
 
+                  {/* 3 — Summary */}
                   {result.summary && (
-                    <div className="rounded-lg border border-zinc-100/75 bg-zinc-50/45 px-2 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                      <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-zinc-400/72 mb-0.5">Summary</p>
-                      <p className="text-[10px] leading-snug text-zinc-500/78 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
+                    <div className="rounded-2xl border border-zinc-100/95 bg-zinc-50/40 px-5 py-5 shadow-[0_1px_3px_rgba(0,0,0,0.035)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400/90">
+                        Summary
+                      </p>
+                      <p className="text-[13px] leading-[1.65] text-zinc-600/88 line-clamp-6 sm:line-clamp-none">
+                        {result.summary}
+                      </p>
                     </div>
                   )}
-                </div>
 
-                {/* Secondary row — Copy CRM + Share + Correct */}
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
-                      className="flex h-[34px] flex-[1.12] items-center justify-center gap-1 rounded-[10px] border border-zinc-100/90 bg-zinc-50/90 text-[10px] font-normal text-zinc-400/95 transition-all hover:bg-zinc-100 hover:text-zinc-600 active:scale-[0.98]"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-45">
-                        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                      </svg>
-                      {copied ? 'Copied' : 'Copy CRM'}
-                    </button>
-                    <button
-                      onClick={() => result && handleShare(result)}
-                      className="flex h-[34px] w-[44px] shrink-0 items-center justify-center rounded-[10px] border border-zinc-100/90 bg-white text-zinc-400/95 transition-all hover:border-zinc-200 hover:bg-zinc-50/80 hover:text-zinc-500 active:scale-[0.98]"
-                      aria-label="Share"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-65">
-                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
-                      </svg>
-                    </button>
-                    {savedNotes.length > 0 && (
+                  {/* 4 — Secondary actions */}
+                  <div className="border-t border-zinc-100/90 pt-9">
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          const latest = savedNotes[0]
-                          if (isCorrectingRecording) stopCorrectionRecording()
-                          else startCorrectionRecording(latest.id, latest.transcript)
-                        }}
-                        className="flex h-[34px] w-[44px] shrink-0 items-center justify-center rounded-[10px] border border-amber-200/60 bg-amber-600/85 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_5px_rgba(217,119,6,0.18)]"
-                        aria-label="Correct"
+                        onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
+                        className="flex h-11 flex-[1.12] items-center justify-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white text-[12px] font-medium text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700 active:scale-[0.98]"
                       >
-                        {isCorrectingRecording ? (
-                          <span className="flex items-center gap-1 text-white">
-                            <span className="text-[10px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                          </span>
-                        ) : (
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        )}
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50">
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        {copied ? 'Copied' : 'Copy CRM'}
                       </button>
-                    )}
+                      <button
+                        onClick={() => result && handleShare(result)}
+                        className="flex h-11 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-600 active:scale-[0.98]"
+                        aria-label="Share"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60">
+                          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                        </svg>
+                      </button>
+                      {savedNotes.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const latest = savedNotes[0]
+                            if (isCorrectingRecording) stopCorrectionRecording()
+                            else startCorrectionRecording(latest.id, latest.transcript)
+                          }}
+                          className="flex h-11 w-12 shrink-0 items-center justify-center rounded-xl border border-amber-200/60 bg-amber-600/90 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_8px_rgba(217,119,6,0.2)]"
+                          aria-label="Correct"
+                        >
+                          {isCorrectingRecording ? (
+                            <span className="flex items-center gap-1 text-white">
+                              <span className="text-[10px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                            </span>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  <div className="min-h-[2rem]" aria-hidden />
                 </div>
               </div>
             )}

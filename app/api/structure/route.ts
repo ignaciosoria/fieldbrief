@@ -40,13 +40,23 @@ Fields:
 
 ---
 
+LANGUAGE RULE (STRICT):
+- Detect the language of the input note
+- ALL output fields MUST be in the SAME language as the input
+- NEVER mix languages
+- If the input is in Spanish, every field value must be in Spanish
+- If the input is in English, every field value must be in English
+- This applies to nextStep, summary, notes, crmText, crop, product, and location if generated from the note
+- Do not translate company names or product names, but keep surrounding wording in the correct language
+
+---
+
 RULES:
 
 - customer = grower using the product (never dealer)
 - dealer = distributor visited (empty if direct grower visit)
 - If missing → return ""
 - Do NOT invent info
-- Always respond in same language as input
 
 ---
 
@@ -62,15 +72,21 @@ NEXT STEP RULES:
 Format:
 ACTION + TARGET + (COMPANY)
 
-Examples:
+Examples (English input):
 - "Call Alfonso Paniagua (Laguna Farms)"
 - "Send pricing to Tyler (Coastal Growers)"
 - "Follow up with Laguna Farms"
+
+Examples (Spanish input):
+- "Llamar a Alfonso Paniagua (Laguna Farms)"
+- "Enviar precios a Tyler (Coastal Growers)"
+- "Hacer seguimiento con Laguna Farms"
 
 Rules:
 
 - Must be short and executable
 - Must start with strong verb
+- The action verb in nextStep MUST be in the same language as the input note
 - Never generic:
   - "call again"
   - "follow up later"
@@ -90,11 +106,11 @@ Examples:
 - "Send proposal"
 - "Follow up on pricing"
 
-Verb inference:
-- no answer → Call
-- waiting → Follow up
-- sending info → Send
-- meeting → Schedule
+Verb inference (use equivalents in the input language—never mix):
+- no answer → Call / Llamar
+- waiting → Follow up / Hacer seguimiento
+- sending info → Send / Enviar
+- meeting → Schedule / Agendar
 
 Date:
 - If explicit → include MM/DD/YYYY
@@ -108,7 +124,10 @@ CRM TEXT:
 - Natural, human, CRM-ready
 - No labels
 - Easy to scan
-- Example style:
+- crmText must be written fully in the same language as the input note
+- Never use English sentence structure for Spanish input
+- Never use Spanish verbs or phrasing for English input
+- Example style (English input):
 
 "Left a voicemail for Alfonso Paniagua (Laguna Farms). Following up to confirm he received Tyler’s pricing."
 
