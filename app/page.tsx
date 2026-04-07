@@ -50,6 +50,10 @@ export default function Home() {
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
   const [noteSaved, setNoteSaved] = useState(false)
+  const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
+  const [correctingSeconds, setCorrectingSeconds] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -98,6 +102,93 @@ export default function Home() {
     setSavedNotes(updated)
     try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
     if (selectedNote?.id === id) setSelectedNote(null)
+  }
+
+  const updateNote = (id: string, res: StructureResult, tx: string) => {
+    const updated = savedNotes.map((n) =>
+      n.id === id ? { ...n, result: res, transcript: tx } : n
+    )
+    setSavedNotes(updated)
+    try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
+    if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
+    if (result) setResult(res)
+  }
+
+  const buildShareText = (r: StructureResult) => {
+    const lines: string[] = ['📋 FieldBrief Note', '']
+    if (r.contact) lines.push(`👤 ${r.contact}${r.customer ? ` — ${r.customer}` : ''}`)
+    const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, r.product && `🧪 ${r.product}`].filter(Boolean)
+    if (pills.length) lines.push(pills.join('  '))
+    if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
+    if (r.nextStep) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(r.nextStep) }
+    if (r.crmText) { lines.push(''); lines.push('─────────────────'); lines.push(r.crmText) }
+    return lines.join('\n')
+  }
+
+  const handleShare = async (r: StructureResult) => {
+    const text = buildShareText(r)
+    if (navigator.share) {
+      try { await navigator.share({ text }) } catch {}
+    } else {
+      await navigator.clipboard.writeText(text)
+    }
+  }
+
+  const startCorrectionRecording = async (noteId: string, originalTranscript: string) => {
+    try {
+      setError('')
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Audio not supported.')
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = pickSupportedMimeType()
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setIsCorrectingRecording(false)
+        clearInterval(correctTimerRef.current!)
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        if (blob.size === 0) return
+        setLoading(true)
+        setLoadingStage('transcribing')
+        try {
+          const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
+          const file = new File([blob], `correction.${ext}`, { type: blob.type })
+          const fd = new FormData()
+          fd.append('file', file)
+          const txRes = await fetch('/api/transcribe', { method: 'POST', body: fd })
+          const txData = await txRes.json()
+          const correction = txData.transcript || txData.text || ''
+          setLoadingStage('structuring')
+          const combined = `ORIGINAL NOTE: ${originalTranscript}\n\nCORRECTION: ${correction}`
+          const strRes = await fetch('/api/structure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: combined }),
+          })
+          const strData = await strRes.json()
+          if (!strRes.ok) throw new Error(strData.error)
+          const final = { ...emptyResult, ...strData }
+          updateNote(noteId, final, combined)
+        } catch (err: any) {
+          setError(err?.message || 'Correction failed.')
+        } finally {
+          setLoading(false)
+          setLoadingStage(null)
+        }
+      }
+      setCorrectingSeconds(0)
+      correctTimerRef.current = setInterval(() => setCorrectingSeconds((s) => s + 1), 1000)
+      recorder.start()
+      setIsCorrectingRecording(true)
+    } catch (err: any) {
+      setError(err?.message || 'Could not start correction.')
+    }
+  }
+
+  const stopCorrectionRecording = () => {
+    // stored in ref via closure in startCorrectionRecording
+    setIsCorrectingRecording(false)
   }
 
   const activeResult = selectedNote?.result ?? result
@@ -511,15 +602,45 @@ export default function Home() {
                     {copied ? 'Copied!' : 'Copy for CRM'}
                   </button>
                   <button
-                    onClick={() => setActiveTab('history')}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-medium text-zinc-500 border border-zinc-200 bg-white shadow-sm transition-all active:scale-[0.98]"
+                    onClick={() => result && handleShare(result)}
+                    className="flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
                     </svg>
-                    History
                   </button>
                 </div>
+                {/* Correct button */}
+                {savedNotes.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const noteId = savedNotes[0].id
+                      const tx = savedNotes[0].transcript
+                      if (isCorrectingRecording) {
+                        stopCorrectionRecording()
+                      } else {
+                        startCorrectionRecording(noteId, tx)
+                      }
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white transition-all active:scale-[0.98]"
+                    style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
+                  >
+                    {isCorrectingRecording ? (
+                      <>
+                        <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                        Stop Correction
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Correct with voice
+                      </>
+                    )}
+                  </button>
+                )}
 
               </div>
             )}
@@ -609,16 +730,64 @@ export default function Home() {
                       {copied ? 'Copied!' : 'Copy for CRM'}
                     </button>
                     <button
+                      onClick={() => handleShare(selectedNote.result)}
+                      className="flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3.5 text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                      </svg>
+                    </button>
+                    <button
                       onClick={() => deleteNote(selectedNote.id)}
                       className="rounded-2xl border border-red-200 bg-red-50 px-4 text-[13px] text-red-500 transition-all hover:bg-red-100 active:scale-[0.98]"
                     >
                       Delete
                     </button>
                   </div>
+                  {/* Correct button in history */}
+                  <button
+                    onClick={() => {
+                      if (isCorrectingRecording) {
+                        stopCorrectionRecording()
+                      } else {
+                        startCorrectionRecording(selectedNote.id, selectedNote.transcript)
+                      }
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white transition-all active:scale-[0.98]"
+                    style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
+                  >
+                    {isCorrectingRecording ? (
+                      <>
+                        <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                        Stop Correction
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Correct with voice
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             ) : (
               <div>
+                {/* Search bar */}
+                <div className="relative mb-4">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search notes..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full rounded-2xl border border-zinc-200 bg-white py-3 pl-9 pr-4 text-[14px] text-zinc-700 outline-none shadow-sm placeholder:text-zinc-400"
+                  />
+                </div>
                 <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
                   {savedNotes.length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
                 </p>
@@ -634,7 +803,17 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {savedNotes.map((note) => (
+                    {savedNotes.filter((note) => {
+                      if (!searchQuery.trim()) return true
+                      const q = searchQuery.toLowerCase()
+                      return (
+                        note.result.contact?.toLowerCase().includes(q) ||
+                        note.result.customer?.toLowerCase().includes(q) ||
+                        note.result.product?.toLowerCase().includes(q) ||
+                        note.result.location?.toLowerCase().includes(q) ||
+                        note.result.nextStep?.toLowerCase().includes(q)
+                      )
+                    }).map((note) => (
                       <button
                         key={note.id}
                         onClick={() => setSelectedNote(note)}
