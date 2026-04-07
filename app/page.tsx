@@ -435,7 +435,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-9 pb-2 bg-white">
+      <header className="flex items-center justify-between px-5 pt-8 pb-2 bg-white">
         <button className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
@@ -472,33 +472,45 @@ export default function Home() {
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="relative flex flex-col" style={{minHeight: 'calc(100vh - 140px)'}}>
+          <div className="relative flex flex-col" style={{minHeight: 'calc(100vh - 132px)'}}>
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-6 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 opacity: result ? 0 : 1,
-                transform: result ? 'translateY(-20px)' : 'translateY(0)',
+                transform: result ? 'translateY(-16px)' : 'translateY(0)',
                 pointerEvents: result ? 'none' : 'auto',
               }}
             >
-              <p className="mb-4 max-w-[280px] text-center text-[13px] font-medium leading-snug text-zinc-500">
-                Tap and describe the visit — we will turn it into a follow-up you can run.
-              </p>
+              <div className="mb-5 max-w-[20rem] text-center">
+                <h2 className="text-xl font-semibold leading-tight tracking-tight text-zinc-800 sm:text-2xl">
+                  Speak your visit
+                </h2>
+                <p className="mt-2.5 text-sm leading-snug text-zinc-500/85 sm:text-[15px]">
+                  We&apos;ll turn it into a follow-up
+                </p>
+              </div>
               {/* Mic button */}
               <button
                 onClick={toggleRecording}
                 disabled={loading}
-                className="relative mb-4 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-300 active:scale-95 disabled:pointer-events-none"
+                className="relative z-[1] mb-3 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
                   boxShadow: isRecording
-                    ? '0 10px 40px rgba(220,38,38,0.38), 0 0 0 1px rgba(220,38,38,0.15)'
-                    : '0 10px 40px rgba(26,77,46,0.32), 0 0 0 1px rgba(26,77,46,0.12)',
+                    ? '0 12px 44px rgba(220,38,38,0.38), 0 4px 14px rgba(220,38,38,0.18), 0 0 0 1px rgba(220,38,38,0.12)'
+                    : '0 12px 44px rgba(26,77,46,0.34), 0 4px 16px rgba(26,77,46,0.16), 0 0 0 1px rgba(26,77,46,0.1)',
                   transform: isRecording ? 'scale(1.02)' : 'scale(1)',
                 }}
               >
+                {!isRecording && !loading && (
+                  <span
+                    className="pointer-events-none absolute inset-0 rounded-full"
+                    style={{ animation: 'mic-idle-glow 3s ease-in-out infinite' }}
+                    aria-hidden
+                  />
+                )}
                 {isRecording && (
                   <>
                     <span className="absolute -inset-1 rounded-full opacity-30" style={{ animation: 'mic-ring-pulse 2s ease-out infinite', boxShadow: '0 0 0 3px rgba(220,38,38,0.45)' }} />
@@ -517,7 +529,7 @@ export default function Home() {
               </button>
 
               {/* Timer / status */}
-              <div className="mb-3 min-h-[52px] flex flex-col items-center justify-center gap-1">
+              <div className="mb-2 min-h-[48px] flex flex-col items-center justify-center gap-1">
                 {isRecording ? (
                   <>
                     <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-red-500/90">Recording</span>
@@ -532,9 +544,7 @@ export default function Home() {
                   <span className="text-[14px] font-medium animate-pulse" style={{color: '#1a4d2e'}}>
                     {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
                   </span>
-                ) : (
-                  <span className="text-[13px] font-medium text-zinc-400">Tap the mic to speak your visit note</span>
-                )}
+                ) : null}
               </div>
 
               {/* Waveform */}
@@ -552,7 +562,7 @@ export default function Home() {
                   <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
-                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-medium text-emerald-900/75" style={{borderColor:'rgba(167,243,208,0.55)',backgroundColor:'rgba(236,253,245,0.65)',animation:'fadeIn 0.4s ease forwards'}}>
+                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium text-emerald-900/60" style={{borderColor:'rgba(167,243,208,0.4)',backgroundColor:'rgba(236,253,245,0.5)',animation:'fadeIn 0.4s ease forwards'}}>
                         {h.icon} {h.label}
                       </span>
                     ))}
@@ -562,10 +572,10 @@ export default function Home() {
 
               {/* Manual textarea */}
               {!isRecording && !loading && (
-                <div className="w-full px-1">
+                <div className="mt-1 w-full max-w-md px-1">
                   <textarea
-                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[80px] shadow-sm"
-                    placeholder="Or type a note..."
+                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200/80 bg-zinc-50/40 px-3.5 py-3 text-[13px] leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400/45 min-h-[68px] shadow-inner shadow-zinc-100/80"
+                    placeholder="Type instead…"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                   />
@@ -599,9 +609,14 @@ export default function Home() {
                 }}
               >
                 {/* Sticky stack: actions stay visible on small screens when scrolling context */}
-                <div className="sticky top-0 z-20 -mx-5 mb-0.5 border-b border-zinc-100/70 bg-white/92 px-5 pb-1.5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
-                  <div className="mb-1 flex justify-end">
-                    <button onClick={handleReset} className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 active:scale-95">
+                <div className="sticky top-0 z-20 -mx-5 mb-0 border-b border-zinc-100/70 bg-white/92 px-5 pb-1.5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
+                  <div className="mb-0.5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-zinc-200/90 bg-white py-1 pl-2 pr-2.5 text-[11px] font-semibold text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.97]"
+                    >
+                      <span className="text-[13px] font-semibold leading-none text-zinc-700" aria-hidden>+</span>
                       New
                     </button>
                   </div>
@@ -609,11 +624,11 @@ export default function Home() {
                   {result.nextStep && (
                     <>
                       <div
-                        className="rounded-t-[1.25rem] rounded-b-xl px-5 py-[18px] mb-0 shadow-[0_6px_32px_rgba(26,77,46,0.14),0_2px_8px_rgba(26,77,46,0.06),inset_0_1px_0_rgba(255,255,255,0.65)] border border-emerald-200"
-                        style={{ background: 'linear-gradient(165deg, #e8f6ee 0%, #dcefe4 100%)' }}
+                        className="rounded-t-[1.25rem] rounded-b-xl px-5 py-[17px] shadow-[0_8px_36px_rgba(26,77,46,0.16),0_2px_10px_rgba(26,77,46,0.08),inset_0_1px_0_rgba(255,255,255,0.7)] border border-emerald-200/95"
+                        style={{ background: 'linear-gradient(165deg, #e6f5ec 0%, #d9ede2 100%)' }}
                       >
-                        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] mb-2.5 text-emerald-900/55">Next step</p>
-                        <p className="text-[23px] min-[390px]:text-[26px] font-black leading-[1.2] tracking-tight antialiased" style={{ color: '#0f3d24' }}>{result.nextStep}</p>
+                        <p className="text-[8px] font-semibold uppercase tracking-[0.22em] mb-2 text-emerald-900/50">Next step</p>
+                        <p className="text-[26px] min-[390px]:text-[30px] font-black leading-[1.18] tracking-tight antialiased" style={{ color: '#0a2e1a' }}>{result.nextStep}</p>
                       </div>
 
                       <button
@@ -643,7 +658,7 @@ export default function Home() {
                           setLastCalendarUrl(url)
                           setCalendarSuccessTick((n) => n + 1)
                         }}
-                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl rounded-b-2xl py-[17px] min-[400px]:py-[19px] text-[16px] font-extrabold text-white antialiased shadow-[0_14px_40px_rgba(26,77,46,0.42),0_4px_12px_rgba(26,77,46,0.22),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-110 hover:shadow-[0_16px_44px_rgba(26,77,46,0.45)] active:scale-[0.98] active:brightness-95 min-[400px]:text-[17px]"
+                        className="mt-0 flex w-full items-center justify-center gap-2 rounded-xl rounded-b-2xl py-[19px] min-[400px]:py-[21px] text-[16px] font-extrabold text-white antialiased shadow-[0_16px_48px_rgba(26,77,46,0.48),0_6px_18px_rgba(26,77,46,0.28),0_1px_0_rgba(255,255,255,0.2)_inset] transition-all hover:brightness-110 hover:shadow-[0_18px_52px_rgba(26,77,46,0.5)] active:scale-[0.97] active:brightness-95 min-[400px]:text-[17px]"
                         style={{ backgroundColor: '#1a4d2e' }}
                       >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-[0.97] shrink-0">
@@ -654,7 +669,9 @@ export default function Home() {
 
                       {(lastCalendarUrl || calendarSuccessTick > 0) && (
                         <div
-                          className="mt-2 overflow-hidden rounded-xl border border-emerald-200/65 bg-emerald-50/95 px-3.5 py-2.5 ring-1 ring-emerald-100/80"
+                          role="status"
+                          aria-live="polite"
+                          className="mt-2 overflow-hidden rounded-xl border border-emerald-200/55 bg-emerald-50/98 px-3.5 py-2.5 ring-1 ring-emerald-100/70"
                           style={calendarSuccessTick > 0 ? { animation: 'calendarSuccessIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards' } : undefined}
                         >
                           <div className="flex items-center gap-2.5 text-[13px] font-semibold text-emerald-950">
@@ -666,14 +683,17 @@ export default function Home() {
                                 <path d="M20 6L9 17l-5-5"/>
                               </svg>
                             </span>
-                            <span>Event created</span>
+                            <div className="flex flex-col gap-0.5">
+                              <span style={calendarSuccessTick > 0 ? { animation: 'successTextFade 0.6s ease-out' } : undefined}>Event created</span>
+                              <span className="text-[11px] font-medium text-emerald-800/75">You&apos;re all set</span>
+                            </div>
                           </div>
                           {lastCalendarUrl ? (
                             <a
                               href={lastCalendarUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-2 inline-flex items-center gap-1 rounded-lg text-[12px] font-semibold text-emerald-900 underline decoration-emerald-400/70 underline-offset-[3px] transition-opacity hover:opacity-80 active:opacity-70"
+                              className="mt-2 inline-flex items-center gap-1 rounded-lg text-[12px] font-semibold text-emerald-900 underline decoration-emerald-400/60 underline-offset-[3px] transition-opacity hover:opacity-85 active:opacity-70"
                             >
                               View in Calendar
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -688,16 +708,16 @@ export default function Home() {
                 </div>
 
                 {/* Context below fold — metadata de-prioritized */}
-                <div className="mt-2.5 space-y-2.5">
+                <div className="mt-2 space-y-2">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-lg border border-zinc-100/80 bg-zinc-50/40 px-2.5 py-1.5 opacity-[0.94]">
-                      <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-zinc-400/75 mb-0.5">Visit</p>
-                      <p className="truncate text-[10px] text-zinc-500/90">
+                    <div className="rounded-lg border border-zinc-100/70 bg-zinc-50/35 px-2.5 py-1 opacity-[0.9]">
+                      <p className="text-[6.5px] font-semibold uppercase tracking-[0.2em] text-zinc-400/65 mb-0.5">Visit</p>
+                      <p className="truncate text-[9px] text-zinc-500/75">
                         {result.contact || '—'}
-                        {result.customer ? <span className="text-zinc-400/85"> · {result.customer}</span> : null}
+                        {result.customer ? <span className="text-zinc-400/75"> · {result.customer}</span> : null}
                       </p>
                       {(result.location || result.crop || result.product) && (
-                        <p className="mt-0.5 line-clamp-2 text-[9px] leading-relaxed text-zinc-400/75">
+                        <p className="mt-0.5 line-clamp-2 text-[8px] leading-relaxed text-zinc-400/65">
                           {[result.location && `📍 ${result.location}`, result.crop && `🌱 ${result.crop}`, result.product && `🧪 ${result.product}`].filter(Boolean).join(' · ')}
                         </p>
                       )}
@@ -705,31 +725,31 @@ export default function Home() {
                   )}
 
                   {result.summary && (
-                    <div className="rounded-lg border border-zinc-100/80 bg-zinc-50/55 px-2.5 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                      <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-zinc-400/80 mb-0.5">Summary</p>
-                      <p className="text-[11px] leading-snug text-zinc-500/88 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
+                    <div className="rounded-lg border border-zinc-100/75 bg-zinc-50/45 px-2 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+                      <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-zinc-400/72 mb-0.5">Summary</p>
+                      <p className="text-[10px] leading-snug text-zinc-500/78 line-clamp-6 sm:line-clamp-none">{result.summary}</p>
                     </div>
                   )}
                 </div>
 
                 {/* Secondary row — Copy CRM + Share + Correct */}
-                <div className="mt-3.5 space-y-2">
+                <div className="mt-3 space-y-2">
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
-                      className="flex h-[38px] flex-[1.12] items-center justify-center gap-1 rounded-[11px] border border-zinc-100/90 bg-zinc-50 text-[11px] font-normal text-zinc-400 transition-all hover:bg-zinc-100/90 hover:text-zinc-600 active:scale-[0.98]"
+                      className="flex h-[34px] flex-[1.12] items-center justify-center gap-1 rounded-[10px] border border-zinc-100/90 bg-zinc-50/90 text-[10px] font-normal text-zinc-400/95 transition-all hover:bg-zinc-100 hover:text-zinc-600 active:scale-[0.98]"
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-55">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-45">
                         <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                       </svg>
                       {copied ? 'Copied' : 'Copy CRM'}
                     </button>
                     <button
                       onClick={() => result && handleShare(result)}
-                      className="flex h-[38px] w-[46px] shrink-0 items-center justify-center rounded-[11px] border border-zinc-100/90 bg-white text-zinc-400 transition-all hover:border-zinc-200 hover:bg-zinc-50/80 hover:text-zinc-500 active:scale-[0.98]"
+                      className="flex h-[34px] w-[44px] shrink-0 items-center justify-center rounded-[10px] border border-zinc-100/90 bg-white text-zinc-400/95 transition-all hover:border-zinc-200 hover:bg-zinc-50/80 hover:text-zinc-500 active:scale-[0.98]"
                       aria-label="Share"
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-75">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-65">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
                       </svg>
                     </button>
@@ -740,7 +760,7 @@ export default function Home() {
                           if (isCorrectingRecording) stopCorrectionRecording()
                           else startCorrectionRecording(latest.id, latest.transcript)
                         }}
-                        className="flex h-[38px] w-[46px] shrink-0 items-center justify-center rounded-[11px] border border-amber-200/70 bg-amber-600/88 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_6px_rgba(217,119,6,0.2)]"
+                        className="flex h-[34px] w-[44px] shrink-0 items-center justify-center rounded-[10px] border border-amber-200/60 bg-amber-600/85 text-white transition-all hover:bg-amber-600 active:scale-[0.98] active:bg-amber-700 shadow-[0_2px_5px_rgba(217,119,6,0.18)]"
                         aria-label="Correct"
                       >
                         {isCorrectingRecording ? (
@@ -1068,6 +1088,14 @@ export default function Home() {
         @keyframes recording-timer-breathe {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.03); }
+        }
+        @keyframes mic-idle-glow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(26, 77, 46, 0); opacity: 1; }
+          50% { box-shadow: 0 0 28px 4px rgba(26, 77, 46, 0.14); opacity: 1; }
+        }
+        @keyframes successTextFade {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
