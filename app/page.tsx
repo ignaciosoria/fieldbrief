@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from "@/lib/supabase"
+import { supabase } from '../lib/supabase'
 
 type StructureResult = {
   customer: string
@@ -12,7 +12,6 @@ type StructureResult = {
   crop: string
   product: string
   location: string
-  dealer: string
   crmText: string
 }
 
@@ -25,7 +24,6 @@ const emptyResult: StructureResult = {
   crop: '',
   product: '',
   location: '',
-  dealer: '',
   crmText: '',
 }
 
@@ -466,311 +464,239 @@ export default function Home() {
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
-          <div className="flex flex-col items-center justify-center min-h-[75vh]">
+          <div className="relative flex flex-col" style={{minHeight: 'calc(100vh - 140px)'}}>
 
-            {/* Mic button — animated states */}
-            <button
-              onClick={toggleRecording}
-              disabled={loading}
-              className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-500 active:scale-95 disabled:pointer-events-none"
+            {/* SCREEN 1 — Record (hidden when result exists) */}
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-500"
               style={{
-                backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
-                boxShadow: isRecording
-                  ? '0 8px 32px rgba(220,38,38,0.3)'
-                  : '0 8px 32px rgba(26,77,46,0.3)',
+                opacity: result ? 0 : 1,
+                transform: result ? 'translateY(-30px) scale(0.97)' : 'translateY(0) scale(1)',
+                pointerEvents: result ? 'none' : 'auto',
               }}
             >
-              {isRecording && (
-                <span className="absolute inset-0 animate-ping rounded-full opacity-20" style={{backgroundColor: '#dc2626'}} />
-              )}
-              {loading && (
-                <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
-              )}
-              {loading ? null : result && !isRecording ? (
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5"/>
-                </svg>
-              ) : (
-                <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
-                  <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
-                </svg>
-              )}
-            </button>
+              {/* Mic button */}
+              <button
+                onClick={toggleRecording}
+                disabled={loading}
+                className="relative mb-5 flex h-36 w-36 items-center justify-center rounded-full transition-all duration-500 active:scale-95 disabled:pointer-events-none"
+                style={{
+                  backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
+                  boxShadow: isRecording
+                    ? '0 8px 32px rgba(220,38,38,0.3)'
+                    : '0 8px 32px rgba(26,77,46,0.3)',
+                }}
+              >
+                {isRecording && (
+                  <span className="absolute inset-0 animate-ping rounded-full opacity-20" style={{backgroundColor: '#dc2626'}} />
+                )}
+                {loading && (
+                  <span className="absolute inset-0 rounded-full" style={{border: '4px solid rgba(255,255,255,0.2)', borderTopColor: 'white', animation: 'spin 1s linear infinite'}} />
+                )}
+                {loading ? null : (
+                  <svg width="46" height="46" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                    <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
+                  </svg>
+                )}
+              </button>
 
-            {/* Timer / status */}
-            <div className="mb-4 h-12 flex items-center justify-center">
-              {isRecording ? (
-                <span className="text-[48px] font-bold tabular-nums tracking-tight text-zinc-900 leading-none">
-                  {formatSeconds(recordingSeconds)}
-                </span>
-              ) : loading ? (
-                <span className="text-[14px] font-medium" style={{color: '#1a4d2e'}}>
-                  {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
-                </span>
-              ) : result ? (
-                <span className="text-[14px] font-medium" style={{color: '#1a4d2e'}}>Tap to record again</span>
-              ) : (
-                <span className="text-[14px] text-zinc-400">Tap to record</span>
-              )}
-            </div>
-
-            {/* Waveform — only while recording */}
-            {isRecording ? (
-              <div className="mb-4 flex h-7 items-end justify-center gap-[3px]">
-                {Array.from({ length: 22 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className="w-[3px] rounded-full"
-                    style={{
-                      backgroundColor: '#1a4d2e',
-                      animation: `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`,
-                    }}
-                  />
-                ))}
+              {/* Timer / status */}
+              <div className="mb-4 h-12 flex items-center justify-center">
+                {isRecording ? (
+                  <span className="text-[48px] font-bold tabular-nums tracking-tight text-zinc-900 leading-none">
+                    {formatSeconds(recordingSeconds)}
+                  </span>
+                ) : loading ? (
+                  <span className="text-[14px] font-medium animate-pulse" style={{color: '#1a4d2e'}}>
+                    {loadingStage === 'transcribing' ? 'Transcribing...' : 'Structuring...'}
+                  </span>
+                ) : (
+                  <span className="text-[14px] text-zinc-400">Tap to record</span>
+                )}
               </div>
-            ) : (
-              <div className="mb-3" />
-            )}
 
-            {/* Recording hints — shown while recording */}
-            {isRecording && (
-              <div className="mb-4 w-full">
-                <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {[
-                    { icon: '🏢', label: 'Company' },
-                    { icon: '👤', label: 'Contact' },
-                    { icon: '🌱', label: 'Crop' },
-                    { icon: '🧪', label: 'Product' },
-                    { icon: '📍', label: 'Location' },
-                    { icon: '📅', label: 'Next step' },
-                  ].map((hint) => (
-                    <span
-                      key={hint.label}
-                      className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                      style={{
-                        borderColor: '#c8e6d0',
-                        backgroundColor: '#f0f7f2',
-                        color: '#1a4d2e',
-                        animation: 'fadeIn 0.4s ease forwards',
-                      }}
-                    >
-                      {hint.icon} {hint.label}
-                    </span>
+              {/* Waveform */}
+              {isRecording && (
+                <div className="mb-4 flex h-7 items-end justify-center gap-[3px]">
+                  {Array.from({ length: 22 }).map((_, i) => (
+                    <span key={i} className="w-[3px] rounded-full" style={{backgroundColor: '#1a4d2e', animation: `pulse-bar ${0.5 + (i % 5) * 0.1}s ease-in-out ${i * 0.04}s infinite alternate`}} />
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Textarea — hidden when result exists unless edit mode */}
-            {(!result || showEditArea) && (
-              <>
-                <textarea
-                  className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[90px] shadow-sm"
-                  style={{'--tw-ring-color': '#1a4d2e'} as any}
-                  placeholder="Add details manually..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-                {transcript && (
-                  <p className="mb-3 w-full text-[12px]" style={{color: '#1a4d2e'}}>✓ Transcript loaded</p>
-                )}
-              </>
-            )}
-
-            {/* Buttons */}
-            <div className="mb-4 flex w-full gap-2">
-              <button
-                onClick={processTypedNote}
-                disabled={loading || !input.trim()}
-                className="flex-1 rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98] disabled:pointer-events-none"
-                style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)', opacity: (loading || !input.trim()) ? 0.45 : 1}}
-              >
-                {loading ? 'Processing...' : 'Process Note'}
-              </button>
-              {result && savedNotes.length > 0 && (
-                <button
-                  onClick={() => {
-                    const latest = savedNotes[0]
-                    if (isCorrectingRecording) {
-                      stopCorrectionRecording()
-                    } else {
-                      startCorrectionRecording(latest.id, latest.transcript)
-                    }
-                  }}
-                  disabled={loading}
-                  className="rounded-2xl px-4 text-[13px] font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40"
-                  style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
-                >
-                  {isCorrectingRecording ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-[11px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      </svg>
-                    </span>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  )}
-                </button>
               )}
-              {(input || result) && (
-                <button
-                  onClick={handleReset}
-                  className="rounded-2xl border border-zinc-200 bg-white px-4 text-[13px] text-zinc-400 transition-all hover:text-zinc-600 shadow-sm"
-                >
-                  Clear
-                </button>
+
+              {/* Recording hints */}
+              {isRecording && (
+                <div className="mb-4 w-full px-2">
+                  <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">Mention in your note</p>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
+                      <span key={h.label} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{borderColor:'#c8e6d0',backgroundColor:'#f0f7f2',color:'#1a4d2e',animation:'fadeIn 0.4s ease forwards'}}>
+                        {h.icon} {h.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual textarea */}
+              {!isRecording && !loading && (
+                <div className="w-full px-1">
+                  <textarea
+                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 text-[14px] leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300 min-h-[80px] shadow-sm"
+                    placeholder="Or type a note..."
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                  />
+                  {input.trim() && (
+                    <button
+                      onClick={processTypedNote}
+                      disabled={loading}
+                      className="w-full rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98]"
+                      style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)'}}
+                    >
+                      Process Note
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-600">
+                  {error}
+                </div>
               )}
             </div>
 
-            {/* Error */}
-            {error && (
-              <div className="mb-4 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-600">
-                {error}
-              </div>
-            )}
-
-            {/* ── OUTPUT ── */}
+            {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
-              <div className="w-full space-y-3">
-
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Analysis result</p>
-
-                {/* Contact card */}
-                <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
-                  <div className="flex items-center gap-3.5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[13px] font-bold text-zinc-700">
-                      {result.contact ? getInitials(result.contact) : result.customer ? getInitials(result.customer) : 'NA'}
-                    </div>
+              <div
+                className="flex flex-col justify-between px-1 pt-4 pb-2"
+                style={{
+                  animation: 'slideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                  minHeight: 'calc(100vh - 140px)',
+                }}
+              >
+                {/* Top — contact + pills */}
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <p className="text-[20px] font-bold text-zinc-900 leading-tight">{result.contact || '—'}</p>
-                      {result.customer && (
-                        <p className="text-[13px] text-zinc-400 mt-0.5">{result.customer}</p>
-                      )}
+                      <p className="text-[13px] font-semibold text-zinc-900">
+                        {result.contact || '—'}
+                        {result.customer ? <span className="font-normal text-zinc-400"> · {result.customer}</span> : null}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {result.location && <span className="text-[11px] text-zinc-400">📍 {result.location}</span>}
+                        {result.crop && <span className="text-[11px] text-zinc-400">🌱 {result.crop}</span>}
+                        {result.product && <span className="text-[11px] text-zinc-400">🧪 {result.product}</span>}
+                      </div>
                     </div>
+                    <button onClick={handleReset} className="text-[12px] text-zinc-400 hover:text-zinc-600 px-2 py-1">
+                      ✕ New
+                    </button>
                   </div>
+
+                  {/* Next step — HERO */}
+                  {result.nextStep && (
+                    <div className="rounded-3xl px-5 py-5 mb-3" style={{backgroundColor: '#f0f7f2', border: '1.5px solid #c8e6d0'}}>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] mb-2" style={{color: '#1a4d2e'}}>⚡ Next step</p>
+                      <p className="text-[22px] font-bold leading-tight" style={{color: '#1a4d2e'}}>{result.nextStep}</p>
+                    </div>
+                  )}
+
+                  {/* Summary — secondary */}
+                  {result.summary && (
+                    <div className="rounded-2xl bg-zinc-50 border border-zinc-100 px-4 py-3 mb-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400 mb-1">Summary</p>
+                      <p className="text-[13px] leading-relaxed text-zinc-600">{result.summary}</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Pills */}
-                {(result.location || result.crop || result.product) && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.location && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                        📍 {result.location}
-                      </span>
-                    )}
-                    {result.crop && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                        🌱 {result.crop}
-                      </span>
-                    )}
-                    {result.product && (
-                      <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                        🧪 {result.product}
-                      </span>
-                    )}
-                  </div>
-                )}
+                {/* Bottom — action buttons */}
+                <div className="space-y-2.5 pt-2">
+                  {/* Add to Calendar — MAIN CTA */}
+                  {result.nextStep && (
+                    <button
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(10)
+                        const text = result.nextStep
+                        const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
+                        let startDate = ''
+                        if (dateMatch) {
+                          const [m, d, y] = dateMatch[0].split('/')
+                          startDate = `${y}${m}${d}T090000`
+                        } else {
+                          const now = new Date()
+                          startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
+                        }
+                        const endDate = startDate.replace('T090000', 'T093000')
+                        const cleanTitle = text.replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '').replace(/\s+/g, ' ').trim()
+                        const title = encodeURIComponent(cleanTitle)
+                        const descLines = []
+                        if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
+                        const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
+                        if (pills.length) descLines.push(pills.join('  '))
+                        if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
+                        const details = encodeURIComponent(descLines.join('\n'))
+                        const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
+                        window.open(url, '_blank')
+                      }}
+                      className="flex w-full items-center justify-center gap-2.5 rounded-2xl py-4 text-[16px] font-bold text-white transition-all active:scale-[0.98]"
+                      style={{backgroundColor: '#1a4d2e', boxShadow: '0 6px 24px rgba(26,77,46,0.3)'}}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                      </svg>
+                      Add to Calendar
+                    </button>
+                  )}
 
-                {/* Summary */}
-                {result.summary && (
-                  <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Summary</p>
-                    <p className="text-[13px] leading-relaxed text-zinc-600">{result.summary}</p>
-                  </div>
-                )}
-
-                {/* Next Step */}
-                {result.nextStep && (
-                  <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                        </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
-                      </div>
+                  {/* Secondary row — Copy CRM + Correct + Share */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { if (navigator.vibrate) navigator.vibrate(5); handleCopy() }}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white py-3 text-[13px] font-medium text-zinc-600 shadow-sm transition-all active:scale-[0.98]"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                      {copied ? 'Copied!' : 'Copy CRM'}
+                    </button>
+                    <button
+                      onClick={() => result && handleShare(result)}
+                      className="flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                      </svg>
+                    </button>
+                    {savedNotes.length > 0 && (
                       <button
                         onClick={() => {
-                          const text = result.nextStep
-                          const dateMatch = text.match(/\d{2}\/\d{2}\/\d{4}/)
-                          let startDate = ''
-                          if (dateMatch) {
-                            const [m, d, y] = dateMatch[0].split('/')
-                            startDate = `${y}${m}${d}T090000`
-                          } else {
-                            const now = new Date()
-                            startDate = now.toISOString().replace(/[-:]/g, '').split('.')[0]
-                          }
-                          const endDate = startDate.replace('T090000', 'T093000')
-                          const cleanTitle = text
-                            .replace(/\s*(el|on|para el)\s+\d{2}\/\d{2}\/\d{4}.*/i, '')
-                            .replace(/\s+/g, ' ')
-                            .trim()
-                          const title = encodeURIComponent(cleanTitle)
-                          const descLines = []
-                          if (result.contact) descLines.push(`👤 ${result.contact}${result.customer ? ' — ' + result.customer : ''}`)
-                          const pills = [result.location && '📍 ' + result.location, result.crop && '🌱 ' + result.crop, result.product && '🧪 ' + result.product].filter(Boolean)
-                          if (pills.length) descLines.push(pills.join('  '))
-                          if (result.crmText) { descLines.push(''); descLines.push(result.crmText) }
-                          const details = encodeURIComponent(descLines.join('\n'))
-                          const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`
-                          window.open(url, '_blank')
+                          const latest = savedNotes[0]
+                          if (isCorrectingRecording) stopCorrectionRecording()
+                          else startCorrectionRecording(latest.id, latest.transcript)
                         }}
-                        className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all active:scale-95"
-                        style={{backgroundColor: '#1a4d2e', color: 'white'}}
+                        className="flex items-center justify-center rounded-2xl px-3.5 py-3 text-white shadow-sm transition-all active:scale-[0.98]"
+                        style={{backgroundColor: isCorrectingRecording ? '#dc2626' : '#d97706'}}
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        Add to Calendar
+                        {isCorrectingRecording ? (
+                          <span className="flex items-center gap-1">
+                            <span className="text-[10px] tabular-nums">{String(Math.floor(correctingSeconds/60)).padStart(2,'0')}:{String(correctingSeconds%60).padStart(2,'0')}</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                          </span>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        )}
                       </button>
-                    </div>
-                    <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>{result.nextStep}</p>
+                    )}
                   </div>
-                )}
-
-                {/* Buttons */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={handleCopy}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13px] font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
-                    style={{backgroundColor: '#2d6a4f'}}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    {copied ? 'Copied!' : 'Copy for CRM'}
-                  </button>
-                  <button
-                    onClick={() => result && handleShare(result)}
-                    className="flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
-                    </svg>
-                  </button>
                 </div>
-
-                {/* Edit note toggle */}
-                <button
-                  onClick={() => setShowEditArea((v) => !v)}
-                  className="flex w-full items-center justify-center gap-1.5 py-2 text-[12px] font-medium text-zinc-400 transition-all hover:text-zinc-600"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                  {showEditArea ? 'Hide editor' : 'Edit note manually'}
-                </button>
-
-
               </div>
             )}
           </div>
@@ -1056,6 +982,10 @@ export default function Home() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(40px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(4px); }
