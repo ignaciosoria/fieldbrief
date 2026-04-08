@@ -886,8 +886,16 @@ Contact: ${result.contact || ''}
   return data.nextStep || result.nextStep || ''
 }
 
+/** Google email when present; `anonymous` fallback so Supabase insert still runs before session hydrates. */
+function resolveSupabaseUserId(session: { user?: { email?: string | null } } | null): string {
+  const email = session?.user?.email?.trim()
+  return email || 'anonymous'
+}
+
 export default function Home() {
   const { data: session, status } = useSession()
+  const supabaseUserId = resolveSupabaseUserId(session)
+  const notesStorageKey = `fieldbrief-notes:${supabaseUserId}`
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('record')
   const [input, setInput] = useState('')
@@ -945,11 +953,15 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
     const loadNotes = async () => {
       try {
         const { data, error } = await supabase
           .from('notes')
           .select('*')
+          .eq('user_id', supabaseUserId)
           .order('date', { ascending: false })
         if (!error && data && data.length > 0) {
           const mapped: SavedNote[] = data.map((n: any) => ({
@@ -974,13 +986,12 @@ export default function Home() {
             }),
           }))
           setSavedNotes(mapped)
-          try { localStorage.setItem('fieldbrief-notes', JSON.stringify(mapped)) } catch {}
+          try { localStorage.setItem(notesStorageKey, JSON.stringify(mapped)) } catch {}
           return
         }
       } catch {}
-      // Fallback to localStorage
       try {
-        const stored = localStorage.getItem('fieldbrief-notes')
+        const stored = localStorage.getItem(notesStorageKey)
         if (stored) {
           const parsed = JSON.parse(stored) as SavedNote[]
           setSavedNotes(
@@ -993,11 +1004,15 @@ export default function Home() {
               }),
             })),
           )
+        } else {
+          setSavedNotes([])
         }
-      } catch {}
+      } catch {
+        setSavedNotes([])
+      }
     }
     loadNotes()
-  }, [])
+  }, [supabaseUserId])
 
   useEffect(() => {
     if (!copied) return
@@ -1054,25 +1069,32 @@ export default function Home() {
     setSavedNotes(updated)
     setNoteSaved(true)
     setTimeout(() => setNoteSaved(false), 2300)
-    try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
+    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
+    const rowUserId = resolveSupabaseUserId(session)
+    const insertPayload = {
+      id: note.id,
+      date: note.date,
+      transcript: tx,
+      user_id: rowUserId,
+      contact: res.contact,
+      contact_company: res.contactCompany,
+      customer: res.customer,
+      summary: res.summary,
+      next_step: res.nextStep,
+      notes: res.notes,
+      crop: res.crop,
+      product: res.product,
+      location: res.location,
+      crm_text: res.crmText,
+      crm_full: res.crmFull,
+    }
+    console.log('[saveNote] Supabase insert starting', { user_id: rowUserId, noteId: note.id })
     try {
-      await supabase.from('notes').insert({
-        id: note.id,
-        date: note.date,
-        transcript: tx,
-        contact: res.contact,
-        contact_company: res.contactCompany,
-        customer: res.customer,
-        summary: res.summary,
-        next_step: res.nextStep,
-        notes: res.notes,
-        crop: res.crop,
-        product: res.product,
-        location: res.location,
-        crm_text: res.crmText,
-        crm_full: res.crmFull,
-      })
-    } catch {}
+      const { data, error } = await supabase.from('notes').insert(insertPayload).select()
+      console.log('[saveNote] Supabase insert finished', { error, data })
+    } catch (err) {
+      console.log('[saveNote] Supabase insert threw', err)
+    }
   }
 
   const commitPendingDatePick = (mmdd: string) => {
@@ -1200,9 +1222,15 @@ export default function Home() {
   const deleteNote = async (id: string) => {
     const updated = savedNotes.filter((n) => n.id !== id)
     setSavedNotes(updated)
-    try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
+    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
     if (selectedNote?.id === id) setSelectedNote(null)
-    try { await supabase.from('notes').delete().eq('id', id) } catch {}
+    try {
+      await supabase
+        .from('notes')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', supabaseUserId)
+    } catch {}
   }
 
   const updateNote = async (id: string, res: StructureResult, tx: string) => {
@@ -1210,24 +1238,28 @@ export default function Home() {
       n.id === id ? { ...n, result: res, transcript: tx } : n
     )
     setSavedNotes(updated)
-    try { localStorage.setItem('fieldbrief-notes', JSON.stringify(updated)) } catch {}
+    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
     if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
     if (result) setResult(res)
     try {
-      await supabase.from('notes').update({
-        transcript: tx,
-        contact: res.contact,
-        contact_company: res.contactCompany,
-        customer: res.customer,
-        summary: res.summary,
-        next_step: res.nextStep,
-        notes: res.notes,
-        crop: res.crop,
-        product: res.product,
-        location: res.location,
-        crm_text: res.crmText,
-        crm_full: res.crmFull,
-      }).eq('id', id)
+      await supabase
+        .from('notes')
+        .update({
+          transcript: tx,
+          contact: res.contact,
+          contact_company: res.contactCompany,
+          customer: res.customer,
+          summary: res.summary,
+          next_step: res.nextStep,
+          notes: res.notes,
+          crop: res.crop,
+          product: res.product,
+          location: res.location,
+          crm_text: res.crmText,
+          crm_full: res.crmFull,
+        })
+        .eq('id', id)
+        .eq('user_id', supabaseUserId)
     } catch {}
   }
 
@@ -2943,11 +2975,13 @@ export default function Home() {
             </div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Data</p>
             <button
-              onClick={() => {
-                if (confirm('Delete all saved notes?')) {
-                  setSavedNotes([])
-                  localStorage.removeItem('fieldbrief-notes')
-                }
+              onClick={async () => {
+                if (!confirm('Delete all saved notes?')) return
+                setSavedNotes([])
+                try { localStorage.removeItem(notesStorageKey) } catch {}
+                try {
+                  await supabase.from('notes').delete().eq('user_id', supabaseUserId)
+                } catch {}
               }}
               className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-500 transition-all hover:bg-red-100"
             >
