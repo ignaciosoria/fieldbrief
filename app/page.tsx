@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { signIn, signOut, useSession } from 'next-auth/react'
 import { supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
+import { sanitizeProductField } from '../lib/productField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -111,12 +113,14 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   const customer = dedupeConsecutiveRepeatedWords(base.customer)
   const contact = dedupeConsecutiveRepeatedWords(base.contact)
   const nextStepTarget = dedupeConsecutiveRepeatedWords(base.nextStepTarget)
+  const product = sanitizeProductField(dedupeConsecutiveRepeatedWords(base.product))
   return {
     ...base,
     dealer,
     customer,
     contact,
     nextStepTarget,
+    product,
     crmFull: filterCrmFullDealerWhenNoDealer(base.crmFull, dealer),
     nextStepTitle: dedupeConsecutiveRepeatedWords(base.nextStepTitle),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
@@ -385,6 +389,80 @@ function needsContactPick(r: StructureResult): boolean {
 
 function needsContactCompanyPick(r: StructureResult): boolean {
   return !(r.contactCompany || '').trim()
+}
+
+/** Calendar-style actions that make a next step concrete enough (no clarify sheet). */
+function hasClarifyStrongActionVerb(line: string): boolean {
+  const t = line.toLowerCase()
+  return /\b(llamar|llama|enviar|envía|envia|visitar|visita|mandar|manda|call|calling|send|sending|visit|visiting|ship|mail)\b/i.test(
+    t,
+  )
+}
+
+/** Vague follow-up wording that needs an explicit action if no strong verb is present. */
+function hasVagueNextStepWording(line: string): boolean {
+  const t = line.toLowerCase()
+  if (/\b(seguimiento|follow\s*-?\s*up|followup)\b/i.test(t)) return true
+  if (/\brevis(ar|ión)\b/i.test(t)) return true
+  if (/\b(check\s*back|touch\s*base)\b/i.test(t)) return true
+  if (/\bver\b/i.test(t)) return true
+  if (/\besperar\b/i.test(t)) return true
+  if (/\bwait\b/i.test(t)) return true
+  if (/a\s+que\s+me\s+llame\b/i.test(t)) return true
+  if (/que\s+me\s+contacte\b/i.test(t)) return true
+  if (/que\s+me\s+llame\b/i.test(t)) return true
+  return false
+}
+
+function needsNextStepClarifyPick(r: StructureResult): boolean {
+  const line = (r.nextStep || r.nextStepTitle || '').trim()
+  if (!line) return false
+  if (hasClarifyStrongActionVerb(line)) return false
+  return hasVagueNextStepWording(line)
+}
+
+function applyQuickNextStepClarify(
+  r: StructureResult,
+  transcript: string,
+  kind: 'call' | 'send' | 'visit' | 'samples',
+): StructureResult {
+  const spanish = isSpanish(transcript) || isSpanish(r.nextStep || r.nextStepTitle || '')
+  const verbs: Record<typeof kind, { es: string; en: string }> = {
+    call: { es: 'Llamar', en: 'Call' },
+    send: { es: 'Enviar información', en: 'Send info' },
+    visit: { es: 'Visitar', en: 'Visit' },
+    samples: { es: 'Mandar muestras', en: 'Send samples' },
+  }
+  const { es, en } = verbs[kind]
+  const action = spanish ? es : en
+  let merged: StructureResult = {
+    ...r,
+    nextStepAction: action,
+    nextStep: action,
+  }
+  merged = normalizeStructureResult(merged)
+  merged = finalizeNextStepFields(merged, transcript)
+  return {
+    ...merged,
+    nextStep: (merged.nextStepTitle || merged.nextStep).trim(),
+  }
+}
+
+function applyCustomNextStepClarify(
+  r: StructureResult,
+  transcript: string,
+  customLine: string,
+): StructureResult {
+  const line = dedupeConsecutiveRepeatedWords(customLine.trim())
+  let merged: StructureResult = {
+    ...r,
+    nextStep: line,
+    nextStepTitle: line,
+    nextStepAction: '',
+  }
+  merged = normalizeStructureResult(merged)
+  merged = finalizeNextStepFields(merged, transcript)
+  return merged
 }
 
 function formatLocalMmDdYyyy(d: Date): string {
@@ -809,6 +887,7 @@ Contact: ${result.contact || ''}
 }
 
 export default function Home() {
+  const { data: session, status } = useSession()
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('record')
   const [input, setInput] = useState('')
@@ -842,6 +921,11 @@ export default function Home() {
     transcript: string
   } | null>(null)
   const [companyPickInput, setCompanyPickInput] = useState('')
+  const [pendingNextStepClarifyPick, setPendingNextStepClarifyPick] = useState<{
+    result: StructureResult
+    transcript: string
+  } | null>(null)
+  const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [resultSummaryExpanded, setResultSummaryExpanded] = useState(false)
@@ -955,6 +1039,10 @@ export default function Home() {
     if (pendingCompanyPick) setCompanyPickInput('')
   }, [pendingCompanyPick])
 
+  useEffect(() => {
+    if (pendingNextStepClarifyPick) setNextStepClarifyInput('')
+  }, [pendingNextStepClarifyPick])
+
   const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
       id: Date.now().toString(),
@@ -1006,13 +1094,25 @@ export default function Home() {
     }
   }
 
-  /** After empresa modal (or if empresa was already set): fecha → resultado. Never re-open empresa. */
-  const advanceAfterCompanyResolved = (merged: StructureResult, transcript: string) => {
+  /** After next-step clarify (or if skipped / not needed): fecha → resultado. */
+  const advanceAfterNextStepClarifyResolved = (
+    merged: StructureResult,
+    transcript: string,
+  ) => {
     if (needsNextStepDatePick(merged)) {
       setPendingDatePick({ result: merged, transcript })
     } else {
       setResult(merged)
       saveNote(merged, transcript)
+    }
+  }
+
+  /** After empresa modal (or if empresa was already set): clarify → fecha → resultado. Never re-open empresa. */
+  const advanceAfterCompanyResolved = (merged: StructureResult, transcript: string) => {
+    if (needsNextStepClarifyPick(merged)) {
+      setPendingNextStepClarifyPick({ result: merged, transcript })
+    } else {
+      advanceAfterNextStepClarifyResolved(merged, transcript)
     }
   }
 
@@ -1063,6 +1163,38 @@ export default function Home() {
     merged = normalizeStructureResult(merged)
     merged = finalizeNextStepFields(merged, p.transcript)
     advanceAfterCompanyResolved(merged, p.transcript)
+  }
+
+  const commitPendingNextStepClarifySaltar = () => {
+    const p = pendingNextStepClarifyPick
+    if (!p) return
+    setPendingNextStepClarifyPick(null)
+    setNextStepClarifyInput('')
+    let merged = normalizeStructureResult(p.result)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    advanceAfterNextStepClarifyResolved(merged, p.transcript)
+  }
+
+  const commitPendingNextStepClarifyQuick = (
+    kind: 'call' | 'send' | 'visit' | 'samples',
+  ) => {
+    const p = pendingNextStepClarifyPick
+    if (!p) return
+    setPendingNextStepClarifyPick(null)
+    setNextStepClarifyInput('')
+    const merged = applyQuickNextStepClarify(p.result, p.transcript, kind)
+    advanceAfterNextStepClarifyResolved(merged, p.transcript)
+  }
+
+  const commitPendingNextStepClarifyCustom = () => {
+    const raw = nextStepClarifyInput.trim()
+    if (!raw) return
+    const p = pendingNextStepClarifyPick
+    if (!p) return
+    setPendingNextStepClarifyPick(null)
+    setNextStepClarifyInput('')
+    const merged = applyCustomNextStepClarify(p.result, p.transcript, raw)
+    advanceAfterNextStepClarifyResolved(merged, p.transcript)
   }
 
   const deleteNote = async (id: string) => {
@@ -1246,6 +1378,7 @@ export default function Home() {
       setPendingDatePick(null)
       setPendingContactPick(null)
       setPendingCompanyPick(null)
+      setPendingNextStepClarifyPick(null)
       setTranscript('')
       setInput('')
 
@@ -1285,6 +1418,7 @@ export default function Home() {
     setPendingDatePick(null)
     setPendingContactPick(null)
     setPendingCompanyPick(null)
+    setPendingNextStepClarifyPick(null)
     try {
       const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
       const file = new File([blob], `voice-note.${extension}`, { type: blob.type || 'audio/webm' })
@@ -1334,6 +1468,8 @@ export default function Home() {
         setPendingContactPick({ result: final, transcript: tx })
       } else if (needsContactCompanyPick(final)) {
         setPendingCompanyPick({ result: final, transcript: tx })
+      } else if (needsNextStepClarifyPick(final)) {
+        setPendingNextStepClarifyPick({ result: final, transcript: tx })
       } else if (needsNextStepDatePick(final)) {
         setPendingDatePick({ result: final, transcript: tx })
       } else {
@@ -1357,6 +1493,7 @@ export default function Home() {
     setPendingDatePick(null)
     setPendingContactPick(null)
     setPendingCompanyPick(null)
+    setPendingNextStepClarifyPick(null)
     setCopied(false)
     try {
       const res = await fetch('/api/structure', {
@@ -1373,6 +1510,8 @@ export default function Home() {
         setPendingContactPick({ result: final, transcript: input })
       } else if (needsContactCompanyPick(final)) {
         setPendingCompanyPick({ result: final, transcript: input })
+      } else if (needsNextStepClarifyPick(final)) {
+        setPendingNextStepClarifyPick({ result: final, transcript: input })
       } else if (needsNextStepDatePick(final)) {
         setPendingDatePick({ result: final, transcript: input })
       } else {
@@ -1403,6 +1542,7 @@ export default function Home() {
     setPendingDatePick(null)
     setPendingContactPick(null)
     setPendingCompanyPick(null)
+    setPendingNextStepClarifyPick(null)
     setError('')
     setTranscript('')
     setCopied(false)
@@ -1456,6 +1596,73 @@ export default function Home() {
 
   if (!mounted) return null
 
+  if (status === 'loading') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-zinc-900 antialiased">
+        <p className="text-[14px] text-zinc-400">Loading…</p>
+      </main>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-zinc-900 antialiased">
+        <div className="flex w-full max-w-sm flex-col items-center text-center">
+          <div
+            className="mb-6 flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl text-white shadow-lg"
+            style={{
+              backgroundColor: '#1a4d2e',
+              boxShadow: '0 12px 40px rgba(26,77,46,0.28)',
+            }}
+            aria-hidden
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          </div>
+          <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">FieldBrief</p>
+          <p className="mt-4 text-[17px] font-medium leading-snug text-zinc-800 sm:text-lg">
+            Speak your visit.
+            <br />
+            We turn it into a follow-up you can run.
+          </p>
+          <button
+            type="button"
+            onClick={() => signIn('google', { callbackUrl: '/' })}
+            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl border border-zinc-200 bg-white py-4 text-[15px] font-semibold text-zinc-800 shadow-sm transition-[transform,box-shadow] hover:bg-zinc-50 active:scale-[0.99]"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+              <path
+                fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              />
+            </svg>
+            Continuar con Google
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  const userImage = session?.user?.image
+  const userName = session?.user?.name?.trim() || session?.user?.email || 'Account'
+  const userInitial = (session?.user?.name?.trim()?.[0] || session?.user?.email?.[0] || '?').toUpperCase()
+
   return (
     <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
 
@@ -1467,9 +1674,24 @@ export default function Home() {
           <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
         <span className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">FieldBrief</span>
-        <div className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white" style={{backgroundColor: '#1a4d2e'}}>
-          IG
-        </div>
+        {userImage ? (
+          <img
+            src={userImage}
+            alt=""
+            width={28}
+            height={28}
+            className="h-7 w-7 rounded-full object-cover ring-2 ring-white shadow-sm"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+            style={{ backgroundColor: '#1a4d2e' }}
+            aria-hidden
+          >
+            {userInitial}
+          </div>
+        )}
       </header>
 
       {/* Full-screen processing — single calm state */}
@@ -1678,6 +1900,136 @@ export default function Home() {
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingCompanyContinuar()
+                }}
+                className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                style={{ backgroundColor: '#1a4d2e' }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vague next step — after empresa, before fecha */}
+      {pendingNextStepClarifyPick && !loading && (
+        <div
+          className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="next-step-clarify-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Saltar sin cambiar el siguiente paso"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(6)
+              commitPendingNextStepClarifySaltar()
+            }}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p id="next-step-clarify-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                  ¿Qué exactamente?
+                </p>
+                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                  El siguiente paso no está claro
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingNextStepClarifySaltar()
+                }}
+                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                aria-label="Saltar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingNextStepClarifyQuick('call')
+                }}
+                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+              >
+                📞 Llamar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingNextStepClarifyQuick('send')
+                }}
+                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+              >
+                📧 Enviar info
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingNextStepClarifyQuick('visit')
+                }}
+                className="rounded-xl border border-zinc-200 bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+              >
+                🚗 Visitar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingNextStepClarifyQuick('samples')
+                }}
+                className="rounded-xl border border-zinc-200 bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+              >
+                📦 Mandar muestras
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="next-step-clarify-input">
+              Otro siguiente paso
+            </label>
+            <input
+              id="next-step-clarify-input"
+              type="text"
+              value={nextStepClarifyInput}
+              onChange={(e) => setNextStepClarifyInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && nextStepClarifyInput.trim()) {
+                  e.preventDefault()
+                  commitPendingNextStepClarifyCustom()
+                }
+              }}
+              placeholder="O escribe otra acción…"
+              autoComplete="off"
+              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingNextStepClarifySaltar()
+                }}
+                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+              >
+                Saltar
+              </button>
+              <button
+                type="button"
+                disabled={!nextStepClarifyInput.trim()}
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingNextStepClarifyCustom()
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 style={{ backgroundColor: '#1a4d2e' }}
@@ -1959,7 +2311,7 @@ export default function Home() {
           <div
             className="relative flex flex-col"
             style={
-              result || pendingDatePick || pendingContactPick || pendingCompanyPick
+              result || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick
                 ? undefined
                 : { minHeight: 'calc(100vh - 132px)' }
             }
@@ -1970,10 +2322,10 @@ export default function Home() {
               className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 opacity:
-                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick ? 0 : 1,
+                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick ? 0 : 1,
                 transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
                 pointerEvents:
-                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick
+                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick
                     ? 'none'
                     : 'auto',
               }}
@@ -2556,12 +2908,38 @@ export default function Home() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Account</p>
             <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white" style={{backgroundColor: '#1a4d2e'}}>IG</div>
-                <div>
-                  <p className="text-[14px] font-semibold text-zinc-900">Ignacio</p>
-                  <p className="text-[12px] text-zinc-400">Personal use</p>
+                {userImage ? (
+                  <img
+                    src={userImage}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="h-10 w-10 rounded-full object-cover ring-2 ring-zinc-100"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white"
+                    style={{ backgroundColor: '#1a4d2e' }}
+                    aria-hidden
+                  >
+                    {userInitial}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-semibold text-zinc-900">{userName}</p>
+                  <p className="truncate text-[12px] text-zinc-400">
+                    {session?.user?.email || 'Signed in with Google'}
+                  </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/' })}
+                className="mt-4 w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+              >
+                Sign out
+              </button>
             </div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Data</p>
             <button

@@ -2,7 +2,11 @@ import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 import { resolveContactCompany } from '../../../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
-import { isDealerMeaningful } from '../../../lib/dealerField'
+import {
+  ensureDealerInCrmText,
+  ensureDealerInsightInCrmFull,
+} from '../../../lib/dealerField'
+import { sanitizeProductField } from '../../../lib/productField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -99,6 +103,13 @@ Then choose ONE as the primary nextStep using this priority:
 
 NEVER pick a later action over an earlier one.
 NEVER use conditional language ("si puedo", "if I go"). Convert to definitive action.
+
+PASSIVE / WAIT — NEVER AS nextStep:
+- NEVER use esperar, wait, or a que me llame as nextStep, nextStepTitle, or nextStepAction (the rep must own a concrete action).
+- If the client said they will call back, will reach out, or asked the rep to wait — do NOT encode that as passive waiting. Convert to a proactive action in the SAME language as the note, while keeping nextStepTitle COMPANY RULE (VERB + CONTACT + (COMPANY)):
+  - Spanish: Llamar a [contact] ([company]) si no hay respuesta antes de [date]
+  - English: Call [contact] ([company]) if no response before [date]
+- [company] = org the direct contact belongs to (dealer or customer per affiliation rules). [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
 
 nextStepTitle — COMPANY RULE (MANDATORY):
 - Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
@@ -205,43 +216,6 @@ function isLikelySpanish(text: string): boolean {
     /[áéíóúñ¿¡]/i.test(text) ||
     /\b(el|la|los|las|que|por|para|con|una|este|esta|distribuidor)\b/i.test(text)
   )
-}
-
-/** Key insights: 🏪 Dealer line only when dealer is a real name; never for empty/placeholder. */
-function ensureDealerInCrmFull(crmFull: string[], dealer: string): string[] {
-  const d = dealer.trim()
-  const lines = crmFull.map((s) => s.trim()).filter(Boolean)
-  if (!isDealerMeaningful(dealer)) {
-    return lines.filter((line) => !/🏪\s*Dealer\s*:/i.test(line))
-  }
-  const dLower = d.toLowerCase()
-  const hasDealerBullet = lines.some(
-    (line) => /🏪\s*Dealer\s*:/i.test(line) && line.toLowerCase().includes(dLower),
-  )
-  if (hasDealerBullet) return lines
-  return [`🏪 Dealer: ${d}`, ...lines]
-}
-
-/** Guarantee crmText ends with a dealer line; prose should already mention dealer per prompt. */
-function ensureDealerInCrmText(crmText: string, dealer: string, sourceNote: string): string {
-  const d = dealer.trim()
-  if (!isDealerMeaningful(dealer)) return crmText.trim()
-  const text = crmText.trim()
-  const spanish = isLikelySpanish(sourceNote)
-  const closing = spanish ? `Distribuidor: ${d}.` : `Orders go through ${d}.`
-
-  if (text.toLowerCase().endsWith(closing.toLowerCase())) return text
-
-  const lineLines = text.split('\n').map((l) => l.trim()).filter(Boolean)
-  const lastLine = lineLines[lineLines.length - 1] || ''
-  if (
-    lastLine.toLowerCase().includes(d.toLowerCase()) &&
-    (/\borders go through\b/i.test(lastLine) || /^distribuidor\s*:/i.test(lastLine))
-  ) {
-    return text
-  }
-
-  return `${text}\n\n${closing}`
 }
 
 function extractJson(text: string): string {
@@ -532,7 +506,7 @@ export async function POST(request: Request) {
       })),
       notes: capitalize(result.notes),
       crop: titleCaseWords(result.crop),
-      product: titleCaseWords(result.product),
+      product: sanitizeProductField(titleCaseWords(result.product)),
       location: titleCaseWords(result.location),
       acreage: result.acreage,
       crmText: capitalize(result.crmText),
@@ -554,8 +528,12 @@ export async function POST(request: Request) {
           titleCaseWords(result.contactCompany),
         ),
       ),
-      crmFull: ensureDealerInCrmFull(capitalized.crmFull, capitalized.dealer),
-      crmText: ensureDealerInCrmText(capitalized.crmText, capitalized.dealer, note),
+      crmFull: ensureDealerInsightInCrmFull(capitalized.crmFull, capitalized.dealer),
+      crmText: ensureDealerInCrmText(
+        capitalized.crmText,
+        capitalized.dealer,
+        isLikelySpanish(note),
+      ),
     }
 
     return NextResponse.json(enriched)
