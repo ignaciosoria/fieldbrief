@@ -6,6 +6,20 @@ export function isDealerMeaningful(dealer: string | null | undefined): boolean {
   return true
 }
 
+function contactWorksForDealer(
+  dealer: string,
+  contact: string | null | undefined,
+  contactCompany: string | null | undefined,
+): boolean {
+  const d = dealer.trim().toLowerCase()
+  const cc = String(contactCompany ?? '')
+    .trim()
+    .toLowerCase()
+  const c = String(contact ?? '').trim()
+  if (!d || !cc || !c) return false
+  return cc === d
+}
+
 function lineIsEmptyDealerInsight(line: string): boolean {
   const m = line.match(/^🏪\s*Dealer\s*:\s*(.*)$/i)
   if (!m) return false
@@ -40,10 +54,13 @@ export function filterCrmFullDealerWhenNoDealer(
 
 /**
  * Ensure one 🏪 Dealer line when dealer is meaningful; strip bad/empty dealer lines first.
+ * When the direct contact works for that dealer (contactCompany === dealer), append " (Contact)" to the dealer bullet if missing.
  */
 export function ensureDealerInsightInCrmFull(
   crmFull: string[],
   dealer: string | null | undefined,
+  contact?: string | null | undefined,
+  contactCompany?: string | null | undefined,
 ): string[] {
   const d = String(dealer ?? '').trim()
   let lines = crmFull.map((s) => s.trim()).filter(Boolean)
@@ -52,11 +69,27 @@ export function ensureDealerInsightInCrmFull(
     return lines.filter((line) => !/🏪\s*Dealer\s*:/i.test(line))
   }
   const dLower = d.toLowerCase()
+  const c = String(contact ?? '').trim()
+  const atDealer = contactWorksForDealer(d, contact, contactCompany)
+  const contactSuffix = atDealer && c ? ` (${c})` : ''
+
+  const appendContactToDealerLine = (line: string): string => {
+    if (!atDealer || !c) return line
+    const m = line.match(/^(\s*🏪\s*Dealer\s*:\s*)(.+)$/i)
+    if (!m) return line
+    const body = m[2].trim()
+    if (body.includes('(') || body.includes(')')) return line
+    if (body.toLowerCase().includes(c.toLowerCase())) return line
+    return `${m[1]}${body} (${c})`
+  }
+
+  lines = lines.map(appendContactToDealerLine)
+
   const hasDealerBullet = lines.some(
     (line) => /🏪\s*Dealer\s*:/i.test(line) && line.toLowerCase().includes(dLower),
   )
   if (hasDealerBullet) return lines
-  return [`🏪 Dealer: ${d}`, ...lines]
+  return [`🏪 Dealer: ${d}${contactSuffix}`, ...lines]
 }
 
 /**

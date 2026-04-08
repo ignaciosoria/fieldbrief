@@ -6,7 +6,7 @@ import {
   ensureDealerInCrmText,
   ensureDealerInsightInCrmFull,
 } from '../../../lib/dealerField'
-import { sanitizeProductField } from '../../../lib/productField'
+import { normalizeProductField } from '../../../lib/productField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -92,16 +92,32 @@ nextStepTitle AND nextStep MUST NEVER contain names of third parties (people the
 
 ---
 
-NEXT STEP RULES:
+NEXT STEP — ABSOLUTE RULES:
 
-Extract ALL actions mentioned. Store them in additionalSteps array.
+STEP 1: Extract ALL actions from the note with their dates/times.
+STEP 2: Sort them chronologically — earliest first.
+STEP 3: The PRIMARY nextStep is ALWAYS the earliest action in time.
 
-Then choose ONE as the primary nextStep using this priority:
-1. Most URGENT action (today/tomorrow beats next week)
-2. Calls/follow-ups beat sending info ONLY if they happen at the same time
-3. If sending info must happen BEFORE a call → sending info IS the primary nextStep
+Examples:
+- "Le mando muestras esta semana y la llamo el jueves" → PRIMARY = enviar muestras (before Thursday)
+- "La llamo el jueves y si quiere le mando info el viernes" → PRIMARY = llamar el jueves
+- "Hoy le mando precios y la llamo mañana" → PRIMARY = enviar precios (today)
+- "Le mando muestras la próxima semana y la llamo el jueves" → PRIMARY = Llamar el jueves. Reason: Thursday comes BEFORE "next week". "La próxima semana" = next week = after Thursday.
 
-NEVER pick a later action over an earlier one.
+Rule (chronology): "esta semana" and specific weekdays (lunes, martes, jueves, etc.) are always BEFORE "la próxima semana" or "next week" when comparing action times.
+
+NEVER choose a later action over an earlier one.
+NEVER choose based on importance — ONLY chronological order.
+The earliest action = the nextStep. Always.
+
+nextStepTitle format: VERB + 'a' + CONTACT + (COMPANY)
+Always capitalize first letter.
+CORRECT: 'Enviar muestras a Carmen (Pacific Growers)'
+CORRECT: 'Llamar a Tyler (Coastal Growers)'
+WRONG: 'enviar muestras Carmen López'
+
+Store every non-primary action in additionalSteps with date/time when known, in chronological order.
+
 NEVER use conditional language ("si puedo", "if I go"). Convert to definitive action.
 
 PASSIVE / WAIT — NEVER AS nextStep:
@@ -112,15 +128,25 @@ PASSIVE / WAIT — NEVER AS nextStep:
 - [company] = org the direct contact belongs to (dealer or customer per affiliation rules). [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
 
 nextStepTitle — COMPANY RULE (MANDATORY):
+- **First word:** nextStepTitle MUST **start with an uppercase letter** (same language as the note).
 - Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
 - The name in parentheses MUST be the organization the DIRECT CONTACT works for — never mix dealer and customer incorrectly.
 - If the contact person belongs to the distributor (dealer) → use dealer inside the parentheses.
 - If the contact person belongs to the end account (grower / final customer) → use customer inside the parentheses.
 - Do NOT put customer in parentheses when the contact is a dealer rep; do NOT put dealer in parentheses when the contact is the grower. One org only, matching affiliation.
 
+nextStepTitle — GRAMMAR (MANDATORY, same language as the note):
+- **Spanish:** The contact name MUST be preceded by **"a"** after the verb phrase. **Never** omit it.
+  - Call / follow-up verbs → **"Llamar a [nombre] ([empresa])"** — WRONG: "Llamar Carmen ([empresa])" or any form missing **a** before the contact name.
+  - Send / ship / email verbs (enviar, mandar, pasar, reenviar, etc.) → **"Enviar … a [nombre] ([empresa])"** — e.g. "Enviar muestras a Carmen (Pacific Growers)", "Mandar la cotización a Carmen (Pacific Growers)" — WRONG: "Enviar muestras Carmen (…)", "Mandar cotización Carmen (…)".
+- **English:** Use natural grammar: **"Call Carmen (Pacific Growers)"**; for send-style verbs use **"to"** before the name when required — e.g. **"Send samples to Carmen (Pacific Growers)"**.
+- Mirror the same correct phrasing in **nextStep** and **nextStepAction** / **nextStepTarget** so nothing contradicts the title.
+
 CORRECT: Dealer rep Tyler at Coastal → "Llamar a Tyler (Coastal Growers)" when dealer=Coastal Growers and Tyler is the dealer-side contact.
 CORRECT: Grower contact Alfonso at Laguna Farms → use (Laguna Farms) from customer when Alfonso is the grower-side contact.
-WRONG: "Enviar precios a Tyler" — missing (COMPANY)
+CORRECT (Spanish send): "Enviar muestras a Carmen (Pacific Growers)" — includes **a** before the contact.
+WRONG: "Enviar precios a Tyler" when the parenthetical company is missing or wrong — title must be VERB + **a** + contact + **(CORRECT COMPANY)**; never "Enviar precios Tyler (…)" (missing **a**).
+WRONG: "Llamar Tyler (Coastal Growers)" — missing **a** before Tyler.
 WRONG: "Llamar a Tyler (Luis)" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
 WRONG: "Llamar a Luis..." when Luis was only mentioned, not spoken to — use the direct contact name only
 - NEVER repeat the same word twice in a row in the contact name part of nextStepTitle (WRONG: "Call David David Kim", "Mike Mike", "Llamar a Narciso Narciso Estrada"). nextStepAction + nextStepTarget must not concatenate a duplicated first name.
@@ -168,9 +194,32 @@ CRM TEXT:
 
 CRM FULL (Key insights):
 Array of short lines with emojis. All key business details.
-- If dealer is non-empty: you MUST include a separate line exactly in this form (its own bullet): 🏪 Dealer: [dealer name]
+- If dealer is non-empty: you MUST include a separate line exactly in this form (its own bullet): 🏪 Dealer: [dealer name] — and **if the direct contact person is named and they work for that dealer** (e.g. "el contacto es Marcos" at the distributor), you MUST append their name in parentheses: **🏪 Dealer: Agro West (Marcos)**. **Never omit the contact’s name in that line when it was mentioned** for someone at the dealer.
+- If the rep only names the dealer company with no contact person, use 🏪 Dealer: [dealer name] with no parentheses.
 - Never omit dealer from the output when dealer is detected.
 - If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
+
+DIRECT CONTACT — NEW PRODUCT INTEREST (crmFull + **product** field — **MANDATORY** when applicable):
+- When the **direct contact** (person the rep spoke to) shows interest in a **new** product that is **different** from what they **already use**, buy, or were using on this account (explicit contrast: current program vs “quiere probar…”, “le interesa otro…”, “distinto al que aplica hoy”, etc.):
+  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note:
+    - Spanish (template — fix gender and wording to match the note): **🆕 Oportunidad: interesada en [producto nuevo]** — use **interesado** / **interesada** as appropriate, or neutral **🆕 Oportunidad: interés en [producto nuevo]**.
+    - English: **🆕 Opportunity: interest in [new product]** (or **interested in [new product]** to match the note).
+  - **[producto nuevo]** = the specific new product name (or clearest label the note gives).
+  - You MUST also **append that new product** to the JSON **product** string as a **comma-separated** item **together with** any products they already use that you already listed — the app **product pills** are built from **product**, so **never omit** the new opportunity product when this applies.
+- This is **not** for third-party referrals only (those use the third-party 🆕 rules in summary + crmFull mirror); here the **contact** is the one interested. Do not output duplicate identical 🆕 lines.
+
+ACREAGE / AREA — **MANDATORY** when mentioned:
+- If the note states **any** farm/plot size in **acres**, **hectares**, **hectáreas**, **ha**, or equivalent, you MUST add **at least one** crmFull line that **starts with 🌾** and includes the **number**, **unit**, and **brief context** in the **same language as the note** (crop, block, or crop type if given).
+- **Never omit** this line when such an amount appears — even if area is also implied elsewhere in summary or crop lines.
+- Examples: "🌾 120 acres de fresas" · "🌾 45 hectáreas de tomate" · "🌾 200 acres" · "🌾 85 ha" · English: "🌾 120 acres of strawberries" · "🌾 40 hectares"
+- Also set the JSON field **acreage** to a short phrase restating the same fact (same language), or "" if no area was stated.
+
+---
+
+PRODUCT FIELD:
+- If several distinct products are named, set the JSON key "product" to **all** of them as a **comma-separated list** in the same language as the note (e.g. "Herbicida X, Fungicida Y"). One product → single name, no comma.
+- List every product the rep mentioned for this visit; do not keep only the “main” one.
+- When **DIRECT CONTACT — NEW PRODUCT INTEREST** applies, **always** include the **new** product in this list (comma-separated after or before the current/historic product names as appropriate) so every named product appears in the **pills**.
 
 ---
 
@@ -209,6 +258,68 @@ Rules for the extra keys:
 additionalSteps = JSON array of objects: { "action", "date", "time" } for every other action mentioned (not the primary). Use "" for unknown date/time.
 
 Return ONLY valid JSON. No backticks. No explanation.`
+
+/**
+ * Rich calendar anchors (EN + ES) so the model can resolve "jueves", "próxima semana", etc.
+ * Weekday offsets match: next occurrence strictly in the future; if today is that weekday, use +7 days.
+ */
+function buildStructureUserDateContext(now: Date): string {
+  const todayEN = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const todayES = now.toLocaleDateString('es-ES', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  const fmtPair = (d: Date) => {
+    const en = d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
+    const es = d.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    return `${en} / ${es}`
+  }
+
+  const addDays = (base: Date, days: number) => {
+    const d = new Date(base)
+    d.setDate(base.getDate() + days)
+    return d
+  }
+
+  const daysUntilNextWeekday = (targetDay: number) => {
+    const d = (targetDay - now.getDay() + 7) % 7
+    return d === 0 ? 7 : d
+  }
+
+  const tomorrow = addDays(now, 1)
+  const nextThursday = addDays(now, daysUntilNextWeekday(4))
+  const nextFriday = addDays(now, daysUntilNextWeekday(5))
+  const nextMonday = addDays(now, daysUntilNextWeekday(1))
+  const nextWeekMonday = addDays(now, daysUntilNextWeekday(1) + 7)
+
+  return [
+    'Calendar context (use for relative dates in the note):',
+    `Today: ${todayEN} / ${todayES}`,
+    `Tomorrow: ${fmtPair(tomorrow)}`,
+    `This upcoming Thursday: ${fmtPair(nextThursday)}`,
+    `This upcoming Friday: ${fmtPair(nextFriday)}`,
+    `Upcoming Monday (next calendar Monday): ${fmtPair(nextMonday)}`,
+    `Monday in the following week (+7 days after that — aligns with "la próxima semana" when the note means the week after): ${fmtPair(nextWeekMonday)}`,
+  ].join('\n')
+}
 
 function isLikelySpanish(text: string): boolean {
   if (!text.trim()) return false
@@ -451,15 +562,19 @@ export async function POST(request: Request) {
     }
 
     const now = new Date()
-    const todayEN = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-    const todayES = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const dateContext = buildStructureUserDateContext(now)
+
+    console.log('[structure] SYSTEM_PROMPT prefix (200 chars):', SYSTEM_PROMPT.slice(0, 200))
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Today is ${todayEN} / Hoy es ${todayES}.\n\n${note}` },
+        {
+          role: 'user',
+          content: `${dateContext}\n\n---\n\n${note}`,
+        },
       ],
     })
 
@@ -478,6 +593,13 @@ export async function POST(request: Request) {
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
+    /** Trim leading/trailing space; uppercase the first character of the text (title line must not start lowercase). */
+    const capitalizeFirstLetter = (s: string) => {
+      const t = String(s ?? '').trim()
+      if (!t) return ''
+      return t.charAt(0).toUpperCase() + t.slice(1)
+    }
+
     const titleCaseWords = (s: string) =>
       s
         .split(' ')
@@ -493,7 +615,7 @@ export async function POST(request: Request) {
       dealer: dedupeConsecutiveRepeatedWords(titleCaseWords(result.dealer)),
       summary: result.summary.trim(),
       nextStep: dedupeConsecutiveRepeatedWords(capitalize(result.nextStep)),
-      nextStepTitle: dedupeConsecutiveRepeatedWords(capitalize(result.nextStepTitle)),
+      nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeFirstLetter(result.nextStepTitle)),
       nextStepAction: result.nextStepAction.trim(),
       nextStepTarget: dedupeConsecutiveRepeatedWords(titleCaseWords(result.nextStepTarget)),
       nextStepDate: result.nextStepDate.trim(),
@@ -506,7 +628,7 @@ export async function POST(request: Request) {
       })),
       notes: capitalize(result.notes),
       crop: titleCaseWords(result.crop),
-      product: sanitizeProductField(titleCaseWords(result.product)),
+      product: normalizeProductField(result.product),
       location: titleCaseWords(result.location),
       acreage: result.acreage,
       crmText: capitalize(result.crmText),
@@ -517,18 +639,25 @@ export async function POST(request: Request) {
       })),
     }
 
+    const resolvedContactCompany = dedupeConsecutiveRepeatedWords(
+      resolveContactCompany(
+        capitalized.dealer,
+        capitalized.customer,
+        capitalized.contact,
+        capitalized.nextStepTarget,
+        titleCaseWords(result.contactCompany),
+      ),
+    )
+
     const enriched = {
       ...capitalized,
-      contactCompany: dedupeConsecutiveRepeatedWords(
-        resolveContactCompany(
-          capitalized.dealer,
-          capitalized.customer,
-          capitalized.contact,
-          capitalized.nextStepTarget,
-          titleCaseWords(result.contactCompany),
-        ),
+      contactCompany: resolvedContactCompany,
+      crmFull: ensureDealerInsightInCrmFull(
+        capitalized.crmFull,
+        capitalized.dealer,
+        capitalized.contact,
+        resolvedContactCompany,
       ),
-      crmFull: ensureDealerInsightInCrmFull(capitalized.crmFull, capitalized.dealer),
       crmText: ensureDealerInCrmText(
         capitalized.crmText,
         capitalized.dealer,

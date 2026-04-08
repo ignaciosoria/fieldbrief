@@ -6,7 +6,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
-import { sanitizeProductField } from '../lib/productField'
+import { normalizeProductField, productFieldToList } from '../lib/productField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -100,6 +100,12 @@ function normalizeConfidence(raw: unknown): string {
   return 'medium'
 }
 
+function capitalizeNextStepTitleFirst(s: string): string {
+  const t = String(s ?? '').trim()
+  if (!t) return ''
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 function normalizeStructureResult(m: StructureResult): StructureResult {
   const base = {
     ...emptyResult,
@@ -113,7 +119,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   const customer = dedupeConsecutiveRepeatedWords(base.customer)
   const contact = dedupeConsecutiveRepeatedWords(base.contact)
   const nextStepTarget = dedupeConsecutiveRepeatedWords(base.nextStepTarget)
-  const product = sanitizeProductField(dedupeConsecutiveRepeatedWords(base.product))
+  const product = normalizeProductField(base.product)
   return {
     ...base,
     dealer,
@@ -122,7 +128,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     nextStepTarget,
     product,
     crmFull: filterCrmFullDealerWhenNoDealer(base.crmFull, dealer),
-    nextStepTitle: dedupeConsecutiveRepeatedWords(base.nextStepTitle),
+    nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
     mentionedEntities: base.mentionedEntities.map((e) => ({
       ...e,
@@ -531,7 +537,7 @@ function getInsightTone(text: string): 'negative' | 'neutral' {
 }
 
 function getInsightStyle(text: string) {
-  const ink = 'text-zinc-900'
+  const ink = 'text-[#111111]'
   const t = text.trimStart()
   if (getInsightTone(text) === 'negative') {
     if (t.startsWith('💰')) return `${ink} bg-red-50`
@@ -619,7 +625,7 @@ function KeyInsightsList({
         <button
           type="button"
           onClick={onToggle}
-          className={`${buttonMarginClass} ${buttonTextClass} font-semibold text-[#1a4d2e] underline decoration-[#1a4d2e]/30 underline-offset-2 hover:decoration-[#1a4d2e]/60`}
+          className={`${buttonMarginClass} ${buttonTextClass} font-semibold text-[#4F46E5] underline decoration-[#4F46E5]/30 underline-offset-2 hover:decoration-[#4F46E5]/60`}
         >
           {expanded ? 'Show less' : 'Show more'}
         </button>
@@ -1327,7 +1333,8 @@ export default function Home() {
         `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
       )
     }
-    const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, r.product && `🧪 ${r.product}`].filter(Boolean)
+    const productPills = productFieldToList(r.product).map((p) => `🧪 ${p}`)
+    const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, ...productPills].filter(Boolean)
     if (pills.length) lines.push(pills.join('  '))
     if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
     const stepLine = (r.nextStepTitle || r.nextStep).trim()
@@ -1687,21 +1694,21 @@ export default function Home() {
 
   if (status === 'loading') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-zinc-900 antialiased">
-        <p className="text-[14px] text-zinc-400">Loading…</p>
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-[#111111] antialiased">
+        <p className="text-[14px] text-[#6b7280]">Loading…</p>
       </main>
     )
   }
 
   if (status === 'unauthenticated') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-zinc-900 antialiased">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
           <div
             className="mb-6 flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl text-white shadow-lg"
             style={{
-              backgroundColor: '#1a4d2e',
-              boxShadow: '0 12px 40px rgba(26,77,46,0.28)',
+              backgroundColor: '#4F46E5',
+              boxShadow: '0 12px 40px rgba(79,70,229,0.2)',
             }}
             aria-hidden
           >
@@ -1712,8 +1719,8 @@ export default function Home() {
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           </div>
-          <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">Voicta</p>
-          <p className="mt-4 text-[17px] font-medium leading-snug text-zinc-800 sm:text-lg">
+          <p className="text-[13px] font-semibold tracking-[0.16em] text-[#111111] uppercase">Voicta</p>
+          <p className="mt-4 text-[17px] font-medium leading-snug text-[#111111] sm:text-lg">
             Speak your visit.
             <br />
             We turn it into a follow-up you can run.
@@ -1721,7 +1728,7 @@ export default function Home() {
           <button
             type="button"
             onClick={() => signIn('google', { callbackUrl: '/' })}
-            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl border border-zinc-200 bg-white py-4 text-[15px] font-semibold text-zinc-800 shadow-sm transition-[transform,box-shadow] hover:bg-zinc-50 active:scale-[0.99]"
+            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-4 text-[15px] font-semibold text-[#111111] shadow-sm transition-[transform,box-shadow] hover:bg-zinc-100 active:scale-[0.99]"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
               <path
@@ -1753,29 +1760,29 @@ export default function Home() {
   const userInitial = (session?.user?.name?.trim()?.[0] || session?.user?.email?.[0] || '?').toUpperCase()
 
   return (
-    <main className="flex min-h-screen flex-col bg-white text-zinc-900 antialiased select-none">
+    <main className="flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-8 pb-2 bg-white">
+      <header className="flex items-center justify-between border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
         <button className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
-        <span className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">Voicta</span>
+        <span className="text-[13px] font-semibold tracking-[0.16em] text-[#111111] uppercase">Voicta</span>
         {userImage ? (
           <img
             src={userImage}
             alt=""
             width={28}
             height={28}
-            className="h-7 w-7 rounded-full object-cover ring-2 ring-white shadow-sm"
+            className="h-7 w-7 rounded-full object-cover ring-2 ring-zinc-200 shadow-sm"
             referrerPolicy="no-referrer"
           />
         ) : (
           <div
             className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-            style={{ backgroundColor: '#1a4d2e' }}
+            style={{ backgroundColor: '#4F46E5' }}
             aria-hidden
           >
             {userInitial}
@@ -1786,7 +1793,7 @@ export default function Home() {
       {/* Full-screen processing — single calm state */}
       {loading && (
         <div
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/[0.94] px-8 backdrop-blur-[3px]"
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-zinc-900/45 px-8 backdrop-blur-[3px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
           role="status"
           aria-live="polite"
@@ -1794,7 +1801,7 @@ export default function Home() {
         >
           <div className="flex flex-col items-center gap-0">
             <svg
-              className="text-[#1a4d2e]"
+              className="text-[#4F46E5]"
               width="52"
               height="52"
               viewBox="0 0 52 52"
@@ -1815,7 +1822,7 @@ export default function Home() {
                 />
               </g>
             </svg>
-            <p className="mt-5 max-w-[17rem] text-center text-[14px] font-semibold leading-snug tracking-tight text-zinc-700/95">
+            <p className="mt-5 max-w-[17rem] text-center text-[14px] font-semibold leading-snug tracking-tight text-[#111111]">
               Creating your follow-up
             </p>
           </div>
@@ -1840,13 +1847,13 @@ export default function Home() {
               commitPendingContactSaltar()
             }}
           />
-          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p id="contact-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                <p id="contact-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
                   ¿Con quién hablaste?
                 </p>
-                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
                   No detectamos un nombre de contacto en la nota
                 </p>
               </div>
@@ -1856,7 +1863,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingContactSaltar()
                 }}
-                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
                 aria-label="Saltar"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1881,7 +1888,7 @@ export default function Home() {
               placeholder="Nombre del contacto"
               autoComplete="name"
               autoFocus
-              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+              className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
             />
             <div className="flex gap-2">
               <button
@@ -1890,7 +1897,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingContactSaltar()
                 }}
-                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
                 Saltar
               </button>
@@ -1902,7 +1909,7 @@ export default function Home() {
                   commitPendingContactContinuar()
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-                style={{ backgroundColor: '#1a4d2e' }}
+                style={{ backgroundColor: '#4F46E5' }}
               >
                 Continuar
               </button>
@@ -1929,13 +1936,13 @@ export default function Home() {
               commitPendingCompanySaltar()
             }}
           />
-          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p id="company-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                <p id="company-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
                   ¿De qué empresa?
                 </p>
-                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
                   No detectamos la empresa del contacto
                 </p>
               </div>
@@ -1945,7 +1952,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingCompanySaltar()
                 }}
-                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
                 aria-label="Saltar"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1970,7 +1977,7 @@ export default function Home() {
               placeholder="Nombre de la empresa"
               autoComplete="organization"
               autoFocus
-              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+              className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
             />
             <div className="flex gap-2">
               <button
@@ -1979,7 +1986,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingCompanySaltar()
                 }}
-                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
                 Saltar
               </button>
@@ -1991,7 +1998,7 @@ export default function Home() {
                   commitPendingCompanyContinuar()
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-                style={{ backgroundColor: '#1a4d2e' }}
+                style={{ backgroundColor: '#4F46E5' }}
               >
                 Continuar
               </button>
@@ -2018,13 +2025,13 @@ export default function Home() {
               commitPendingNextStepClarifySaltar()
             }}
           />
-          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p id="next-step-clarify-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                <p id="next-step-clarify-title" className="text-[15px] font-bold leading-snug text-[#111111]">
                   ¿Qué exactamente?
                 </p>
-                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
                   El siguiente paso no está claro
                 </p>
               </div>
@@ -2034,7 +2041,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingNextStepClarifySaltar()
                 }}
-                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
                 aria-label="Saltar"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2049,7 +2056,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingNextStepClarifyQuick('call')
                 }}
-                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+                className="rounded-xl border border-[#e5e7eb] bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
                 📞 Llamar
               </button>
@@ -2059,7 +2066,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingNextStepClarifyQuick('send')
                 }}
-                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+                className="rounded-xl border border-[#e5e7eb] bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
                 📧 Enviar info
               </button>
@@ -2069,7 +2076,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingNextStepClarifyQuick('visit')
                 }}
-                className="rounded-xl border border-zinc-200 bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+                className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
                 🚗 Visitar
               </button>
@@ -2079,7 +2086,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingNextStepClarifyQuick('samples')
                 }}
-                className="rounded-xl border border-zinc-200 bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+                className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
                 📦 Mandar muestras
               </button>
@@ -2100,7 +2107,7 @@ export default function Home() {
               }}
               placeholder="O escribe otra acción…"
               autoComplete="off"
-              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+              className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
             />
             <div className="flex gap-2">
               <button
@@ -2109,7 +2116,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(6)
                   commitPendingNextStepClarifySaltar()
                 }}
-                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
                 Saltar
               </button>
@@ -2121,7 +2128,7 @@ export default function Home() {
                   commitPendingNextStepClarifyCustom()
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-                style={{ backgroundColor: '#1a4d2e' }}
+                style={{ backgroundColor: '#4F46E5' }}
               >
                 Continuar
               </button>
@@ -2145,20 +2152,20 @@ export default function Home() {
             aria-label="Cerrar y usar mañana por defecto"
             onClick={() => commitPendingDatePick(dateOptionTomorrow())}
           />
-          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p id="date-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                <p id="date-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
                   ¿Cuándo es el siguiente paso?
                 </p>
-                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
                   No detectamos fecha en la nota. Elige una o cierra para usar mañana.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => commitPendingDatePick(dateOptionTomorrow())}
-                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
                 aria-label="Cerrar"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2173,7 +2180,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingDatePick(dateOptionToday())
                 }}
-                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+                className="rounded-xl border border-[#e5e7eb] bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
                 Hoy
               </button>
@@ -2183,7 +2190,7 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingDatePick(dateOptionTomorrow())
                 }}
-                className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-emerald-50"
+                className="rounded-xl border border-emerald-200 bg-emerald-50 py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-emerald-100/90"
               >
                 Mañana
               </button>
@@ -2193,9 +2200,9 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingDatePick(dateOptionThisWeekFriday())
                 }}
-                className="rounded-xl border border-zinc-200 bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+                className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                Esta semana <span className="font-medium text-zinc-500">(viernes)</span>
+                Esta semana <span className="font-medium text-[#6b7280]">(viernes)</span>
               </button>
               <button
                 type="button"
@@ -2203,9 +2210,9 @@ export default function Home() {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingDatePick(dateOptionNextWeekMonday())
                 }}
-                className="rounded-xl border border-zinc-200 bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+                className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                Próxima semana <span className="font-medium text-zinc-500">(lunes)</span>
+                Próxima semana <span className="font-medium text-[#6b7280]">(lunes)</span>
               </button>
             </div>
           </div>
@@ -2215,7 +2222,7 @@ export default function Home() {
       {/* Note saved — floating toast; no layout shift */}
       {noteSaved && (
         <div
-          className="pointer-events-none fixed left-1/2 z-[95] flex max-w-[min(20rem,90vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-200/80 bg-white/95 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-zinc-800 shadow-[0_4px_28px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.03)] backdrop-blur-sm"
+          className="pointer-events-none fixed left-1/2 z-[95] flex max-w-[min(20rem,90vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-[#e5e7eb] bg-white/95 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-[#111111] shadow-[0_4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
           style={{
             top: 'calc(env(safe-area-inset-top, 8px) + 3.25rem)',
             animation: 'noteSavedToast 2.1s cubic-bezier(0.4, 0, 0.2, 1) forwards',
@@ -2223,7 +2230,7 @@ export default function Home() {
           role="status"
           aria-live="polite"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a4d2e]/95">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#10b981]/95">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4">
               <path d="M20 6L9 17l-5-5" />
             </svg>
@@ -2235,7 +2242,7 @@ export default function Home() {
       {/* Calendar — floating toast; no layout shift */}
       {showCalendarToast && (
         <div
-          className="pointer-events-none fixed left-1/2 z-[96] flex max-w-[min(18rem,92vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-200/85 bg-white/96 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-zinc-800 shadow-[0_4px_28px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.025)] backdrop-blur-sm"
+          className="pointer-events-none fixed left-1/2 z-[96] flex max-w-[min(18rem,92vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-[#e5e7eb] bg-white/96 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-[#111111] shadow-[0_4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
           style={{
             bottom: 'calc(env(safe-area-inset-bottom, 10px) + 5.5rem)',
             animation: 'calendarEventToast 2s cubic-bezier(0.4, 0, 0.2, 1) forwards',
@@ -2243,7 +2250,7 @@ export default function Home() {
           role="status"
           aria-live="polite"
         >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#1a4d2e]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#10b981]">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.6">
               <path d="M20 6L9 17l-5-5" />
             </svg>
@@ -2266,16 +2273,16 @@ export default function Home() {
             aria-label="Close"
             onClick={() => setCalendarConfirm(null)}
           />
-          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-zinc-200/90 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-8px_32px_rgba(0,0,0,0.12)]">
+          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_8px_28px_rgba(0,0,0,0.05)]">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
             <h2
               id="calendar-confirm-title"
-              className="mb-3 text-center text-[15px] font-bold tracking-tight text-zinc-900"
+              className="mb-3 text-center text-[15px] font-bold tracking-tight text-[#111111]"
             >
               Confirm next step
             </h2>
             <label className="mb-2 block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
                 Next step title
               </span>
               <input
@@ -2284,12 +2291,12 @@ export default function Home() {
                 onChange={(e) =>
                   setCalendarConfirm((c) => (c ? { ...c, title: e.target.value } : c))
                 }
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none ring-0 focus:border-emerald-300/80"
+                className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none ring-0 focus:border-indigo-500/55"
               />
             </label>
             <div className="mb-2 flex gap-2">
               <label className="min-w-0 flex-1">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
                   Date
                 </span>
                 <input
@@ -2298,11 +2305,11 @@ export default function Home() {
                   onChange={(e) =>
                     setCalendarConfirm((c) => (c ? { ...c, dateIso: e.target.value } : c))
                   }
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-2 py-2.5 text-[13px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                  className="w-full rounded-xl border border-[#e5e7eb] bg-white px-2 py-2.5 text-[13px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
                 />
               </label>
               <label className="min-w-0 w-[8.5rem]">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
                   Time
                 </span>
                 <input
@@ -2311,13 +2318,13 @@ export default function Home() {
                   onChange={(e) =>
                     setCalendarConfirm((c) => (c ? { ...c, timeStr: e.target.value } : c))
                   }
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-2 py-2.5 text-[13px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                  className="w-full rounded-xl border border-[#e5e7eb] bg-white px-2 py-2.5 text-[13px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
                 />
               </label>
             </div>
             {calendarConfirm.showTarget ? (
               <label className="mb-4 block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
                   Target
                 </span>
                 {calendarConfirm.targetOptions.length > 1 ? (
@@ -2328,7 +2335,7 @@ export default function Home() {
                         c ? { ...c, target: e.target.value } : c,
                       )
                     }
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                    className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
                   >
                     {calendarConfirm.targetOptions.map((name) => (
                       <option key={name} value={name}>
@@ -2345,7 +2352,7 @@ export default function Home() {
                         c ? { ...c, target: e.target.value } : c,
                       )
                     }
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-[14px] font-medium text-zinc-900 outline-none focus:border-emerald-300/80"
+                    className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
                     placeholder="Who is this for?"
                   />
                 )}
@@ -2357,7 +2364,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setCalendarConfirm(null)}
-                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3 text-[14px] font-semibold text-zinc-700 transition-colors active:scale-[0.99]"
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99]"
               >
                 Cancel
               </button>
@@ -2383,7 +2390,7 @@ export default function Home() {
                   setShowCalendarToast(true)
                 }}
                 className="flex-[1.15] rounded-xl py-3 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
-                style={{ backgroundColor: '#1a4d2e' }}
+                style={{ backgroundColor: '#10b981' }}
               >
                 Confirm and add
               </button>
@@ -2420,10 +2427,10 @@ export default function Home() {
               }}
             >
               <div className="mb-4 max-w-[20rem] text-center">
-                <h2 className="text-xl font-semibold leading-tight tracking-tight text-zinc-800 sm:text-2xl">
+                <h2 className="text-xl font-semibold leading-tight tracking-tight text-[#111111] sm:text-2xl">
                   Speak your visit
                 </h2>
-                <p className="mt-2 text-sm leading-snug text-zinc-500/78 sm:text-[15px]">
+                <p className="mt-2 text-sm leading-snug text-[#6b7280] sm:text-[15px]">
                   We turn it into a follow-up you can run
                 </p>
               </div>
@@ -2433,10 +2440,10 @@ export default function Home() {
                 disabled={loading}
                 className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
-                  backgroundColor: isRecording ? '#dc2626' : '#1a4d2e',
+                  backgroundColor: isRecording ? '#dc2626' : '#4F46E5',
                   boxShadow: isRecording
                     ? '0 8px 32px rgba(220,38,38,0.22), 0 2px 10px rgba(220,38,38,0.11), 0 0 0 1px rgba(220,38,38,0.08)'
-                    : '0 12px 44px rgba(26,77,46,0.34), 0 4px 16px rgba(26,77,46,0.16), 0 0 0 1px rgba(26,77,46,0.1)',
+                    : '0 12px 40px rgba(79,70,229,0.2), 0 4px 14px rgba(79,70,229,0.11), 0 0 0 1px rgba(79,70,229,0.08)',
                   transform: isRecording ? 'scale(1.01)' : 'scale(1)',
                 }}
               >
@@ -2469,7 +2476,7 @@ export default function Home() {
               <div className="mb-2 min-h-[44px] flex flex-col items-center justify-center">
                 {isRecording ? (
                   <span
-                    className="text-[48px] font-semibold tabular-nums tracking-tight leading-none text-zinc-900 transition-transform duration-300 sm:text-[52px]"
+                    className="text-[48px] font-semibold tabular-nums tracking-tight leading-none text-[#111111] transition-transform duration-300 sm:text-[52px]"
                     style={{ animation: 'recording-timer-breathe 3s ease-in-out infinite' }}
                   >
                     {formatSeconds(recordingSeconds)}
@@ -2493,10 +2500,10 @@ export default function Home() {
               {/* Recording hints */}
               {isRecording && (
                 <div className="mb-2 w-full px-2">
-                  <p className="mb-1.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-zinc-400/65">Mention in your note</p>
+                  <p className="mb-1.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-[#6b7280]/65">Mention in your note</p>
                   <div className="flex flex-wrap justify-center gap-1">
                     {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
-                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1 py-px text-[8px] font-medium text-emerald-900/42 sm:text-[8.5px]" style={{borderColor:'rgba(167,243,208,0.28)',backgroundColor:'rgba(236,253,245,0.38)',animation:'fadeIn 0.4s ease forwards'}}>
+                      <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1 py-px text-[8px] font-medium text-indigo-700 sm:text-[8.5px]" style={{borderColor:'rgba(79,70,229,0.25)',backgroundColor:'rgba(79,70,229,0.08)',animation:'fadeIn 0.4s ease forwards'}}>
                         {h.icon} {h.label}
                       </span>
                     ))}
@@ -2508,7 +2515,7 @@ export default function Home() {
               {!isRecording && !loading && (
                 <div className="mt-1.5 w-full max-w-md px-1">
                   <textarea
-                    className="mb-3 w-full resize-none rounded-2xl border border-zinc-200/80 bg-zinc-50/40 px-3.5 py-3 text-[13px] leading-relaxed text-zinc-500 outline-none placeholder:text-zinc-400/32 min-h-[68px] shadow-inner shadow-zinc-100/80"
+                    className="mb-3 w-full resize-none rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3 text-[13px] leading-relaxed text-[#111111] outline-none placeholder:text-[#6b7280]/40 min-h-[68px] shadow-inner shadow-zinc-200/50"
                     placeholder="Or type a note…"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -2518,7 +2525,7 @@ export default function Home() {
                       onClick={processTypedNote}
                       disabled={loading}
                       className="w-full rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98]"
-                      style={{backgroundColor: '#1a4d2e', boxShadow: '0 4px 16px rgba(26,77,46,0.25)'}}
+                      style={{backgroundColor: '#4F46E5', boxShadow: '0 4px 16px rgba(79,70,229,0.25)'}}
                     >
                       Process Note
                     </button>
@@ -2528,7 +2535,7 @@ export default function Home() {
 
               {/* Error */}
               {error && (
-                <div className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-600">
+                <div className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
                   {error}
                 </div>
               )}
@@ -2543,14 +2550,14 @@ export default function Home() {
                 }}
               >
                 {/* 1 — Next step + calendar (sticky) */}
-                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-100/65 bg-white/93 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/86">
+                <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-200/90 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
                   <div className="mb-1.5 flex justify-end">
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-zinc-200/90 bg-white py-1.5 pl-2.5 pr-3 text-[11px] font-semibold text-zinc-600 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.97]"
+                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] py-1.5 pl-2.5 pr-3 text-[11px] font-semibold text-[#6b7280] shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-100 active:scale-[0.97]"
                     >
-                      <span className="text-[13px] font-semibold leading-none text-zinc-700" aria-hidden>+</span>
+                      <span className="text-[13px] font-semibold leading-none text-[#111111]" aria-hidden>+</span>
                       New
                     </button>
                   </div>
@@ -2558,16 +2565,12 @@ export default function Home() {
                   {(result.nextStep || result.nextStepTitle) && (
                     <>
                       <div
-                        className="rounded-2xl px-4 py-3 text-center shadow-[0_6px_28px_rgba(26,77,46,0.09),0_2px_8px_rgba(26,77,46,0.05),inset_0_1px_0_rgba(255,255,255,0.65)] ring-1 ring-emerald-100/40 border border-emerald-200/90"
-                        style={{ background: 'linear-gradient(165deg, #e8f6ed 0%, #dbece3 100%)' }}
+                        className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
-                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-emerald-900/42">
+                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
                           Next step
                         </p>
-                        <p
-                          className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] antialiased"
-                          style={{ color: '#0a2e1a' }}
-                        >
+                        <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {result.nextStepTitle || result.nextStep}
                         </p>
                       </div>
@@ -2578,8 +2581,8 @@ export default function Home() {
                           openCalendarFromStructuredResult(result)
                         }}
                         type="button"
-                        className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(26,77,46,0.28),0_2px_8px_rgba(26,77,46,0.12),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(26,77,46,0.32),0_2px_10px_rgba(26,77,46,0.14),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(26,77,46,0.22),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
-                        style={{ backgroundColor: '#1a4d2e' }}
+                        className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
+                        style={{ backgroundColor: '#4F46E5' }}
                       >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -2593,48 +2596,51 @@ export default function Home() {
                 {/* 2 — Contact & company → 3 — Insights → 4 — Summary → actions */}
                 <div className="mt-3 flex flex-col gap-1.5">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-2xl border border-zinc-200/85 bg-white px-3 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                    <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
                       {result.contact ? (
-                        <p className="text-[16px] font-bold leading-snug tracking-tight text-zinc-900">
+                        <p className="text-[16px] font-bold leading-snug tracking-tight text-[#111111]">
                           {result.contact}
                         </p>
                       ) : (
                         <p
-                          className={`text-[16px] font-bold leading-snug tracking-tight ${result.customer ? 'text-zinc-900' : 'text-zinc-400'}`}
+                          className={`text-[16px] font-bold leading-snug tracking-tight ${result.customer ? 'text-[#111111]' : 'text-[#6b7280]'}`}
                         >
                           {result.customer || '—'}
                         </p>
                       )}
                       {result.contactCompany ? (
-                        <p className="mt-0.5 text-[13px] font-medium leading-snug text-zinc-500">
+                        <p className="mt-0.5 text-[13px] font-medium leading-snug text-[#6b7280]">
                           {result.contactCompany}
                         </p>
                       ) : null}
                       {(result.location || result.crop || result.product) && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {result.location ? (
-                            <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                            <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
                               📍 {result.location}
                             </span>
                           ) : null}
                           {result.crop ? (
-                            <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                            <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
                               🌱 {result.crop}
                             </span>
                           ) : null}
-                          {(result.product || '').trim() ? (
-                            <span className="inline-flex max-w-full min-w-0 items-center rounded-full border border-zinc-200/80 bg-zinc-50/90 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
-                              🧪 {(result.product || '').trim()}
+                          {productFieldToList(result.product).map((p, i) => (
+                            <span
+                              key={`${p}-${i}`}
+                              className="inline-flex max-w-full min-w-0 items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]"
+                            >
+                              🧪 {p}
                             </span>
-                          ) : null}
+                          ))}
                         </div>
                       )}
                     </div>
                   )}
 
                   {result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-[#f8f8f8] px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
                         Key insights
                       </p>
                       <KeyInsightsList
@@ -2650,11 +2656,11 @@ export default function Home() {
                   )}
 
                   {result.summary && (
-                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                       <button
                         type="button"
                         onClick={() => setResultSummaryExpanded((e) => !e)}
-                        className="text-[12px] font-medium text-zinc-500/90 transition-colors hover:text-zinc-700"
+                        className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
                       >
                         {resultSummaryExpanded ? 'Hide summary' : 'View summary'}
                       </button>
@@ -2666,7 +2672,7 @@ export default function Home() {
                             className={`origin-top pt-3 transition-all duration-300 ease-out ${resultSummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
                             style={{ pointerEvents: resultSummaryExpanded ? 'auto' : 'none' }}
                           >
-                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-zinc-500/85">
+                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
                               {result.summary}
                             </p>
                           </div>
@@ -2676,14 +2682,14 @@ export default function Home() {
                   )}
 
                   {/* Copy / Share / Correct — inline, directly under content */}
-                  <div className="flex items-center gap-2 border-t border-zinc-100/90 pt-2 pb-0">
+                  <div className="flex items-center gap-2 border-t border-[#e5e7eb]/70/90 pt-2 pb-0">
                     <button
                       type="button"
                       onClick={() => {
                         if (navigator.vibrate) navigator.vibrate(5)
                         handleCopy()
                       }}
-                      className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-zinc-200/90 bg-white text-[11px] font-medium text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700 active:scale-[0.98]"
+                      className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[11px] font-medium text-[#6b7280] transition-all hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111] active:scale-[0.98]"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-50">
                         <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -2694,7 +2700,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => result && handleShare(result)}
-                      className="flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-500 transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-600 active:scale-[0.98]"
+                      className="flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[#6b7280] transition-all hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111] active:scale-[0.98]"
                       aria-label="Share"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-60">
@@ -2750,7 +2756,7 @@ export default function Home() {
               <div>
                 <button
                   onClick={() => setSelectedNote(null)}
-                  className="mb-4 flex items-center gap-2 text-[13px] text-zinc-400 hover:text-zinc-700"
+                  className="mb-4 flex items-center gap-2 text-[13px] text-[#6b7280] hover:text-[#111111]"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M15 18l-6-6 6-6"/>
@@ -2759,17 +2765,17 @@ export default function Home() {
                 </button>
 
                 <div className="space-y-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">{formatDate(selectedNote.date)}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">{formatDate(selectedNote.date)}</p>
 
-                  <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
+                  <div className="rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-4 shadow-sm">
                     <div className="flex items-center gap-3.5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[13px] font-bold text-zinc-700">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-200/70 text-[13px] font-bold text-[#111111]">
                         {selectedNote.result.contact ? getInitials(selectedNote.result.contact) : 'NA'}
                       </div>
                       <div>
-                        <p className="text-[20px] font-bold text-zinc-900">{selectedNote.result.contact || '—'}</p>
+                        <p className="text-[20px] font-bold text-[#111111]">{selectedNote.result.contact || '—'}</p>
                         {selectedNote.result.contactCompany ? (
-                          <p className="text-[13px] text-zinc-400 mt-0.5">{selectedNote.result.contactCompany}</p>
+                          <p className="text-[13px] text-[#6b7280] mt-0.5">{selectedNote.result.contactCompany}</p>
                         ) : null}
                       </div>
                     </div>
@@ -2778,26 +2784,29 @@ export default function Home() {
                   {(selectedNote.result.location || selectedNote.result.crop || selectedNote.result.product) && (
                     <div className="flex flex-wrap gap-1.5">
                       {selectedNote.result.location && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
+                        <span className="flex items-center gap-1.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
                           📍 {selectedNote.result.location}
                         </span>
                       )}
                       {selectedNote.result.crop && (
-                        <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
+                        <span className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
                           🌱 {selectedNote.result.crop}
                         </span>
                       )}
-                      {(selectedNote.result.product || '').trim() ? (
-                        <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-zinc-500 shadow-sm">
-                          🧪 {(selectedNote.result.product || '').trim()}
+                      {productFieldToList(selectedNote.result.product).map((p, i) => (
+                        <span
+                          key={`${p}-${i}`}
+                          className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm"
+                        >
+                          🧪 {p}
                         </span>
-                      ) : null}
+                      ))}
                     </div>
                   )}
 
                   {selectedNote.result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-zinc-200/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500/90">
+                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-[#f8f8f8] px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
                         Key insights
                       </p>
                       <KeyInsightsList
@@ -2813,11 +2822,11 @@ export default function Home() {
                   )}
 
                   {selectedNote.result.summary && (
-                    <div className="rounded-xl border border-zinc-100/85 bg-zinc-50/30 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                       <button
                         type="button"
                         onClick={() => setHistorySummaryExpanded((e) => !e)}
-                        className="text-[12px] font-medium text-zinc-500/90 transition-colors hover:text-zinc-700"
+                        className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
                       >
                         {historySummaryExpanded ? 'Hide summary' : 'View summary'}
                       </button>
@@ -2829,7 +2838,7 @@ export default function Home() {
                             className={`origin-top pt-3 transition-all duration-300 ease-out ${historySummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
                             style={{ pointerEvents: historySummaryExpanded ? 'auto' : 'none' }}
                           >
-                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-zinc-500/85">
+                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
                               {selectedNote.result.summary}
                             </p>
                           </div>
@@ -2839,14 +2848,14 @@ export default function Home() {
                   )}
 
                   {(selectedNote.result.nextStep || selectedNote.result.nextStepTitle) && (
-                    <div className="rounded-2xl px-4 py-4" style={{backgroundColor: '#f0f7f2', border: '1px solid #c8e6d0'}}>
+                    <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-4 ring-1 ring-indigo-500/20">
                       <div className="mb-2 flex items-center gap-2">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#1a4d2e">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#818cf8">
                           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                         </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{color: '#1a4d2e'}}>Next step</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">Next step</p>
                       </div>
-                      <p className="text-[19px] font-bold leading-snug" style={{color: '#1a4d2e'}}>
+                      <p className="text-[19px] font-bold leading-snug text-[#111111]">
                         {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
                       </p>
                     </div>
@@ -2855,7 +2864,7 @@ export default function Home() {
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={handleCopy}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white py-3.5 text-[13px] font-medium text-zinc-500 shadow-sm transition-all hover:text-zinc-800 active:scale-[0.98]"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[13px] font-medium text-[#6b7280] shadow-sm transition-all hover:text-[#111111] active:scale-[0.98]"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -2865,7 +2874,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => handleShare(selectedNote.result)}
-                      className="flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-3.5 text-zinc-500 shadow-sm transition-all active:scale-[0.98]"
+                      className="flex items-center justify-center gap-1.5 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3.5 text-[#6b7280] shadow-sm transition-all active:scale-[0.98]"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
@@ -2873,7 +2882,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => deleteNote(selectedNote.id)}
-                      className="rounded-2xl border border-red-200 bg-red-50 px-4 text-[13px] text-red-500 transition-all hover:bg-red-100 active:scale-[0.98]"
+                      className="rounded-2xl border border-red-200 bg-red-50 px-4 text-[13px] text-red-600 transition-all hover:bg-red-100 active:scale-[0.98]"
                     >
                       Delete
                     </button>
@@ -2913,7 +2922,7 @@ export default function Home() {
               <div>
                 {/* Search bar */}
                 <div className="relative mb-4">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6b7280]">
                     <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                   </svg>
                   <input
@@ -2921,21 +2930,21 @@ export default function Home() {
                     placeholder="Search notes..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-2xl border border-zinc-200 bg-white py-3 pl-9 pr-4 text-[14px] text-zinc-700 outline-none shadow-sm placeholder:text-zinc-400"
+                    className="w-full rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 pl-9 pr-4 text-[14px] text-[#111111] outline-none shadow-sm placeholder:text-[#6b7280]"
                   />
                 </div>
-                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
                   {savedNotes.length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
                 </p>
                 {savedNotes.length === 0 ? (
                   <div className="flex flex-col items-center justify-center pt-16 text-center">
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full" style={{backgroundColor: '#f0f7f2'}}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1a4d2e" strokeWidth="1.5" opacity="0.5">
+                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#f8f8f8] ring-1 ring-zinc-200">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.5" opacity="0.65">
                         <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                       </svg>
                     </div>
-                    <p className="text-[14px] text-zinc-400">No notes yet</p>
-                    <p className="mt-1 text-[12px] text-zinc-300">Record your first visit to get started</p>
+                    <p className="text-[14px] text-[#6b7280]">No notes yet</p>
+                    <p className="mt-1 text-[12px] text-[#111111]">Record your first visit to get started</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -2956,29 +2965,29 @@ export default function Home() {
                       <button
                         key={note.id}
                         onClick={() => setSelectedNote(note)}
-                        className="w-full rounded-2xl border border-zinc-100 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-zinc-200 active:scale-[0.99]"
+                        className="w-full rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-3.5 text-left shadow-sm transition-all hover:border-[#e5e7eb] active:scale-[0.99]"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-bold text-zinc-700">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200/70 text-[11px] font-bold text-[#111111]">
                               {note.result.contact ? getInitials(note.result.contact) : 'NA'}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[14px] font-semibold text-zinc-900 truncate">
+                              <p className="text-[14px] font-semibold text-[#111111] truncate">
                                 {note.result.contact || note.result.customer || 'Unnamed'}
                               </p>
                               {note.result.contact &&
                                 (note.result.contactCompany || note.result.customer) && (
-                                <p className="text-[12px] text-zinc-400 truncate">
+                                <p className="text-[12px] text-[#6b7280] truncate">
                                   {note.result.contactCompany || note.result.customer}
                                 </p>
                               )}
                             </div>
                           </div>
-                          <p className="shrink-0 text-[11px] text-zinc-400 mt-0.5">{formatDate(note.date)}</p>
+                          <p className="shrink-0 text-[11px] text-[#6b7280] mt-0.5">{formatDate(note.date)}</p>
                         </div>
                         {(note.result.nextStep || note.result.nextStepTitle) && (
-                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#1a4d2e'}}>
+                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#4F46E5'}}>
                             → {note.result.nextStepTitle || note.result.nextStep}
                           </p>
                         )}
@@ -2994,8 +3003,8 @@ export default function Home() {
         {/* ── SETTINGS TAB ── */}
         {activeTab === 'settings' && (
           <div className="pt-2 space-y-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Account</p>
-            <div className="rounded-2xl border border-zinc-100 bg-white px-4 py-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">Account</p>
+            <div className="rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-4 shadow-sm">
               <div className="flex items-center gap-3">
                 {userImage ? (
                   <img
@@ -3003,21 +3012,21 @@ export default function Home() {
                     alt=""
                     width={40}
                     height={40}
-                    className="h-10 w-10 rounded-full object-cover ring-2 ring-zinc-100"
+                    className="h-10 w-10 rounded-full object-cover ring-2 ring-zinc-200"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
                   <div
                     className="flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold text-white"
-                    style={{ backgroundColor: '#1a4d2e' }}
+                    style={{ backgroundColor: '#4F46E5' }}
                     aria-hidden
                   >
                     {userInitial}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-semibold text-zinc-900">{userName}</p>
-                  <p className="truncate text-[12px] text-zinc-400">
+                  <p className="truncate text-[14px] font-semibold text-[#111111]">{userName}</p>
+                  <p className="truncate text-[12px] text-[#6b7280]">
                     {session?.user?.email || 'Signed in with Google'}
                   </p>
                 </div>
@@ -3025,12 +3034,12 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: '/' })}
-                className="mt-4 w-full rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-[13px] font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                className="mt-4 w-full rounded-xl border border-[#e5e7eb] bg-white py-3 text-[13px] font-medium text-[#111111] transition-colors hover:bg-zinc-100"
               >
                 Sign out
               </button>
             </div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Data</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">Data</p>
             <button
               onClick={async () => {
                 if (!confirm('Delete all saved notes?')) return
@@ -3044,7 +3053,7 @@ export default function Home() {
                   } catch {}
                 }
               }}
-              className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-500 transition-all hover:bg-red-100"
+              className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-600 transition-all hover:bg-red-100"
             >
               Clear all notes
             </button>
@@ -3054,12 +3063,12 @@ export default function Home() {
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-zinc-100 bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-[#e5e7eb] bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
         <NavBtn
           active={activeTab === 'record'}
           onClick={() => { setActiveTab('record'); setSelectedNote(null) }}
           label="Record"
-          activeColor="#1a4d2e"
+          activeColor="#4F46E5"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
@@ -3072,7 +3081,7 @@ export default function Home() {
           onClick={() => { setActiveTab('history'); setSelectedNote(null) }}
           label="History"
           badge={savedNotes.length}
-          activeColor="#1a4d2e"
+          activeColor="#4F46E5"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
@@ -3083,7 +3092,7 @@ export default function Home() {
           active={activeTab === 'settings'}
           onClick={() => setActiveTab('settings')}
           label="Settings"
-          activeColor="#1a4d2e"
+          activeColor="#4F46E5"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="12" r="3"/>
@@ -3139,8 +3148,8 @@ export default function Home() {
           50% { transform: scale(1.006); }
         }
         @keyframes mic-idle-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(26, 77, 46, 0); opacity: 1; }
-          50% { box-shadow: 0 0 28px 4px rgba(26, 77, 46, 0.14); opacity: 1; }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); opacity: 1; }
+          50% { box-shadow: 0 0 28px 4px rgba(79, 70, 229, 0.1); opacity: 1; }
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
@@ -3162,7 +3171,7 @@ function NavBtn({
     <button
       onClick={onClick}
       className="relative flex flex-col items-center gap-1 px-5 py-2 transition-all"
-      style={{color: active ? activeColor : '#a1a1aa'}}
+      style={{color: active ? activeColor : '#6b7280'}}
     >
       <span>{icon}</span>
       <span className="text-[10px] font-medium">{label}</span>
