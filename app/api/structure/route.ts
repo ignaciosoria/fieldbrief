@@ -1,5 +1,8 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
+import { resolveContactCompany } from '../../../lib/contactAffiliation'
+import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
+import { isDealerMeaningful } from '../../../lib/dealerField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -9,6 +12,7 @@ type StructureBody = {
   customer: string
   dealer: string
   contact: string
+  contactCompany: string
   summary: string
   nextStep: string
   nextStepTitle: string
@@ -57,6 +61,15 @@ There are 3 possible people in a note:
 - dealer = distributor or intermediary visited
 - customer = named end-account ORGANIZATION only (grower farm, clinic, business name). Must be a real company/grower name when filled.
 
+contactCompany (MANDATORY — where the DIRECT CONTACT works or operates):
+Add field contactCompany = the company where the contact directly works or operates. This is NOT necessarily the same as customer or dealer — it is simply where the person the rep spoke to belongs. This field is separate from customer and dealer.
+
+Rules:
+- If the rep spoke to a grower → contactCompany = that grower's farm / operation name (the contact's employer or own farm).
+- If the rep spoke to a dealer rep → contactCompany = the dealer name (the distributor they work for).
+- If the rep spoke to an independent PCA, consultant, or similar (no single employer org named) → contactCompany = "".
+- contactCompany is always the direct employer / company of the contact person — one organization name or empty. Never concatenate multiple companies.
+
 CUSTOMER — NEVER RELATIONAL LABELS ALONE:
 - If the note only describes someone by relationship or generic role (e.g. "su cuñado", "su cliente", "un vecino", "their neighbor", "his client" with no actual farm/company name), set customer to "" (empty string).
 - Do NOT use customer for "who they are to someone" — only for a concrete end account you can name as an organization.
@@ -99,6 +112,7 @@ CORRECT: Grower contact Alfonso at Laguna Farms → use (Laguna Farms) from cust
 WRONG: "Enviar precios a Tyler" — missing (COMPANY)
 WRONG: "Llamar a Tyler (Luis)" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
 WRONG: "Llamar a Luis..." when Luis was only mentioned, not spoken to — use the direct contact name only
+- NEVER repeat the same word twice in a row in the contact name part of nextStepTitle (WRONG: "Call David David Kim", "Mike Mike", "Llamar a Narciso Narciso Estrada"). nextStepAction + nextStepTarget must not concatenate a duplicated first name.
 
 ---
 
@@ -151,7 +165,7 @@ Array of short lines with emojis. All key business details.
 
 REQUIRED JSON KEYS (single object — include every key):
 
-contact, dealer, customer, location, crop, product, acreage,
+contact, contactCompany, dealer, customer, location, crop, product, acreage,
 summary,
 nextStep,
 nextStepTitle,
@@ -172,6 +186,7 @@ mentionedEntities,
 notes
 
 Rules for the extra keys:
+- contactCompany = employer / org of the direct contact only (see contactCompany rules above). Independent PCA or consultant → "". Not a copy-paste alias of customer/dealer unless that truly is their company name.
 - nextStepAction = single verb phrase for the PRIMARY next step only
 - nextStepTarget = contact name for that action only (never third party) — same ABSOLUTE RULE as nextStep / nextStepTitle
 - nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = dealer OR customer only — whichever org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
@@ -192,11 +207,13 @@ function isLikelySpanish(text: string): boolean {
   )
 }
 
-/** Guarantee Key insights include 🏪 Dealer line when dealer is set. */
+/** Key insights: 🏪 Dealer line only when dealer is a real name; never for empty/placeholder. */
 function ensureDealerInCrmFull(crmFull: string[], dealer: string): string[] {
   const d = dealer.trim()
-  if (!d) return [...crmFull]
   const lines = crmFull.map((s) => s.trim()).filter(Boolean)
+  if (!isDealerMeaningful(dealer)) {
+    return lines.filter((line) => !/🏪\s*Dealer\s*:/i.test(line))
+  }
   const dLower = d.toLowerCase()
   const hasDealerBullet = lines.some(
     (line) => /🏪\s*Dealer\s*:/i.test(line) && line.toLowerCase().includes(dLower),
@@ -208,7 +225,7 @@ function ensureDealerInCrmFull(crmFull: string[], dealer: string): string[] {
 /** Guarantee crmText ends with a dealer line; prose should already mention dealer per prompt. */
 function ensureDealerInCrmText(crmText: string, dealer: string, sourceNote: string): string {
   const d = dealer.trim()
-  if (!d) return crmText.trim()
+  if (!isDealerMeaningful(dealer)) return crmText.trim()
   const text = crmText.trim()
   const spanish = isLikelySpanish(sourceNote)
   const closing = spanish ? `Distribuidor: ${d}.` : `Orders go through ${d}.`
@@ -425,6 +442,8 @@ function parseStructureJson(text: string): StructureBody {
     customer: typeof parsed.customer === 'string' ? parsed.customer : '',
     dealer: typeof parsed.dealer === 'string' ? parsed.dealer : '',
     contact: typeof parsed.contact === 'string' ? parsed.contact : '',
+    contactCompany:
+      typeof parsed.contactCompany === 'string' ? parsed.contactCompany : '',
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     nextStep: typeof parsed.nextStep === 'string' ? parsed.nextStep : '',
     nextStepTitle: typeof parsed.nextStepTitle === 'string' ? parsed.nextStepTitle : '',
@@ -493,20 +512,22 @@ export async function POST(request: Request) {
 
     const capitalized = {
       ...result,
-      contact: titleCaseWords(result.contact),
-      customer: sanitizeCustomerField(titleCaseWords(result.customer)),
-      dealer: titleCaseWords(result.dealer),
+      contact: dedupeConsecutiveRepeatedWords(titleCaseWords(result.contact)),
+      customer: dedupeConsecutiveRepeatedWords(
+        sanitizeCustomerField(titleCaseWords(result.customer)),
+      ),
+      dealer: dedupeConsecutiveRepeatedWords(titleCaseWords(result.dealer)),
       summary: result.summary.trim(),
-      nextStep: capitalize(result.nextStep),
-      nextStepTitle: capitalize(result.nextStepTitle),
+      nextStep: dedupeConsecutiveRepeatedWords(capitalize(result.nextStep)),
+      nextStepTitle: dedupeConsecutiveRepeatedWords(capitalize(result.nextStepTitle)),
       nextStepAction: result.nextStepAction.trim(),
-      nextStepTarget: titleCaseWords(result.nextStepTarget),
+      nextStepTarget: dedupeConsecutiveRepeatedWords(titleCaseWords(result.nextStepTarget)),
       nextStepDate: result.nextStepDate.trim(),
       nextStepTimeHint: result.nextStepTimeHint.trim(),
       nextStepConfidence: result.nextStepConfidence,
       ambiguityFlags: result.ambiguityFlags,
       mentionedEntities: result.mentionedEntities.map((e) => ({
-        name: titleCaseWords(e.name),
+        name: dedupeConsecutiveRepeatedWords(titleCaseWords(e.name)),
         type: e.type,
       })),
       notes: capitalize(result.notes),
@@ -524,6 +545,15 @@ export async function POST(request: Request) {
 
     const enriched = {
       ...capitalized,
+      contactCompany: dedupeConsecutiveRepeatedWords(
+        resolveContactCompany(
+          capitalized.dealer,
+          capitalized.customer,
+          capitalized.contact,
+          capitalized.nextStepTarget,
+          titleCaseWords(result.contactCompany),
+        ),
+      ),
       crmFull: ensureDealerInCrmFull(capitalized.crmFull, capitalized.dealer),
       crmText: ensureDealerInCrmText(capitalized.crmText, capitalized.dealer, note),
     }

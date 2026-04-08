@@ -2,6 +2,9 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { resolveContactCompany } from '../lib/contactAffiliation'
+import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
+import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -9,6 +12,8 @@ type StructureResult = {
   customer: string
   dealer: string
   contact: string
+  /** Employer / org of the direct contact (not the same field as customer or dealer). */
+  contactCompany: string
   summary: string
   nextStep: string
   nextStepTitle: string
@@ -32,6 +37,7 @@ const emptyResult: StructureResult = {
   customer: '',
   dealer: '',
   contact: '',
+  contactCompany: '',
   summary: '',
   nextStep: '',
   nextStepTitle: '',
@@ -93,13 +99,40 @@ function normalizeConfidence(raw: unknown): string {
 }
 
 function normalizeStructureResult(m: StructureResult): StructureResult {
-  return {
+  const base = {
     ...emptyResult,
     ...m,
     crmFull: normalizeCrmFull(m.crmFull),
     ambiguityFlags: normalizeAmbiguityFlags(m.ambiguityFlags),
     mentionedEntities: normalizeMentionedEntities(m.mentionedEntities),
     nextStepConfidence: normalizeConfidence(m.nextStepConfidence),
+  }
+  const dealer = dedupeConsecutiveRepeatedWords(base.dealer)
+  const customer = dedupeConsecutiveRepeatedWords(base.customer)
+  const contact = dedupeConsecutiveRepeatedWords(base.contact)
+  const nextStepTarget = dedupeConsecutiveRepeatedWords(base.nextStepTarget)
+  return {
+    ...base,
+    dealer,
+    customer,
+    contact,
+    nextStepTarget,
+    crmFull: filterCrmFullDealerWhenNoDealer(base.crmFull, dealer),
+    nextStepTitle: dedupeConsecutiveRepeatedWords(base.nextStepTitle),
+    nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
+    mentionedEntities: base.mentionedEntities.map((e) => ({
+      ...e,
+      name: dedupeConsecutiveRepeatedWords(e.name),
+    })),
+    contactCompany: dedupeConsecutiveRepeatedWords(
+      resolveContactCompany(
+        dealer,
+        customer,
+        contact,
+        nextStepTarget,
+        base.contactCompany || '',
+      ),
+    ),
   }
 }
 
@@ -342,6 +375,54 @@ function needsTargetPicker(r: StructureResult): boolean {
   )
 }
 
+function needsNextStepDatePick(r: StructureResult): boolean {
+  return !(r.nextStepDate || '').trim()
+}
+
+function needsContactPick(r: StructureResult): boolean {
+  return !(r.contact || '').trim()
+}
+
+function needsContactCompanyPick(r: StructureResult): boolean {
+  return !(r.contactCompany || '').trim()
+}
+
+function formatLocalMmDdYyyy(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}/${dd}/${d.getFullYear()}`
+}
+
+function dateOptionToday(): string {
+  return formatLocalMmDdYyyy(new Date())
+}
+
+function dateOptionTomorrow(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return formatLocalMmDdYyyy(d)
+}
+
+/** Friday of the current calendar week (next Friday if already past this week’s Friday). */
+function dateOptionThisWeekFriday(): string {
+  const d = new Date()
+  const day = d.getDay()
+  const diff = (5 - day + 7) % 7
+  d.setDate(d.getDate() + diff)
+  return formatLocalMmDdYyyy(d)
+}
+
+/** Monday that starts the calendar week after the current one (weeks start Monday). */
+function dateOptionNextWeekMonday(): string {
+  const d = new Date()
+  const day = d.getDay()
+  const daysSinceMonday = day === 0 ? 6 : day - 1
+  const monday = new Date(d)
+  monday.setDate(d.getDate() - daysSinceMonday)
+  monday.setDate(monday.getDate() + 7)
+  return formatLocalMmDdYyyy(monday)
+}
+
 function openGoogleCalendarWindow(opts: {
   title: string
   dateMmddyyyy: string
@@ -528,44 +609,17 @@ function hasStrongVerb(nextStep: string) {
   return verbs.some((verb) => lower.startsWith(verb))
 }
 
-/** Loose match: is this contact name tied to this org string (same token / substring)? */
-function contactAlignsWithOrg(contact: string, org: string): boolean {
-  const c = contact.trim().toLowerCase()
-  const o = org.trim().toLowerCase()
-  if (!c || !o) return false
-  if (c === o) return true
-  if (o.includes(c) || c.includes(o)) return true
-  const cWords = c.split(/\s+/).filter((w) => w.length > 2)
-  const oWords = o.split(/\s+/).filter((w) => w.length > 2)
-  for (const cw of cWords) {
-    for (const ow of oWords) {
-      if (ow.includes(cw) || cw.includes(ow)) return true
-    }
-  }
-  return false
-}
-
 /**
  * Company in nextStepTitle parens = org the direct contact belongs to (dealer vs customer).
- * Never default to "dealer first" when both exist — only the matching side, else fall back to API title.
  */
 function companyForDirectContact(r: StructureResult): string {
-  const contact = (r.nextStepTarget || r.contact || '').trim()
-  const dealer = (r.dealer || '').trim()
-  const customer = (r.customer || '').trim()
-
-  if (!dealer && !customer) return ''
-  if (dealer && !customer) return dealer
-  if (customer && !dealer) return customer
-
-  const alignDealer = contactAlignsWithOrg(contact, dealer)
-  const alignCustomer = contactAlignsWithOrg(contact, customer)
-
-  if (alignDealer && !alignCustomer) return dealer
-  if (alignCustomer && !alignDealer) return customer
-  if (alignDealer && alignCustomer) return ''
-
-  return ''
+  return resolveContactCompany(
+    r.dealer,
+    r.customer,
+    r.contact,
+    r.nextStepTarget,
+    r.contactCompany || '',
+  )
 }
 
 /** Affiliation-based org, then API title parens, then location. */
@@ -592,32 +646,20 @@ function actionAlreadyEndsWithTarget(action: string, target: string): boolean {
   return prefix === '' || /\s$/.test(prefix)
 }
 
-/** Collapse repeated identical token at end ("Mike Mike" → "Mike"). */
-function dedupeTrailingRepeatedWords(s: string): string {
-  const parts = s.trim().split(/\s+/)
-  if (parts.length < 2) return s.trim()
-  let i = parts.length - 1
-  while (i > 0 && parts[i].toLowerCase() === parts[i - 1].toLowerCase()) {
-    parts.splice(i, 1)
-    i--
-  }
-  return parts.join(' ')
-}
-
 function joinActionAndTarget(action: string, target: string): string {
   const a = action.trim()
   const t = target.trim()
-  if (!a) return t
-  if (!t) return a
+  if (!a) return dedupeConsecutiveRepeatedWords(t)
+  if (!t) return dedupeConsecutiveRepeatedWords(a)
 
   if (actionAlreadyEndsWithTarget(a, t)) {
-    return dedupeTrailingRepeatedWords(a)
+    return dedupeConsecutiveRepeatedWords(a)
   }
 
   if (a.toLowerCase() === 'llamar' && !/^llamar\s+a\b/i.test(a)) {
-    return dedupeTrailingRepeatedWords(`Llamar a ${t}`)
+    return dedupeConsecutiveRepeatedWords(`Llamar a ${t}`)
   }
-  return dedupeTrailingRepeatedWords(`${a} ${t}`.replace(/\s+/g, ' ').trim())
+  return dedupeConsecutiveRepeatedWords(mergeActionTargetAvoidOverlap(a, t))
 }
 
 /**
@@ -632,23 +674,23 @@ function buildCleanNextStepTitle(r: StructureResult): string {
   if (action || target) {
     const core = joinActionAndTarget(action, target)
     if (!core) {
-      return dedupeTrailingRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
+      return dedupeConsecutiveRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
     }
 
     if (company) {
       const coreLower = core.toLowerCase()
       const companyLower = company.toLowerCase()
       if (coreLower.includes(`(${companyLower})`)) {
-        return core
+        return dedupeConsecutiveRepeatedWords(core)
       }
-      return `${core} (${company})`
+      return dedupeConsecutiveRepeatedWords(`${core} (${company})`)
     }
     const preserved = (r.nextStepTitle || '').trim()
-    if (preserved) return dedupeTrailingRepeatedWords(preserved)
-    return core
+    if (preserved) return dedupeConsecutiveRepeatedWords(preserved)
+    return dedupeConsecutiveRepeatedWords(core)
   }
 
-  return dedupeTrailingRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
+  return dedupeConsecutiveRepeatedWords((r.nextStepTitle || r.nextStep || '').trim())
 }
 
 function enrichNextStep(
@@ -677,7 +719,7 @@ function enrichNextStep(
     enriched = `${enriched} (${company})`
   }
 
-  return enriched
+  return dedupeConsecutiveRepeatedWords(enriched)
 }
 
 function isSpanish(text: string) {
@@ -719,8 +761,8 @@ function finalizeNextStepFields(res: StructureResult, sourceText: string): Struc
   const base = { ...res }
   let nextLine = enrichNextStep(base.nextStep, base)
   let nextTitle = buildCleanNextStepTitle(base)
-  nextLine = forceLanguage(nextLine, sourceText)
-  nextTitle = forceLanguage(nextTitle, sourceText)
+  nextLine = dedupeConsecutiveRepeatedWords(forceLanguage(nextLine, sourceText))
+  nextTitle = dedupeConsecutiveRepeatedWords(forceLanguage(nextTitle, sourceText))
   return { ...base, nextStep: nextLine, nextStepTitle: nextTitle }
 }
 
@@ -786,6 +828,20 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
   const [calendarConfirm, setCalendarConfirm] = useState<CalendarConfirmState | null>(null)
+  const [pendingDatePick, setPendingDatePick] = useState<{
+    result: StructureResult
+    transcript: string
+  } | null>(null)
+  const [pendingContactPick, setPendingContactPick] = useState<{
+    result: StructureResult
+    transcript: string
+  } | null>(null)
+  const [contactPickInput, setContactPickInput] = useState('')
+  const [pendingCompanyPick, setPendingCompanyPick] = useState<{
+    result: StructureResult
+    transcript: string
+  } | null>(null)
+  const [companyPickInput, setCompanyPickInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [resultSummaryExpanded, setResultSummaryExpanded] = useState(false)
@@ -819,6 +875,7 @@ export default function Home() {
             result: normalizeStructureResult({
               ...emptyResult,
               contact: n.contact || '',
+              contactCompany: n.contact_company || '',
               customer: n.customer || '',
               dealer: n.dealer || '',
               summary: n.summary || '',
@@ -890,6 +947,14 @@ export default function Home() {
     setHistorySummaryExpanded(false)
   }, [selectedNote?.id])
 
+  useEffect(() => {
+    if (pendingContactPick) setContactPickInput('')
+  }, [pendingContactPick])
+
+  useEffect(() => {
+    if (pendingCompanyPick) setCompanyPickInput('')
+  }, [pendingCompanyPick])
+
   const saveNote = async (res: StructureResult, tx: string) => {
     const note: SavedNote = {
       id: Date.now().toString(),
@@ -908,6 +973,7 @@ export default function Home() {
         date: note.date,
         transcript: tx,
         contact: res.contact,
+        contact_company: res.contactCompany,
         customer: res.customer,
         summary: res.summary,
         next_step: res.nextStep,
@@ -919,6 +985,84 @@ export default function Home() {
         crm_full: res.crmFull,
       })
     } catch {}
+  }
+
+  const commitPendingDatePick = (mmdd: string) => {
+    setPendingDatePick((p) => {
+      if (!p) return null
+      const merged = { ...p.result, nextStepDate: mmdd }
+      setResult(merged)
+      saveNote(merged, p.transcript)
+      return null
+    })
+  }
+
+  /** After contact step only: maybe show empresa modal, else fecha/resultado. */
+  const advanceValidationFlow = (merged: StructureResult, transcript: string) => {
+    if (needsContactCompanyPick(merged)) {
+      setPendingCompanyPick({ result: merged, transcript })
+    } else {
+      advanceAfterCompanyResolved(merged, transcript)
+    }
+  }
+
+  /** After empresa modal (or if empresa was already set): fecha → resultado. Never re-open empresa. */
+  const advanceAfterCompanyResolved = (merged: StructureResult, transcript: string) => {
+    if (needsNextStepDatePick(merged)) {
+      setPendingDatePick({ result: merged, transcript })
+    } else {
+      setResult(merged)
+      saveNote(merged, transcript)
+    }
+  }
+
+  const commitPendingContactSaltar = () => {
+    const p = pendingContactPick
+    if (!p) return
+    setPendingContactPick(null)
+    let merged = normalizeStructureResult(p.result)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    advanceValidationFlow(merged, p.transcript)
+  }
+
+  const commitPendingContactContinuar = () => {
+    const raw = contactPickInput.trim()
+    if (!raw) return
+    const p = pendingContactPick
+    if (!p) return
+    const name = dedupeConsecutiveRepeatedWords(raw)
+    setPendingContactPick(null)
+    setContactPickInput('')
+    let merged: StructureResult = { ...p.result, contact: name }
+    if (!(merged.nextStepTarget || '').trim()) {
+      merged = { ...merged, nextStepTarget: name }
+    }
+    merged = normalizeStructureResult(merged)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    advanceValidationFlow(merged, p.transcript)
+  }
+
+  const commitPendingCompanySaltar = () => {
+    const p = pendingCompanyPick
+    if (!p) return
+    setPendingCompanyPick(null)
+    let merged = normalizeStructureResult(p.result)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    advanceAfterCompanyResolved(merged, p.transcript)
+  }
+
+  const commitPendingCompanyContinuar = () => {
+    const raw = companyPickInput.trim()
+    if (!raw) return
+    const p = pendingCompanyPick
+    if (!p) return
+    const company = dedupeConsecutiveRepeatedWords(raw)
+    setPendingCompanyPick(null)
+    setCompanyPickInput('')
+    let merged: StructureResult = { ...p.result, contactCompany: company }
+    merged = normalizeStructureResult(merged)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    advanceAfterCompanyResolved(merged, p.transcript)
   }
 
   const deleteNote = async (id: string) => {
@@ -941,6 +1085,7 @@ export default function Home() {
       await supabase.from('notes').update({
         transcript: tx,
         contact: res.contact,
+        contact_company: res.contactCompany,
         customer: res.customer,
         summary: res.summary,
         next_step: res.nextStep,
@@ -956,7 +1101,11 @@ export default function Home() {
 
   const buildShareText = (r: StructureResult) => {
     const lines: string[] = ['📋 FieldBrief Note', '']
-    if (r.contact) lines.push(`👤 ${r.contact}${r.customer ? ` — ${r.customer}` : ''}`)
+    if (r.contact) {
+      lines.push(
+        `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
+      )
+    }
     const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, r.product && `🧪 ${r.product}`].filter(Boolean)
     if (pills.length) lines.push(pills.join('  '))
     if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
@@ -1094,6 +1243,9 @@ export default function Home() {
       setError('')
       setCopied(false)
       setResult(null)
+      setPendingDatePick(null)
+      setPendingContactPick(null)
+      setPendingCompanyPick(null)
       setTranscript('')
       setInput('')
 
@@ -1130,6 +1282,9 @@ export default function Home() {
     setLoading(true)
     setError('')
     setResult(null)
+    setPendingDatePick(null)
+    setPendingContactPick(null)
+    setPendingCompanyPick(null)
     try {
       const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
       const file = new File([blob], `voice-note.${extension}`, { type: blob.type || 'audio/webm' })
@@ -1175,8 +1330,16 @@ export default function Home() {
       final = finalizeNextStepFields(final, tx)
 
       await awaitMinProcessingDisplay()
-      setResult(final)
-      saveNote(final, tx)
+      if (needsContactPick(final)) {
+        setPendingContactPick({ result: final, transcript: tx })
+      } else if (needsContactCompanyPick(final)) {
+        setPendingCompanyPick({ result: final, transcript: tx })
+      } else if (needsNextStepDatePick(final)) {
+        setPendingDatePick({ result: final, transcript: tx })
+      } else {
+        setResult(final)
+        saveNote(final, tx)
+      }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
@@ -1191,6 +1354,9 @@ export default function Home() {
     setLoading(true)
     setError('')
     setResult(null)
+    setPendingDatePick(null)
+    setPendingContactPick(null)
+    setPendingCompanyPick(null)
     setCopied(false)
     try {
       const res = await fetch('/api/structure', {
@@ -1203,8 +1369,16 @@ export default function Home() {
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = finalizeNextStepFields(final, input)
       await awaitMinProcessingDisplay()
-      setResult(final)
-      saveNote(final, input)
+      if (needsContactPick(final)) {
+        setPendingContactPick({ result: final, transcript: input })
+      } else if (needsContactCompanyPick(final)) {
+        setPendingCompanyPick({ result: final, transcript: input })
+      } else if (needsNextStepDatePick(final)) {
+        setPendingDatePick({ result: final, transcript: input })
+      } else {
+        setResult(final)
+        saveNote(final, input)
+      }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
@@ -1226,6 +1400,9 @@ export default function Home() {
   const handleReset = () => {
     setInput('')
     setResult(null)
+    setPendingDatePick(null)
+    setPendingContactPick(null)
+    setPendingCompanyPick(null)
     setError('')
     setTranscript('')
     setCopied(false)
@@ -1330,6 +1507,266 @@ export default function Home() {
             <p className="mt-5 max-w-[17rem] text-center text-[14px] font-semibold leading-snug tracking-tight text-zinc-700/95">
               Creating your follow-up
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Contact missing — same sheet pattern as date picker */}
+      {pendingContactPick && !loading && (
+        <div
+          className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contact-pick-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Saltar sin contacto"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(6)
+              commitPendingContactSaltar()
+            }}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p id="contact-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                  ¿Con quién hablaste?
+                </p>
+                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                  No detectamos un nombre de contacto en la nota
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingContactSaltar()
+                }}
+                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                aria-label="Saltar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="contact-pick-input">
+              Nombre del contacto
+            </label>
+            <input
+              id="contact-pick-input"
+              type="text"
+              value={contactPickInput}
+              onChange={(e) => setContactPickInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && contactPickInput.trim()) {
+                  e.preventDefault()
+                  commitPendingContactContinuar()
+                }
+              }}
+              placeholder="Nombre del contacto"
+              autoComplete="name"
+              autoFocus
+              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingContactSaltar()
+                }}
+                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+              >
+                Saltar
+              </button>
+              <button
+                type="button"
+                disabled={!contactPickInput.trim()}
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingContactContinuar()
+                }}
+                className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                style={{ backgroundColor: '#1a4d2e' }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* contactCompany missing — after contact, before date */}
+      {pendingCompanyPick && !loading && (
+        <div
+          className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="company-pick-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Continuar sin empresa"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(6)
+              commitPendingCompanySaltar()
+            }}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p id="company-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                  ¿De qué empresa?
+                </p>
+                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                  No detectamos la empresa del contacto
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingCompanySaltar()
+                }}
+                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                aria-label="Saltar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="company-pick-input">
+              Empresa del contacto
+            </label>
+            <input
+              id="company-pick-input"
+              type="text"
+              value={companyPickInput}
+              onChange={(e) => setCompanyPickInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && companyPickInput.trim()) {
+                  e.preventDefault()
+                  commitPendingCompanyContinuar()
+                }
+              }}
+              placeholder="Nombre de la empresa"
+              autoComplete="organization"
+              autoFocus
+              className="mb-3 w-full rounded-xl border border-zinc-200 bg-zinc-50/80 px-3.5 py-3 text-[15px] font-medium text-zinc-900 outline-none placeholder:text-zinc-400/80 focus:border-emerald-300/80 focus:ring-0"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingCompanySaltar()
+                }}
+                className="flex-1 rounded-xl border border-zinc-200 bg-white py-3.5 text-[14px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 active:scale-[0.99]"
+              >
+                Saltar
+              </button>
+              <button
+                type="button"
+                disabled={!companyPickInput.trim()}
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingCompanyContinuar()
+                }}
+                className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                style={{ backgroundColor: '#1a4d2e' }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick date when model left nextStepDate empty */}
+      {pendingDatePick && !loading && (
+        <div
+          className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="date-pick-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Cerrar y usar mañana por defecto"
+            onClick={() => commitPendingDatePick(dateOptionTomorrow())}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p id="date-pick-title" className="text-[15px] font-bold leading-snug text-zinc-900">
+                  ¿Cuándo es el siguiente paso?
+                </p>
+                <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                  No detectamos fecha en la nota. Elige una o cierra para usar mañana.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => commitPendingDatePick(dateOptionTomorrow())}
+                className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                aria-label="Cerrar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingDatePick(dateOptionToday())
+                }}
+                className="rounded-xl border border-zinc-200 bg-zinc-50/80 py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-100"
+              >
+                Hoy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingDatePick(dateOptionTomorrow())
+                }}
+                className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-emerald-50"
+              >
+                Mañana
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingDatePick(dateOptionThisWeekFriday())
+                }}
+                className="rounded-xl border border-zinc-200 bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+              >
+                Esta semana <span className="font-medium text-zinc-500">(viernes)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingDatePick(dateOptionNextWeekMonday())
+                }}
+                className="rounded-xl border border-zinc-200 bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-zinc-900 transition-colors active:scale-[0.99] hover:bg-zinc-50"
+              >
+                Próxima semana <span className="font-medium text-zinc-500">(lunes)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1515,22 +1952,30 @@ export default function Home() {
       )}
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-5 pb-28">
+      <div className="flex-1 overflow-y-auto px-5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
 
         {/* ── RECORD TAB ── */}
         {activeTab === 'record' && (
           <div
             className="relative flex flex-col"
-            style={result ? undefined : { minHeight: 'calc(100vh - 132px)' }}
+            style={
+              result || pendingDatePick || pendingContactPick || pendingCompanyPick
+                ? undefined
+                : { minHeight: 'calc(100vh - 132px)' }
+            }
           >
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
-                opacity: result || loading ? 0 : 1,
+                opacity:
+                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick ? 0 : 1,
                 transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
-                pointerEvents: result || loading ? 'none' : 'auto',
+                pointerEvents:
+                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick
+                    ? 'none'
+                    : 'auto',
               }}
             >
               <div className="mb-4 max-w-[20rem] text-center">
@@ -1651,7 +2096,7 @@ export default function Home() {
             {/* SCREEN 2 — Result (slides up when result exists) */}
             {result && (
               <div
-                className="flex flex-col px-0 pt-1 pb-2"
+                className="flex flex-col px-0 pt-1 pb-0"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
@@ -1719,12 +2164,9 @@ export default function Home() {
                           {result.customer || '—'}
                         </p>
                       )}
-                      {result.contact &&
-                      result.customer &&
-                      result.contact.trim().toLowerCase() !==
-                        result.customer.trim().toLowerCase() ? (
+                      {result.contactCompany ? (
                         <p className="mt-0.5 text-[13px] font-medium leading-snug text-zinc-500">
-                          {result.customer}
+                          {result.contactCompany}
                         </p>
                       ) : null}
                       {(result.location || result.crop || result.product) && (
@@ -1793,7 +2235,7 @@ export default function Home() {
                   )}
 
                   {/* Copy / Share / Correct — inline, directly under content */}
-                  <div className="flex items-center gap-2 border-t border-zinc-100/90 pt-2">
+                  <div className="flex items-center gap-2 border-t border-zinc-100/90 pt-2 pb-0">
                     <button
                       type="button"
                       onClick={() => {
@@ -1885,9 +2327,9 @@ export default function Home() {
                       </div>
                       <div>
                         <p className="text-[20px] font-bold text-zinc-900">{selectedNote.result.contact || '—'}</p>
-                        {selectedNote.result.customer && (
-                          <p className="text-[13px] text-zinc-400 mt-0.5">{selectedNote.result.customer}</p>
-                        )}
+                        {selectedNote.result.contactCompany ? (
+                          <p className="text-[13px] text-zinc-400 mt-0.5">{selectedNote.result.contactCompany}</p>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -2061,6 +2503,7 @@ export default function Home() {
                       const q = searchQuery.toLowerCase()
                       return (
                         note.result.contact?.toLowerCase().includes(q) ||
+                        note.result.contactCompany?.toLowerCase().includes(q) ||
                         note.result.customer?.toLowerCase().includes(q) ||
                         note.result.product?.toLowerCase().includes(q) ||
                         note.result.location?.toLowerCase().includes(q) ||
@@ -2083,8 +2526,11 @@ export default function Home() {
                               <p className="text-[14px] font-semibold text-zinc-900 truncate">
                                 {note.result.contact || note.result.customer || 'Unnamed'}
                               </p>
-                              {note.result.customer && note.result.contact && (
-                                <p className="text-[12px] text-zinc-400 truncate">{note.result.customer}</p>
+                              {note.result.contact &&
+                                (note.result.contactCompany || note.result.customer) && (
+                                <p className="text-[12px] text-zinc-400 truncate">
+                                  {note.result.contactCompany || note.result.customer}
+                                </p>
                               )}
                             </div>
                           </div>
