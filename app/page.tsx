@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
-import { supabase } from '../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
@@ -886,16 +886,11 @@ Contact: ${result.contact || ''}
   return data.nextStep || result.nextStep || ''
 }
 
-/** Google email when present; `anonymous` fallback so Supabase insert still runs before session hydrates. */
-function resolveSupabaseUserId(session: { user?: { email?: string | null } } | null): string {
-  const email = session?.user?.email?.trim()
-  return email || 'anonymous'
-}
-
 export default function Home() {
   const { data: session, status } = useSession()
-  const supabaseUserId = resolveSupabaseUserId(session)
-  const notesStorageKey = `fieldbrief-notes:${supabaseUserId}`
+  /** Solo notas de Supabase / localStorage cuando hay sesión con email (sin fallback anónimo). */
+  const sessionEmail = session?.user?.email?.trim() ?? null
+  const notesStorageKey = sessionEmail ? `fieldbrief-notes:${sessionEmail}` : ''
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('record')
   const [input, setInput] = useState('')
@@ -956,13 +951,43 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    if (!sessionEmail) {
+      setSavedNotes([])
+      return
+    }
     const loadNotes = async () => {
+      if (!isSupabaseConfigured) {
+        try {
+          const stored = localStorage.getItem(notesStorageKey)
+          if (stored) {
+            const parsed = JSON.parse(stored) as SavedNote[]
+            setSavedNotes(
+              parsed.map((n) => ({
+                ...n,
+                result: normalizeStructureResult({
+                  ...emptyResult,
+                  ...n.result,
+                  crmFull: normalizeCrmFull(n.result.crmFull),
+                }),
+              })),
+            )
+          } else {
+            setSavedNotes([])
+          }
+        } catch {
+          setSavedNotes([])
+        }
+        return
+      }
       try {
         const { data, error } = await supabase
           .from('notes')
           .select('*')
-          .eq('user_id', supabaseUserId)
+          .eq('user_id', sessionEmail)
           .order('date', { ascending: false })
+        if (error) {
+          console.error('[loadNotes] Supabase select error:', error.message, error)
+        }
         if (!error && data && data.length > 0) {
           const mapped: SavedNote[] = data.map((n: any) => ({
             id: n.id,
@@ -989,7 +1014,9 @@ export default function Home() {
           try { localStorage.setItem(notesStorageKey, JSON.stringify(mapped)) } catch {}
           return
         }
-      } catch {}
+      } catch (e) {
+        console.error('[loadNotes] Supabase request failed:', e)
+      }
       try {
         const stored = localStorage.getItem(notesStorageKey)
         if (stored) {
@@ -1012,7 +1039,7 @@ export default function Home() {
       }
     }
     loadNotes()
-  }, [supabaseUserId])
+  }, [sessionEmail])
 
   useEffect(() => {
     if (!copied) return
@@ -1059,6 +1086,7 @@ export default function Home() {
   }, [pendingNextStepClarifyPick])
 
   const saveNote = async (res: StructureResult, tx: string) => {
+    console.log('[saveNote] 1) función llamada')
     const note: SavedNote = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
@@ -1069,8 +1097,21 @@ export default function Home() {
     setSavedNotes(updated)
     setNoteSaved(true)
     setTimeout(() => setNoteSaved(false), 2300)
-    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
-    const rowUserId = resolveSupabaseUserId(session)
+    try {
+      if (sessionEmail && notesStorageKey) {
+        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
+      }
+    } catch {}
+    if (!sessionEmail) {
+      console.log('[saveNote] sin email de sesión; no se llama a Supabase (esperando sesión)')
+      return
+    }
+    if (!isSupabaseConfigured) {
+      console.error('[saveNote] Supabase no configurado: faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      return
+    }
+    const rowUserId = sessionEmail
+    console.log('[saveNote] 2) user_id a insertar en Supabase:', rowUserId)
     const insertPayload = {
       id: note.id,
       date: note.date,
@@ -1088,12 +1129,16 @@ export default function Home() {
       crm_text: res.crmText,
       crm_full: res.crmFull,
     }
-    console.log('[saveNote] Supabase insert starting', { user_id: rowUserId, noteId: note.id })
     try {
       const { data, error } = await supabase.from('notes').insert(insertPayload).select()
-      console.log('[saveNote] Supabase insert finished', { error, data })
+      if (error) {
+        console.log('[saveNote] 3) error devuelto por Supabase (insert falló):', error)
+        console.log('[saveNote]    → message:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint)
+      } else {
+        console.log('[saveNote] 3) insert OK en Supabase, filas:', data)
+      }
     } catch (err) {
-      console.log('[saveNote] Supabase insert threw', err)
+      console.log('[saveNote] 3) excepción al insertar (no es respuesta de Supabase):', err)
     }
   }
 
@@ -1222,14 +1267,19 @@ export default function Home() {
   const deleteNote = async (id: string) => {
     const updated = savedNotes.filter((n) => n.id !== id)
     setSavedNotes(updated)
-    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
+    try {
+      if (sessionEmail && notesStorageKey) {
+        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
+      }
+    } catch {}
     if (selectedNote?.id === id) setSelectedNote(null)
+    if (!sessionEmail || !isSupabaseConfigured) return
     try {
       await supabase
         .from('notes')
         .delete()
         .eq('id', id)
-        .eq('user_id', supabaseUserId)
+        .eq('user_id', sessionEmail)
     } catch {}
   }
 
@@ -1238,9 +1288,14 @@ export default function Home() {
       n.id === id ? { ...n, result: res, transcript: tx } : n
     )
     setSavedNotes(updated)
-    try { localStorage.setItem(notesStorageKey, JSON.stringify(updated)) } catch {}
+    try {
+      if (sessionEmail && notesStorageKey) {
+        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
+      }
+    } catch {}
     if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
     if (result) setResult(res)
+    if (!sessionEmail || !isSupabaseConfigured) return
     try {
       await supabase
         .from('notes')
@@ -1259,7 +1314,7 @@ export default function Home() {
           crm_full: res.crmFull,
         })
         .eq('id', id)
-        .eq('user_id', supabaseUserId)
+        .eq('user_id', sessionEmail)
     } catch {}
   }
 
@@ -2978,10 +3033,14 @@ export default function Home() {
               onClick={async () => {
                 if (!confirm('Delete all saved notes?')) return
                 setSavedNotes([])
-                try { localStorage.removeItem(notesStorageKey) } catch {}
                 try {
-                  await supabase.from('notes').delete().eq('user_id', supabaseUserId)
+                  if (notesStorageKey) localStorage.removeItem(notesStorageKey)
                 } catch {}
+                if (sessionEmail && isSupabaseConfigured) {
+                  try {
+                    await supabase.from('notes').delete().eq('user_id', sessionEmail)
+                  } catch {}
+                }
               }}
               className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-500 transition-all hover:bg-red-100"
             >
