@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FieldBrief",
+  title: "Voicta",
   description: "Voice notes → structured CRM updates",
 };
 

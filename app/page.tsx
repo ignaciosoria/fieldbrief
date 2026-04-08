@@ -890,7 +890,7 @@ export default function Home() {
   const { data: session, status } = useSession()
   /** Solo notas de Supabase / localStorage cuando hay sesión con email (sin fallback anónimo). */
   const sessionEmail = session?.user?.email?.trim() ?? null
-  const notesStorageKey = sessionEmail ? `fieldbrief-notes:${sessionEmail}` : ''
+  const notesStorageKey = sessionEmail ? `voicta-notes:${sessionEmail}` : ''
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('record')
   const [input, setInput] = useState('')
@@ -1321,7 +1321,7 @@ export default function Home() {
   }
 
   const buildShareText = (r: StructureResult) => {
-    const lines: string[] = ['📋 FieldBrief Note', '']
+    const lines: string[] = ['📋 Voicta Note', '']
     if (r.contact) {
       lines.push(
         `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
@@ -1712,7 +1712,7 @@ export default function Home() {
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           </div>
-          <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">FieldBrief</p>
+          <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">Voicta</p>
           <p className="mt-4 text-[17px] font-medium leading-snug text-zinc-800 sm:text-lg">
             Speak your visit.
             <br />
@@ -1762,7 +1762,7 @@ export default function Home() {
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
-        <span className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">FieldBrief</span>
+        <span className="text-[13px] font-semibold tracking-[0.16em] text-zinc-800 uppercase">Voicta</span>
         {userImage ? (
           <img
             src={userImage}
