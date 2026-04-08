@@ -1,25 +1,27 @@
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * Must be prefixed with NEXT_PUBLIC_ so Next.js inlines them into the browser bundle.
- * After changing .env.local, restart `next dev` / rebuild.
+ * Único cliente Supabase del proyecto. Usa las variables tal cual las expone Next.js en el bundle del cliente.
+ * Tras cambiar .env.local, reinicia `next dev`.
  */
-export const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()
-export const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+export const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+)
 
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  if (!supabaseUrl) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.error(
-      '[supabase] NEXT_PUBLIC_SUPABASE_URL no está definida o está vacía. Añádela en .env.local y reinicia el servidor.',
+      '[supabase] Falta NEXT_PUBLIC_SUPABASE_URL en .env.local — reinicia el servidor de desarrollo.',
     )
   }
-  if (!supabaseAnonKey) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     console.error(
-      '[supabase] NEXT_PUBLIC_SUPABASE_ANON_KEY no está definida o está vacía. Usa la anon key del proyecto (Settings → API). Reinicia el servidor.',
+      '[supabase] Falta NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local — reinicia el servidor de desarrollo.',
     )
   }
 }
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
