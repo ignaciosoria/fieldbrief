@@ -405,6 +405,25 @@ function hasClarifyStrongActionVerb(line: string): boolean {
   )
 }
 
+/**
+ * Next step text describes the contact / grower applying product (their action), not the rep's.
+ * If this matches at the start of nextStep or nextStepTitle, force the vague-action clarify modal.
+ */
+function isClientApplyNextStepStart(line: string): boolean {
+  const raw = line.trim().replace(/^[¿¡"'«»]+/, '').trim()
+  if (!raw) return false
+  const t = raw.toLowerCase()
+  const clientApplyPrefixes = [
+    'aplicar',
+    'aplicarán',
+    'aplicaran',
+    'apply',
+    'they will apply',
+    'van a aplicar',
+  ]
+  return clientApplyPrefixes.some((p) => t.startsWith(p))
+}
+
 /** Vague follow-up wording that needs an explicit action if no strong verb is present. */
 function hasVagueNextStepWording(line: string): boolean {
   const t = line.toLowerCase()
@@ -421,8 +440,11 @@ function hasVagueNextStepWording(line: string): boolean {
 }
 
 function needsNextStepClarifyPick(r: StructureResult): boolean {
-  const line = (r.nextStep || r.nextStepTitle || '').trim()
+  const step = (r.nextStep || '').trim()
+  const title = (r.nextStepTitle || '').trim()
+  const line = step || title
   if (!line) return false
+  if (isClientApplyNextStepStart(step) || isClientApplyNextStepStart(title)) return true
   if (hasClarifyStrongActionVerb(line)) return false
   return hasVagueNextStepWording(line)
 }
@@ -1327,7 +1349,7 @@ export default function Home() {
   }
 
   const buildShareText = (r: StructureResult) => {
-    const lines: string[] = ['📋 Voicta Note', '']
+    const lines: string[] = ['📋 Folup Note', '']
     if (r.contact) {
       lines.push(
         `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
@@ -1704,22 +1726,13 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <div
-            className="mb-6 flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl text-white shadow-lg"
-            style={{
-              backgroundColor: '#4F46E5',
-              boxShadow: '0 12px 40px rgba(79,70,229,0.2)',
-            }}
-            aria-hidden
-          >
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          </div>
-          <p className="text-[13px] font-semibold tracking-[0.16em] text-[#111111] uppercase">Voicta</p>
+          <img
+            src="/logo.svg"
+            alt="Folup"
+            height={48}
+            width={64}
+            className="mx-auto mb-6 h-12 w-auto"
+          />
           <p className="mt-4 text-[17px] font-medium leading-snug text-[#111111] sm:text-lg">
             Speak your visit.
             <br />
@@ -1769,7 +1782,7 @@ export default function Home() {
           <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
           <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
         </button>
-        <span className="text-[13px] font-semibold tracking-[0.16em] text-[#111111] uppercase">Voicta</span>
+        <img src="/logo.svg" alt="Folup" height={28} className="h-7 w-auto" />
         {userImage ? (
           <img
             src={userImage}

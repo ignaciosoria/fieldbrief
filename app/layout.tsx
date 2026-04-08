@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Voicta",
+  title: "Folup",
   description: "Voice notes → structured CRM updates",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
