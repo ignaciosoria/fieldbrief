@@ -52,6 +52,10 @@ Return ONLY valid JSON. No markdown. No explanation.
 LANGUAGE:
 A MANDATORY block at the very start of this system message names the note's language. Every string VALUE in the JSON (summary, nextStep, crm lines, etc.) MUST use that language only. Never mix languages. JSON keys stay in English as specified.
 
+**nextStep** and **nextStepTitle** — **no exceptions:**
+- They MUST be written **entirely** in the **same language as the input note** — character-for-character language match (English note → English only; Spanish note → Spanish only).
+- **Never** output Spanish in nextStep or nextStepTitle when the note is English, and **never** the reverse. These two fields are **not** allowed to differ from the note's language.
+
 ---
 
 INDUSTRY EXAMPLES (accounts / buyers — non-exhaustive):
@@ -106,6 +110,10 @@ nextStepTitle AND nextStep MUST NEVER contain names of third parties (people the
 ---
 
 NEXT STEP — ABSOLUTE RULES:
+
+LANGUAGE (nextStep + nextStepTitle) — **MANDATORY:**
+- **nextStep** and **nextStepTitle** MUST be in the **exact same language as the input note**. No exceptions — not mixed language, not a "default" language, not Spanish templates for English notes.
+- If the note is English, every word of nextStep and nextStepTitle must be English (except proper names and company names as spoken). If the note is Spanish, both fields must be Spanish throughout.
 
 STEP 1: Extract ALL actions from the note with their dates/times.
 STEP 2: Sort them chronologically — earliest first.
@@ -180,13 +188,14 @@ SUMMARY RULES:
 Extract ALL relevant details as bullet points with emojis.
 No prose. No text blocks. Each line = one fact.
 Emojis must match the content:
-📦 products, services, SKUs, programs, or offerings
+📦 **only** products, services, SKUs, programs the **rep's company is selling or proposing** (never a competitor's product — use ⚔️ below)
 📊 volume, quantity, deal size, units, capacity (use for numeric scale — not dollar pricing alone)
 💰 price / commercial terms / deal economics
 🤝 relationship / new client / stakeholder context
 📅 meetings, visits, deadlines
 ⚠️ problems, risks, blockers
-🆕 new opportunity
+🆕 new opportunity (rep's offering the contact is leaning toward)
+⚔️ **competitor or incumbent product** the account already uses (separate line; same language as note — e.g. English: "⚔️ Competitor: Patient Scheduling Solution")
 🏪 channel partner, retailer, or intermediary location (when relevant — optional line)
 
 THIRD-PARTY OPPORTUNITY (summary bullet — when applicable):
@@ -201,7 +210,7 @@ Same language as note.
 KEY INSIGHTS — align summary bullets with full detail (same ideas as crmFull below):
 - Include **numbers** when stated (headcount, locations, units, revenue, capacity, etc.).
 - Include **deadlines** (internal reviews, decision dates, meetings).
-- Include **competitive** notes (who they use, dissatisfaction) when mentioned.
+- Include **competitive** notes (who they use, dissatisfaction) when mentioned; for a named **competitor product**, use **⚔️** (never 📦 — 📦 is rep offerings only).
 - Include **next meetings or events** spelled out in the note.
 - Prefer an extra bullet over dropping a business-relevant fact.
 
@@ -217,19 +226,22 @@ Array of short lines with emojis. All key business details.
 KEY INSIGHTS — capture ALL important details (crmFull is the primary checklist):
 - Always capture **numbers** when stated: doctors, employees, locations, units, revenue, capacity, seats, doses, headcount, etc. (📊 / 💰 per emoji rules below).
 - Always capture **deadlines**: internal meetings, decision dates, review dates, RFP cutoffs (📅).
-- Always capture **competitive info**: which competitor they use, why they are unhappy, switching signals (⚠️ / 🤝 as fits).
+- Always capture **competitive info**: which competitor they use, why they are unhappy, switching signals (⚠️ / 🤝 as fits). When a **competitor or incumbent product name** is stated, add **exactly one** dedicated crmFull line starting with **⚔️** (e.g. "⚔️ Competitor: [product name]") in the note's language — **never** put that name in JSON **product**.
 - Always capture any **next meeting or event** mentioned (📅), even when it is not the rep-owned primary nextStep.
 - **Maximum detail** — never skip a business-relevant fact from the note; add lines rather than omit.
 
 Emoji discipline:
-- Use **📦** for product/service/program lines (not 🌱). Use **📊** for volume, quantity, capacity, units, or deal scale (not 🌾). Keep **⚠️** problems, **🆕** opportunities, **📅** dates/meetings, **🏪** channel/retail context when relevant.
+- Use **📦** only for **the rep's own** product/service/program lines being pitched or sold (not 🌱). **Never** use 📦 for a competitor's SKU; those lines use **⚔️** (competitor flag — Key Insights only).
+- Use **📊** for volume, quantity, capacity, units, or deal scale (not 🌾). Keep **⚠️** problems, **🆕** opportunities, **📅** dates/meetings, **🏪** channel/retail context when relevant.
+- **Competitor products:** one line per named incumbent/competitor offering: **⚔️** + label in the note's language (English template: "⚔️ Competitor: …"; Spanish: "⚔️ Competidor: …" or natural equivalent). Do **not** duplicate that name in JSON **product**.
 - Do NOT add a separate legacy "distributor:" closing line; optional **🏪** insight is enough when a channel partner matters.
 - If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
 
 DIRECT CONTACT — NEW OFFERING INTEREST (crmFull + **product** field — **MANDATORY** when applicable):
-- When the **direct contact** shows interest in a **new** product, SKU, service, or program **different** from what they already use or buy (explicit contrast in the note):
-  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note (mirror the third-party 🆕 template style but for the direct contact’s interest).
-  - You MUST **append that new offering** to the JSON **product** string as a **comma-separated** item with any other offerings already listed — the app builds **product** pills from this field.
+- When the **direct contact** shows interest in a **new** product, SKU, service, or program **that the rep's company sells or is proposing** (not merely what they currently buy from someone else):
+  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note (mirror the third-party 🆕 template style but for the direct contact’s interest in **your** offering).
+  - You MUST **append that rep-offered item** to the JSON **product** string as a **comma-separated** item with any other **rep** offerings already listed — the app builds **product** pills **only** from the rep's catalog / pitch.
+- If the contrast is only "they use **[competitor product]** today" → put the incumbent in **crmFull** as **⚔️**, **not** in **product**.
 - Do not output duplicate identical 🆕 lines.
 
 VOLUME / QUANTITY — **MANDATORY** when mentioned:
@@ -242,16 +254,19 @@ VOLUME / QUANTITY — **MANDATORY** when mentioned:
 
 PRODUCT FIELD (JSON keys **product** and **crop**):
 
+**product** = **only** what the **rep's own company** is **pitching, proposing, or selling**. The app renders **product** as pills — **never** put a **competitor's or incumbent vendor's** product there. Competitor / incumbent offerings belong in **crmFull** (Key Insights) with the **⚔️** competitor flag, not in **product**.
+
 STRICT — what belongs in **product**:
-- Only extract **real products or services being sold** (commercial offerings the rep's company sells or would sell).
+- Only extract **real products or services the rep's employer sells or is actively proposing** in this conversation.
+- NEVER include **competitor products**, "what they use today" from another vendor, or substitutes sold by rivals — always **⚔️** in **crmFull** instead.
 - NEVER treat documents, templates, analyses, or internal/marketing **materials** as products (send them via nextStep / summary / crmFull, not as **product** entries).
-- Valid **product** examples: 'Salesforce CRM', 'Quantum Flower', 'Patient Scheduling Software'
-- Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'
+- Valid **product** examples (rep's catalog): 'Salesforce CRM', 'Quantum Flower', 'Patient Scheduling Software'
+- Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'; **also invalid:** a rival's SKU the account already bought — use **⚔️** line in **crmFull**.
 
 FIELD RULES:
-- Put **all qualifying** offerings, SKUs, services, programs, and category labels the rep mentioned into **product** as a **comma-separated list** in the same language as the note.
-- Set JSON **crop** to **""** (empty). Do not use a separate crop field — all qualifying offerings belong in **product**.
-- One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product** only if it is a real offering, not a one-off document.
+- Put **all qualifying rep-owned** offerings, SKUs, services, programs, and category labels into **product** as a **comma-separated list** in the same language as the note.
+- Set JSON **crop** to **""** (empty). Do not use a separate crop field — all qualifying rep offerings belong in **product**.
+- One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product** only if it is **the rep's** real offering, not a one-off document and **not** a competitor product.
 
 ---
 
@@ -278,7 +293,7 @@ mentionedEntities,
 notes
 
 Rules for the extra keys:
-- crop = always "" (empty string). Deprecated key — put all offering labels in **product** only.
+- crop = always "" (empty string). Deprecated key — put **only the rep's** offering labels in **product**; competitor products → **crmFull** with **⚔️** only.
 - contactCompany = employer / org of the direct contact only (see contactCompany rules above). Independent consultant → "". Not a copy-paste alias of customer unless that truly is their company name.
 - nextStepAction = single verb phrase for the PRIMARY next step only
 - nextStepTarget = contact name for that action only (never third party) — same ABSOLUTE RULE as nextStep / nextStepTitle
@@ -611,7 +626,8 @@ export async function POST(request: Request) {
     const detectedLanguage = detectNoteLanguage(note)
     const languageEnforcement =
       `The input note is in ${detectedLanguage}. ` +
-      `ALL output fields MUST be in ${detectedLanguage}. This is mandatory.`
+      `ALL output fields MUST be in ${detectedLanguage}. This is mandatory. ` +
+      `**nextStep** and **nextStepTitle** MUST be written entirely in ${detectedLanguage} — the same language as the input note — with no exceptions (never Spanish if the note is English, and vice versa).`
     const systemContent = `${languageEnforcement}\n\n${SYSTEM_PROMPT}`
 
     console.log('[structure] detected language:', detectedLanguage)

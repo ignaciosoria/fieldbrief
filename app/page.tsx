@@ -11,7 +11,10 @@ import {
 } from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
 
-/** Merge legacy `crop` + `product` for one Product row (📦 pills). */
+/**
+ * Merge legacy `crop` + `product` for one Product row (📦 pills).
+ * Values come from API `product`; structure prompt restricts this to the rep's offerings (competitors → ⚔️ in crmFull only).
+ */
 function productDisplayItems(crop: string, productCsv: string): string[] {
   const parts = productFieldToList(productCsv)
   const c = (crop || '').trim()
