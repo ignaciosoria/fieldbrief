@@ -1,20 +1,27 @@
-/** Full Folup lockup (`/logo.png`) — navbar and login only; `object-contain`, no dark swap (wordmark must stay visible on white). */
+/** Folup lockup; default `/logo.png`. Use `src` for login asset `/folup_logo.png`. */
 export function FolupLogo({
+  src = '/logo.png',
+  width = 278,
+  height = 108,
   className,
   imgClassName,
 }: {
+  src?: string
+  width?: number
+  height?: number
   className?: string
   imgClassName?: string
 }) {
+  const imgClasses = ['bg-transparent object-contain', imgClassName].filter(Boolean).join(' ')
   return (
-    <span className={className}>
+    <span className={['bg-transparent', className].filter(Boolean).join(' ')}>
       <img
-        src="/logo.png"
+        src={src}
         alt="Folup"
-        width={278}
-        height={108}
+        width={width}
+        height={height}
         decoding="async"
-        className={imgClassName}
+        className={imgClasses}
       />
     </span>
   )
@@ -29,7 +36,7 @@ export function FolupAppIcon({ className }: { className?: string }) {
       width={32}
       height={32}
       decoding="async"
-      className={className ?? 'h-7 w-7 shrink-0 object-contain'}
+      className={className ?? 'h-7 w-7 shrink-0 bg-transparent object-contain'}
       aria-hidden
     />
   )

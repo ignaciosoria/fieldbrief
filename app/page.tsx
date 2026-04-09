@@ -1729,8 +1729,11 @@ export default function Home() {
         <div className="flex w-full max-w-sm flex-col items-center text-center">
           <div className="mx-auto mb-8 flex w-full justify-center sm:mb-10">
             <FolupLogo
+              src="/folup_logo.png"
+              width={3077}
+              height={1200}
               className="flex justify-center"
-              imgClassName="h-[40px] w-auto max-w-full object-contain md:h-[48px]"
+              imgClassName="h-[40px] max-h-[40px] w-auto max-w-full"
             />
           </div>
           <div className="max-w-[20rem] text-center">
@@ -1783,7 +1786,7 @@ export default function Home() {
         <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3">
           <FolupLogo
             className="shrink-0"
-            imgClassName="h-7 w-auto max-h-7 max-w-[min(7rem,42vw)] object-contain object-left"
+            imgClassName="h-[22px] max-h-[22px] w-auto max-w-[min(7rem,42vw)] object-left"
           />
           <button type="button" className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
             <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
