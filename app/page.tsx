@@ -1727,8 +1727,11 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <FolupWordmark className="mx-auto mb-6 block" imgClassName="h-12 w-auto" />
-          <div className="mt-4 max-w-[20rem] text-center">
+          <FolupWordmark
+            className="mx-auto mb-8 block w-full max-w-[min(17rem,88vw)] sm:mb-10 sm:max-w-[19rem]"
+            imgClassName="mx-auto h-9 w-auto object-contain object-center sm:h-11 md:h-12 lg:h-14"
+          />
+          <div className="max-w-[20rem] text-center">
             <h1 className="text-[17px] font-bold leading-snug text-[#111111] sm:text-lg">
               Record your visit
             </h1>
