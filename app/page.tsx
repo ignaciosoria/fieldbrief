@@ -5,17 +5,34 @@ import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
-import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
+import {
+  stripDealerClosingFromCrmText,
+  stripDealerLinesFromCrmFull,
+} from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
-import { FolupLogo } from '../components/folup-branding'
+
+/** Merge legacy `crop` + `product` for one Product row (📦 pills). */
+function productDisplayItems(crop: string, productCsv: string): string[] {
+  const parts = productFieldToList(productCsv)
+  const c = (crop || '').trim()
+  if (!c) return parts
+  if (parts.some((p) => p.toLowerCase() === c.toLowerCase())) return parts
+  return [c, ...parts]
+}
+
+function normalizeLegacyInsightLine(line: string): string {
+  return line
+    .replace(/^(\s*)🌱/u, '$1📦')
+    .replace(/^(\s*)🌾/u, '$1📊')
+}
+import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
 type StructureResult = {
   customer: string
-  dealer: string
   contact: string
-  /** Employer / org of the direct contact (not the same field as customer or dealer). */
+  /** Employer / org of the direct contact (not the same field as customer). */
   contactCompany: string
   summary: string
   nextStep: string
@@ -38,7 +55,6 @@ type StructureResult = {
 
 const emptyResult: StructureResult = {
   customer: '',
-  dealer: '',
   contact: '',
   contactCompany: '',
   summary: '',
@@ -108,27 +124,30 @@ function capitalizeNextStepTitleFirst(s: string): string {
 }
 
 function normalizeStructureResult(m: StructureResult): StructureResult {
+  const { dealer: _legacyDealer, ...mRest } = m as StructureResult & { dealer?: string }
   const base = {
     ...emptyResult,
-    ...m,
-    crmFull: normalizeCrmFull(m.crmFull),
-    ambiguityFlags: normalizeAmbiguityFlags(m.ambiguityFlags),
-    mentionedEntities: normalizeMentionedEntities(m.mentionedEntities),
-    nextStepConfidence: normalizeConfidence(m.nextStepConfidence),
+    ...mRest,
+    crmFull: normalizeCrmFull(mRest.crmFull),
+    ambiguityFlags: normalizeAmbiguityFlags(mRest.ambiguityFlags),
+    mentionedEntities: normalizeMentionedEntities(mRest.mentionedEntities),
+    nextStepConfidence: normalizeConfidence(mRest.nextStepConfidence),
   }
-  const dealer = dedupeConsecutiveRepeatedWords(base.dealer)
   const customer = dedupeConsecutiveRepeatedWords(base.customer)
   const contact = dedupeConsecutiveRepeatedWords(base.contact)
   const nextStepTarget = dedupeConsecutiveRepeatedWords(base.nextStepTarget)
-  const product = normalizeProductField(base.product)
+  const productMerged = normalizeProductField(
+    productDisplayItems(base.crop, normalizeProductField(base.product)).join(', '),
+  )
   return {
     ...base,
-    dealer,
     customer,
     contact,
     nextStepTarget,
-    product,
-    crmFull: filterCrmFullDealerWhenNoDealer(base.crmFull, dealer),
+    product: productMerged,
+    crop: '',
+    crmFull: stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
+    crmText: stripDealerClosingFromCrmText(base.crmText),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
     mentionedEntities: base.mentionedEntities.map((e) => ({
@@ -137,7 +156,6 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     })),
     contactCompany: dedupeConsecutiveRepeatedWords(
       resolveContactCompany(
-        dealer,
         customer,
         contact,
         nextStepTarget,
@@ -407,7 +425,7 @@ function hasClarifyStrongActionVerb(line: string): boolean {
 }
 
 /**
- * Next step text describes the contact / grower applying product (their action), not the rep's.
+ * Next step text describes the contact applying product (their action), not the rep's.
  * If this matches at the start of nextStep or nextStepTitle, force the vague-action clarify modal.
  */
 function isClientApplyNextStepStart(line: string): boolean {
@@ -460,7 +478,7 @@ function applyQuickNextStepClarify(
     call: { es: 'Llamar', en: 'Call' },
     send: { es: 'Enviar información', en: 'Send info' },
     visit: { es: 'Visitar', en: 'Visit' },
-    samples: { es: 'Mandar muestras', en: 'Send samples' },
+    samples: { es: 'Mandar muestras', en: 'Send materials' },
   }
   const { es, en } = verbs[kind]
   const action = spanish ? es : en
@@ -716,12 +734,9 @@ function hasStrongVerb(nextStep: string) {
   return verbs.some((verb) => lower.startsWith(verb))
 }
 
-/**
- * Company in nextStepTitle parens = org the direct contact belongs to (dealer vs customer).
- */
+/** Company in nextStepTitle parens = org the direct contact belongs to. */
 function companyForDirectContact(r: StructureResult): string {
   return resolveContactCompany(
-    r.dealer,
     r.customer,
     r.contact,
     r.nextStepTarget,
@@ -770,8 +785,8 @@ function joinActionAndTarget(action: string, target: string): string {
 }
 
 /**
- * Calendar-only title: VERB + CONTACT + (COMPANY). Company = org the direct contact belongs to (dealer or customer).
- * Does not use enrichNextStep (avoids stacking customer/dealer/contact/location).
+ * Calendar-only title: VERB + CONTACT + (COMPANY). Company = org the direct contact belongs to.
+ * Does not use enrichNextStep (avoids stacking customer/contact/location).
  */
 function buildCleanNextStepTitle(r: StructureResult): string {
   const action = (r.nextStepAction || '').trim()
@@ -802,12 +817,12 @@ function buildCleanNextStepTitle(r: StructureResult): string {
 
 function enrichNextStep(
   nextStep: string,
-  data: { contact?: string; customer?: string; dealer?: string },
+  data: { contact?: string; customer?: string },
 ) {
   if (!nextStep) return nextStep
 
   const contact = data.contact || ''
-  const company = data.customer || data.dealer || ''
+  const company = data.customer || ''
 
   let enriched = nextStep.trim()
 
@@ -876,7 +891,6 @@ function finalizeNextStepFields(res: StructureResult, sourceText: string): Struc
 async function fixNextStep(result: {
   nextStep?: string
   customer?: string
-  dealer?: string
   contact?: string
 }) {
   const prompt = `
@@ -896,7 +910,6 @@ Original next step:
 
 Context:
 Customer: ${result.customer || ''}
-Dealer: ${result.dealer || ''}
 Contact: ${result.contact || ''}
 `
 
@@ -1032,7 +1045,6 @@ export default function Home() {
               contact: n.contact || '',
               contactCompany: n.contact_company || '',
               customer: n.customer || '',
-              dealer: n.dealer || '',
               summary: n.summary || '',
               nextStep: n.next_step || '',
               notes: n.notes || '',
@@ -1359,8 +1371,8 @@ export default function Home() {
         `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
       )
     }
-    const productPills = productFieldToList(r.product).map((p) => `🧪 ${p}`)
-    const pills = [r.location && `📍 ${r.location}`, r.crop && `🌱 ${r.crop}`, ...productPills].filter(Boolean)
+    const productPills = productDisplayItems(r.crop, r.product).map((p) => `📦 ${p}`)
+    const pills = [r.location && `📍 ${r.location}`, ...productPills].filter(Boolean)
     if (pills.length) lines.push(pills.join('  '))
     if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
     const stepLine = (r.nextStepTitle || r.nextStep).trim()
@@ -1573,7 +1585,6 @@ export default function Home() {
           const fixedNextStep = await fixNextStep({
             nextStep: final.nextStep,
             customer: final.customer,
-            dealer: final.dealer,
             contact: final.contact,
           })
 
@@ -1736,7 +1747,7 @@ export default function Home() {
               width={3077}
               height={1200}
               className="flex justify-center"
-              imgClassName="h-[40px] max-h-[40px] w-auto max-w-full"
+              imgClassName="h-[72px] max-h-[72px] w-auto max-w-full"
             />
           </div>
           <div className="max-w-[20rem] text-center">
@@ -1750,7 +1761,7 @@ export default function Home() {
           <button
             type="button"
             onClick={signInWithGoogle}
-            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-4 text-[15px] font-semibold text-[#111111] shadow-sm transition-[transform,box-shadow] hover:bg-zinc-100 active:scale-[0.99]"
+            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#4F46E5] py-4 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] active:scale-[0.99]"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
               <path
@@ -1786,16 +1797,8 @@ export default function Home() {
 
       {/* Header */}
       <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
-        <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3">
-          <FolupLogo
-            className="shrink-0"
-            imgClassName="h-[22px] max-h-[22px] w-auto max-w-[min(7rem,42vw)] object-left"
-          />
-          <button type="button" className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
-            <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
-            <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
-            <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
-          </button>
+        <div className="relative z-10 flex min-w-0 flex-1 items-center">
+          <FolupHeaderBrand />
         </div>
         <div className="relative z-10 ml-auto shrink-0">
         {userImage ? (
@@ -1870,7 +1873,7 @@ export default function Home() {
           <button
             type="button"
             className="absolute inset-0 cursor-default"
-            aria-label="Saltar sin contacto"
+            aria-label="Skip without contact"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(6)
               commitPendingContactSaltar()
@@ -1880,10 +1883,10 @@ export default function Home() {
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
                 <p id="contact-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
-                  ¿Con quién hablaste?
+                  Who did you speak with?
                 </p>
                 <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
-                  No detectamos un nombre de contacto en la nota
+                  We couldn&apos;t detect a contact name in the note
                 </p>
               </div>
               <button
@@ -1893,7 +1896,7 @@ export default function Home() {
                   commitPendingContactSaltar()
                 }}
                 className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
-                aria-label="Saltar"
+                aria-label="Skip"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -1901,7 +1904,7 @@ export default function Home() {
               </button>
             </div>
             <label className="sr-only" htmlFor="contact-pick-input">
-              Nombre del contacto
+              Contact name
             </label>
             <input
               id="contact-pick-input"
@@ -1914,7 +1917,7 @@ export default function Home() {
                   commitPendingContactContinuar()
                 }
               }}
-              placeholder="Nombre del contacto"
+              placeholder="Contact name"
               autoComplete="name"
               autoFocus
               className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
@@ -1928,7 +1931,7 @@ export default function Home() {
                 }}
                 className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
-                Saltar
+                Skip
               </button>
               <button
                 type="button"
@@ -1940,7 +1943,7 @@ export default function Home() {
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 style={{ backgroundColor: '#4F46E5' }}
               >
-                Continuar
+                Continue
               </button>
             </div>
           </div>
@@ -1959,7 +1962,7 @@ export default function Home() {
           <button
             type="button"
             className="absolute inset-0 cursor-default"
-            aria-label="Continuar sin empresa"
+            aria-label="Continue without company"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(6)
               commitPendingCompanySaltar()
@@ -1969,10 +1972,10 @@ export default function Home() {
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
                 <p id="company-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
-                  ¿De qué empresa?
+                  Which company?
                 </p>
                 <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
-                  No detectamos la empresa del contacto
+                  We couldn&apos;t detect the contact&apos;s company
                 </p>
               </div>
               <button
@@ -1982,7 +1985,7 @@ export default function Home() {
                   commitPendingCompanySaltar()
                 }}
                 className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
-                aria-label="Saltar"
+                aria-label="Skip"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -1990,7 +1993,7 @@ export default function Home() {
               </button>
             </div>
             <label className="sr-only" htmlFor="company-pick-input">
-              Empresa del contacto
+              Contact&apos;s company
             </label>
             <input
               id="company-pick-input"
@@ -2003,7 +2006,7 @@ export default function Home() {
                   commitPendingCompanyContinuar()
                 }
               }}
-              placeholder="Nombre de la empresa"
+              placeholder="Company name"
               autoComplete="organization"
               autoFocus
               className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
@@ -2017,7 +2020,7 @@ export default function Home() {
                 }}
                 className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
-                Saltar
+                Skip
               </button>
               <button
                 type="button"
@@ -2029,14 +2032,14 @@ export default function Home() {
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 style={{ backgroundColor: '#4F46E5' }}
               >
-                Continuar
+                Continue
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Vague next step — after empresa, before fecha */}
+      {/* Vague next step — after company, before date */}
       {pendingNextStepClarifyPick && !loading && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
@@ -2048,7 +2051,7 @@ export default function Home() {
           <button
             type="button"
             className="absolute inset-0 cursor-default"
-            aria-label="Saltar sin cambiar el siguiente paso"
+            aria-label="Skip without changing next step"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(6)
               commitPendingNextStepClarifySaltar()
@@ -2058,10 +2061,10 @@ export default function Home() {
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
                 <p id="next-step-clarify-title" className="text-[15px] font-bold leading-snug text-[#111111]">
-                  ¿Qué exactamente?
+                  What exactly?
                 </p>
                 <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
-                  El siguiente paso no está claro
+                  The next step isn&apos;t clear
                 </p>
               </div>
               <button
@@ -2071,7 +2074,7 @@ export default function Home() {
                   commitPendingNextStepClarifySaltar()
                 }}
                 className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
-                aria-label="Saltar"
+                aria-label="Skip"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -2087,7 +2090,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                📞 Llamar
+                📞 Call
               </button>
               <button
                 type="button"
@@ -2097,7 +2100,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-white py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                📧 Enviar info
+                📧 Send info
               </button>
               <button
                 type="button"
@@ -2107,7 +2110,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                🚗 Visitar
+                🚗 Visit
               </button>
               <button
                 type="button"
@@ -2117,11 +2120,11 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 px-3 text-left text-[13px] font-semibold leading-snug text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                📦 Mandar muestras
+                📦 Send materials
               </button>
             </div>
             <label className="sr-only" htmlFor="next-step-clarify-input">
-              Otro siguiente paso
+              Other next step
             </label>
             <input
               id="next-step-clarify-input"
@@ -2134,7 +2137,7 @@ export default function Home() {
                   commitPendingNextStepClarifyCustom()
                 }
               }}
-              placeholder="O escribe otra acción…"
+              placeholder="Or type another action…"
               autoComplete="off"
               className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
             />
@@ -2147,7 +2150,7 @@ export default function Home() {
                 }}
                 className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
               >
-                Saltar
+                Skip
               </button>
               <button
                 type="button"
@@ -2159,7 +2162,7 @@ export default function Home() {
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 style={{ backgroundColor: '#4F46E5' }}
               >
-                Continuar
+                Continue
               </button>
             </div>
           </div>
@@ -2178,24 +2181,24 @@ export default function Home() {
           <button
             type="button"
             className="absolute inset-0 cursor-default"
-            aria-label="Cerrar y usar mañana por defecto"
+            aria-label="Close and use tomorrow as default"
             onClick={() => commitPendingDatePick(dateOptionTomorrow())}
           />
           <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
                 <p id="date-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
-                  ¿Cuándo es el siguiente paso?
+                  When is the next step?
                 </p>
                 <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
-                  No detectamos fecha en la nota. Elige una o cierra para usar mañana.
+                  We couldn&apos;t detect a date in the note. Pick one or close to use tomorrow.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => commitPendingDatePick(dateOptionTomorrow())}
                 className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
-                aria-label="Cerrar"
+                aria-label="Close"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -2211,7 +2214,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-white py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                Hoy
+                Today
               </button>
               <button
                 type="button"
@@ -2221,7 +2224,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-emerald-200 bg-emerald-50 py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-emerald-100/90"
               >
-                Mañana
+                Tomorrow
               </button>
               <button
                 type="button"
@@ -2231,7 +2234,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                Esta semana <span className="font-medium text-[#6b7280]">(viernes)</span>
+                This week <span className="font-medium text-[#6b7280]">(Friday)</span>
               </button>
               <button
                 type="button"
@@ -2241,7 +2244,7 @@ export default function Home() {
                 }}
                 className="rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-left px-4 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99] hover:bg-zinc-100"
               >
-                Próxima semana <span className="font-medium text-[#6b7280]">(lunes)</span>
+                Next week <span className="font-medium text-[#6b7280]">(Monday)</span>
               </button>
             </div>
           </div>
@@ -2531,7 +2534,14 @@ export default function Home() {
                 <div className="mb-2 w-full px-2">
                   <p className="mb-1.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-[#6b7280]/65">Mention in your note</p>
                   <div className="flex flex-wrap justify-center gap-1">
-                    {[{icon:'🏢',label:'Company'},{icon:'👤',label:'Contact'},{icon:'🌱',label:'Crop'},{icon:'🧪',label:'Product'},{icon:'📍',label:'Location'},{icon:'📅',label:'Next step'}].map((h) => (
+                    {[
+                      { icon: '🏢', label: 'Company' },
+                      { icon: '👤', label: 'Contact' },
+                      { icon: '📦', label: 'Product' },
+                      { icon: '📍', label: 'Location' },
+                      { icon: '💬', label: 'Key points' },
+                      { icon: '📅', label: 'Follow-up date' },
+                    ].map((h) => (
                       <span key={h.label} className="flex items-center gap-0.5 rounded-full border px-1 py-px text-[8px] font-medium text-indigo-700 sm:text-[8.5px]" style={{borderColor:'rgba(79,70,229,0.25)',backgroundColor:'rgba(79,70,229,0.08)',animation:'fadeIn 0.4s ease forwards'}}>
                         {h.icon} {h.label}
                       </span>
@@ -2642,26 +2652,32 @@ export default function Home() {
                           {result.contactCompany}
                         </p>
                       ) : null}
-                      {(result.location || result.crop || result.product) && (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {(result.location || productDisplayItems(result.crop, result.product).length > 0) && (
+                        <div className="mt-2 space-y-1.5">
                           {result.location ? (
-                            <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
-                              📍 {result.location}
-                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
+                                📍 {result.location}
+                              </span>
+                            </div>
                           ) : null}
-                          {result.crop ? (
-                            <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
-                              🌱 {result.crop}
-                            </span>
+                          {productDisplayItems(result.crop, result.product).length > 0 ? (
+                            <div>
+                              <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]/90">
+                                Product
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {productDisplayItems(result.crop, result.product).map((p, i) => (
+                                  <span
+                                    key={`${p}-${i}`}
+                                    className="inline-flex max-w-full min-w-0 items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]"
+                                  >
+                                    📦 {p}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           ) : null}
-                          {productFieldToList(result.product).map((p, i) => (
-                            <span
-                              key={`${p}-${i}`}
-                              className="inline-flex max-w-full min-w-0 items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]"
-                            >
-                              🧪 {p}
-                            </span>
-                          ))}
                         </div>
                       )}
                     </div>
@@ -2673,7 +2689,7 @@ export default function Home() {
                         Key insights
                       </p>
                       <KeyInsightsList
-                        lines={result.crmFull}
+                        lines={result.crmFull.map(normalizeLegacyInsightLine)}
                         gapClass="gap-1.5"
                         lineClassName="rounded-lg px-2 py-1.5 text-[12px] font-medium leading-[1.5] tracking-tight"
                         expanded={resultInsightsExpanded}
@@ -2810,26 +2826,33 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {(selectedNote.result.location || selectedNote.result.crop || selectedNote.result.product) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedNote.result.location && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
-                          📍 {selectedNote.result.location}
-                        </span>
-                      )}
-                      {selectedNote.result.crop && (
-                        <span className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
-                          🌱 {selectedNote.result.crop}
-                        </span>
-                      )}
-                      {productFieldToList(selectedNote.result.product).map((p, i) => (
-                        <span
-                          key={`${p}-${i}`}
-                          className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm"
-                        >
-                          🧪 {p}
-                        </span>
-                      ))}
+                  {(selectedNote.result.location ||
+                    productDisplayItems(selectedNote.result.crop, selectedNote.result.product).length > 0) && (
+                    <div className="space-y-2">
+                      {selectedNote.result.location ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="flex items-center gap-1.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
+                            📍 {selectedNote.result.location}
+                          </span>
+                        </div>
+                      ) : null}
+                      {productDisplayItems(selectedNote.result.crop, selectedNote.result.product).length > 0 ? (
+                        <div>
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]/90">
+                            Product
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {productDisplayItems(selectedNote.result.crop, selectedNote.result.product).map((p, i) => (
+                              <span
+                                key={`${p}-${i}`}
+                                className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm"
+                              >
+                                📦 {p}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
@@ -2839,7 +2862,7 @@ export default function Home() {
                         Key insights
                       </p>
                       <KeyInsightsList
-                        lines={selectedNote.result.crmFull}
+                        lines={selectedNote.result.crmFull.map(normalizeLegacyInsightLine)}
                         gapClass="gap-4"
                         lineClassName="rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight"
                         expanded={historyInsightsExpanded}
@@ -2985,6 +3008,7 @@ export default function Home() {
                         note.result.contactCompany?.toLowerCase().includes(q) ||
                         note.result.customer?.toLowerCase().includes(q) ||
                         note.result.product?.toLowerCase().includes(q) ||
+                        note.result.crop?.toLowerCase().includes(q) ||
                         note.result.location?.toLowerCase().includes(q) ||
                         note.result.nextStep?.toLowerCase().includes(q) ||
                         note.result.nextStepTitle?.toLowerCase().includes(q) ||

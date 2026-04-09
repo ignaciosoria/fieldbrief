@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server'
 import { resolveContactCompany } from '../../../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
 import {
-  ensureDealerInCrmText,
-  ensureDealerInsightInCrmFull,
+  stripDealerClosingFromCrmText,
+  stripDealerLinesFromCrmFull,
 } from '../../../lib/dealerField'
-import { normalizeProductField } from '../../../lib/productField'
+import { normalizeProductField, productFieldToList } from '../../../lib/productField'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -14,7 +14,6 @@ type AdditionalStep = { action: string; date: string; time: string }
 
 type StructureBody = {
   customer: string
-  dealer: string
   contact: string
   contactCompany: string
   summary: string
@@ -41,7 +40,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-const SYSTEM_PROMPT = `You are a CRM assistant for a B2B field sales rep.
+const SYSTEM_PROMPT = `You are a CRM assistant for a B2B field sales rep. The rep may work in any industry (pharma, real estate, agriculture, tech, CPG, services, industrial, etc.) — never assume a specific vertical.
 
 The rep dictates quick voice notes after each visit — informal, spoken, may have noise or incomplete sentences.
 
@@ -59,26 +58,25 @@ ROLES (UNDERSTAND THESE BEFORE EXTRACTING):
 There are 3 possible people in a note:
 1. THE REP — always "I/yo". Never extract as contact.
 2. CONTACT — the person the rep DIRECTLY spoke to. This is who nextStep targets.
-3. THIRD PARTY — someone mentioned but not present (e.g. "his grower Luis"). Never the nextStep target.
+3. THIRD PARTY — someone mentioned but not present (e.g. "her colleague Luis who wasn't in the meeting"). Never the nextStep target.
 
 - contact = person directly spoken to
-- dealer = distributor or intermediary visited
-- customer = named end-account ORGANIZATION only (grower farm, clinic, business name). Must be a real company/grower name when filled.
+- customer = named client / account ORGANIZATION only (legal entity, site, brand unit, clinic, buyer company). Must be a real organization name when filled — not a role label alone.
 
 contactCompany (MANDATORY — where the DIRECT CONTACT works or operates):
-Add field contactCompany = the company where the contact directly works or operates. This is NOT necessarily the same as customer or dealer — it is simply where the person the rep spoke to belongs. This field is separate from customer and dealer.
+Add field contactCompany = the company where the contact directly works or operates. This is NOT necessarily the same as customer — it is simply where the person the rep spoke to belongs.
 
 Rules:
-- If the rep spoke to a grower → contactCompany = that grower's farm / operation name (the contact's employer or own farm).
-- If the rep spoke to a dealer rep → contactCompany = the dealer name (the distributor they work for).
-- If the rep spoke to an independent PCA, consultant, or similar (no single employer org named) → contactCompany = "".
+- If the rep spoke to someone who works for the client's organization → contactCompany = that organization (may match customer when appropriate).
+- If the rep spoke to someone who works for a partner, vendor, or intermediary org → contactCompany = that organization's name.
+- If the rep spoke to an independent consultant or similar (no single employer org named) → contactCompany = "".
 - contactCompany is always the direct employer / company of the contact person — one organization name or empty. Never concatenate multiple companies.
 
 CUSTOMER — NEVER RELATIONAL LABELS ALONE:
-- If the note only describes someone by relationship or generic role (e.g. "su cuñado", "su cliente", "un vecino", "their neighbor", "his client" with no actual farm/company name), set customer to "" (empty string).
-- Do NOT use customer for "who they are to someone" — only for a concrete end account you can name as an organization.
+- If the note only describes someone by relationship or generic role (e.g. "their neighbor", "his client" with no actual company name), set customer to "" (empty string).
+- Do NOT use customer for "who they are to someone" — only for a concrete account you can name as an organization.
 
-CRITICAL: If rep says "Tyler told me about the grower at Laguna Farms" → contact=Tyler, customer=Laguna Farms, dealer=Coastal Growers
+CRITICAL: If rep says "Tyler told me about the issue at Acme Corp" → contact=Tyler, customer=Acme Corp, contactCompany=Tyler's employer org if named, else "".
 
 ---
 
@@ -112,8 +110,8 @@ The earliest action = the nextStep. Always.
 
 nextStepTitle format: VERB + 'a' + CONTACT + (COMPANY)
 Always capitalize first letter.
-CORRECT: 'Enviar muestras a Carmen (Pacific Growers)'
-CORRECT: 'Llamar a Tyler (Coastal Growers)'
+CORRECT: 'Enviar materiales a Carmen (Pacific Brands)'
+CORRECT: 'Llamar a Tyler (Coastal Supplies)'
 WRONG: 'enviar muestras Carmen López'
 
 Store every non-primary action in additionalSteps with date/time when known, in chronological order.
@@ -125,28 +123,26 @@ PASSIVE / WAIT — NEVER AS nextStep:
 - If the client said they will call back, will reach out, or asked the rep to wait — do NOT encode that as passive waiting. Convert to a proactive action in the SAME language as the note, while keeping nextStepTitle COMPANY RULE (VERB + CONTACT + (COMPANY)):
   - Spanish: Llamar a [contact] ([company]) si no hay respuesta antes de [date]
   - English: Call [contact] ([company]) if no response before [date]
-- [company] = org the direct contact belongs to (dealer or customer per affiliation rules). [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
+- [company] = org the direct contact belongs to — use **contactCompany** when set; otherwise **customer** when the contact aligns with that end account. [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
 
 nextStepTitle — COMPANY RULE (MANDATORY):
 - **First word:** nextStepTitle MUST **start with an uppercase letter** (same language as the note).
 - Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
-- The name in parentheses MUST be the organization the DIRECT CONTACT works for — never mix dealer and customer incorrectly.
-- If the contact person belongs to the distributor (dealer) → use dealer inside the parentheses.
-- If the contact person belongs to the end account (grower / final customer) → use customer inside the parentheses.
-- Do NOT put customer in parentheses when the contact is a dealer rep; do NOT put dealer in parentheses when the contact is the grower. One org only, matching affiliation.
+- The name in parentheses MUST be the organization the DIRECT CONTACT works for (contactCompany preferred; customer when it is their client's org).
+- One org only in parentheses — must match affiliation (who employs the contact or whose account they represent in this visit).
 
 nextStepTitle — GRAMMAR (MANDATORY, same language as the note):
 - **Spanish:** The contact name MUST be preceded by **"a"** after the verb phrase. **Never** omit it.
   - Call / follow-up verbs → **"Llamar a [nombre] ([empresa])"** — WRONG: "Llamar Carmen ([empresa])" or any form missing **a** before the contact name.
-  - Send / ship / email verbs (enviar, mandar, pasar, reenviar, etc.) → **"Enviar … a [nombre] ([empresa])"** — e.g. "Enviar muestras a Carmen (Pacific Growers)", "Mandar la cotización a Carmen (Pacific Growers)" — WRONG: "Enviar muestras Carmen (…)", "Mandar cotización Carmen (…)".
-- **English:** Use natural grammar: **"Call Carmen (Pacific Growers)"**; for send-style verbs use **"to"** before the name when required — e.g. **"Send samples to Carmen (Pacific Growers)"**.
+  - Send / ship / email verbs (enviar, mandar, pasar, reenviar, etc.) → **"Enviar … a [nombre] ([empresa])"** — e.g. "Enviar documentos a Carmen (Pacific Brands)", "Mandar la cotización a Carmen (Pacific Brands)" — WRONG: "Enviar documentos Carmen (…)", "Mandar cotización Carmen (…)".
+- **English:** Use natural grammar: **"Call Carmen (Pacific Brands)"**; for send-style verbs use **"to"** before the name when required — e.g. **"Send deck to Carmen (Pacific Brands)"**.
 - Mirror the same correct phrasing in **nextStep** and **nextStepAction** / **nextStepTarget** so nothing contradicts the title.
 
-CORRECT: Dealer rep Tyler at Coastal → "Llamar a Tyler (Coastal Growers)" when dealer=Coastal Growers and Tyler is the dealer-side contact.
-CORRECT: Grower contact Alfonso at Laguna Farms → use (Laguna Farms) from customer when Alfonso is the grower-side contact.
-CORRECT (Spanish send): "Enviar muestras a Carmen (Pacific Growers)" — includes **a** before the contact.
-WRONG: "Enviar precios a Tyler" when the parenthetical company is missing or wrong — title must be VERB + **a** + contact + **(CORRECT COMPANY)**; never "Enviar precios Tyler (…)" (missing **a**).
-WRONG: "Llamar Tyler (Coastal Growers)" — missing **a** before Tyler.
+CORRECT: Tyler works for Coastal Supplies → contactCompany=Coastal Supplies → "Llamar a Tyler (Coastal Supplies)".
+CORRECT: Alfonso is the buyer at Laguna LLC → contactCompany or customer = Laguna LLC → "Llamar a Alfonso (Laguna LLC)".
+CORRECT (Spanish send): "Enviar propuesta a Carmen (Pacific Brands)" — includes **a** before the contact.
+WRONG: "Enviar cotización a Tyler" when the parenthetical company is missing or wrong — title must be VERB + **a** + contact + **(CORRECT COMPANY)**; never "Enviar cotización Tyler (…)" (missing **a**).
+WRONG: "Llamar Tyler (Coastal Supplies)" — missing **a** before Tyler.
 WRONG: "Llamar a Tyler (Luis)" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
 WRONG: "Llamar a Luis..." when Luis was only mentioned, not spoken to — use the direct contact name only
 - NEVER repeat the same word twice in a row in the contact name part of nextStepTitle (WRONG: "Call David David Kim", "Mike Mike", "Llamar a Narciso Narciso Estrada"). nextStepAction + nextStepTarget must not concatenate a duplicated first name.
@@ -169,12 +165,14 @@ SUMMARY RULES:
 Extract ALL relevant details as bullet points with emojis.
 No prose. No text blocks. Each line = one fact.
 Emojis must match the content:
-🌱 crop/product info
-💰 price/quantity/deal info
-🤝 relationship/new client info
-📅 meeting/visit info
-⚠️ problem/concern/risk
+📦 products, services, SKUs, programs, or offerings
+📊 volume, quantity, deal size, units, capacity (use for numeric scale — not dollar pricing alone)
+💰 price / commercial terms / deal economics
+🤝 relationship / new client / stakeholder context
+📅 meetings, visits, deadlines
+⚠️ problems, risks, blockers
 🆕 new opportunity
+🏪 channel partner, retailer, or intermediary location (when relevant — optional line)
 
 THIRD-PARTY OPPORTUNITY (summary bullet — when applicable):
 - If the note mentions a THIRD person (not the direct contact) who shows potential interest, a problem your solution could address, or could realistically become a future customer, add ONE bullet using this label in the SAME language as the note:
@@ -189,43 +187,38 @@ Same language as note.
 
 CRM TEXT:
 2-3 natural sentences. No bullets in the main paragraph. Concise. Human tone.
-- If dealer is non-empty: you MUST mention the distributor in the prose (e.g. English: "Orders go through Pacific Ag.").
-- MANDATORY: always end crmText with a final line (after a blank line) that states the dealer again, in the same language as the note — e.g. English: "Orders go through [dealer]." Spanish: "Distribuidor: [nombre]." Never omit dealer from crmText when dealer exists.
+- Do NOT add a dedicated "distributor" or "Distribuidor:" closing line. Do not structure output around a separate distributor field.
 
 CRM FULL (Key insights):
 Array of short lines with emojis. All key business details.
-- If dealer is non-empty: you MUST include a separate line exactly in this form (its own bullet): 🏪 Dealer: [dealer name] — and **if the direct contact person is named and they work for that dealer** (e.g. "el contacto es Marcos" at the distributor), you MUST append their name in parentheses: **🏪 Dealer: Agro West (Marcos)**. **Never omit the contact’s name in that line when it was mentioned** for someone at the dealer.
-- If the rep only names the dealer company with no contact person, use 🏪 Dealer: [dealer name] with no parentheses.
-- Never omit dealer from the output when dealer is detected.
+- Use **📦** for product/service/program lines (not 🌱). Use **📊** for volume, quantity, capacity, units, or deal scale (not 🌾). Keep **⚠️** problems, **🆕** opportunities, **📅** dates/meetings, **🏪** channel/retail context when relevant.
+- Do NOT add a separate legacy "distributor:" closing line; optional **🏪** insight is enough when a channel partner matters.
 - If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
 
-DIRECT CONTACT — NEW PRODUCT INTEREST (crmFull + **product** field — **MANDATORY** when applicable):
-- When the **direct contact** (person the rep spoke to) shows interest in a **new** product that is **different** from what they **already use**, buy, or were using on this account (explicit contrast: current program vs “quiere probar…”, “le interesa otro…”, “distinto al que aplica hoy”, etc.):
-  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note:
-    - Spanish (template — fix gender and wording to match the note): **🆕 Oportunidad: interesada en [producto nuevo]** — use **interesado** / **interesada** as appropriate, or neutral **🆕 Oportunidad: interés en [producto nuevo]**.
-    - English: **🆕 Opportunity: interest in [new product]** (or **interested in [new product]** to match the note).
-  - **[producto nuevo]** = the specific new product name (or clearest label the note gives).
-  - You MUST also **append that new product** to the JSON **product** string as a **comma-separated** item **together with** any products they already use that you already listed — the app **product pills** are built from **product**, so **never omit** the new opportunity product when this applies.
-- This is **not** for third-party referrals only (those use the third-party 🆕 rules in summary + crmFull mirror); here the **contact** is the one interested. Do not output duplicate identical 🆕 lines.
+DIRECT CONTACT — NEW OFFERING INTEREST (crmFull + **product** field — **MANDATORY** when applicable):
+- When the **direct contact** shows interest in a **new** product, SKU, service, or program **different** from what they already use or buy (explicit contrast in the note):
+  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note (mirror the third-party 🆕 template style but for the direct contact’s interest).
+  - You MUST **append that new offering** to the JSON **product** string as a **comma-separated** item with any other offerings already listed — the app builds **product** pills from this field.
+- Do not output duplicate identical 🆕 lines.
 
-ACREAGE / AREA — **MANDATORY** when mentioned:
-- If the note states **any** farm/plot size in **acres**, **hectares**, **hectáreas**, **ha**, or equivalent, you MUST add **at least one** crmFull line that **starts with 🌾** and includes the **number**, **unit**, and **brief context** in the **same language as the note** (crop, block, or crop type if given).
-- **Never omit** this line when such an amount appears — even if area is also implied elsewhere in summary or crop lines.
-- Examples: "🌾 120 acres de fresas" · "🌾 45 hectáreas de tomate" · "🌾 200 acres" · "🌾 85 ha" · English: "🌾 120 acres of strawberries" · "🌾 40 hectares"
-- Also set the JSON field **acreage** to a short phrase restating the same fact (same language), or "" if no area was stated.
+VOLUME / QUANTITY — **MANDATORY** when mentioned:
+- If the note states any **numeric volume, quantity, units, capacity, seats, licenses, square footage, doses, headcount, or deal size**, add **at least one** crmFull line that **starts with 📊** and includes the **number**, **unit**, and brief context in the **same language as the note**.
+- **Never omit** this line when such an amount appears.
+- Examples: "📊 120 units" · "📊 45% uplift" · "📊 2.4M sq ft" · "📊 500 seats" (adapt to the note’s language).
+- Set JSON **acreage** to a short phrase restating that volume/quantity fact (same language), or "" if none was stated. (The key name is legacy; use it for any volume/quantity summary.)
 
 ---
 
-PRODUCT FIELD:
-- If several distinct products are named, set the JSON key "product" to **all** of them as a **comma-separated list** in the same language as the note (e.g. "Herbicida X, Fungicida Y"). One product → single name, no comma.
-- List every product the rep mentioned for this visit; do not keep only the “main” one.
-- When **DIRECT CONTACT — NEW PRODUCT INTEREST** applies, **always** include the **new** product in this list (comma-separated after or before the current/historic product names as appropriate) so every named product appears in the **pills**.
+PRODUCT FIELD (JSON keys **product** and **crop**):
+- Put **all** offerings, SKUs, services, programs, and category labels the rep mentioned into **product** as a **comma-separated list** in the same language as the note.
+- Set JSON **crop** to **""** (empty). Do not use a separate crop field — everything belongs in **product**.
+- One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product**.
 
 ---
 
 REQUIRED JSON KEYS (single object — include every key):
 
-contact, contactCompany, dealer, customer, location, crop, product, acreage,
+contact, contactCompany, customer, location, crop, product, acreage,
 summary,
 nextStep,
 nextStepTitle,
@@ -246,13 +239,14 @@ mentionedEntities,
 notes
 
 Rules for the extra keys:
-- contactCompany = employer / org of the direct contact only (see contactCompany rules above). Independent PCA or consultant → "". Not a copy-paste alias of customer/dealer unless that truly is their company name.
+- crop = always "" (empty string). Deprecated key — put all offering labels in **product** only.
+- contactCompany = employer / org of the direct contact only (see contactCompany rules above). Independent consultant → "". Not a copy-paste alias of customer unless that truly is their company name.
 - nextStepAction = single verb phrase for the PRIMARY next step only
 - nextStepTarget = contact name for that action only (never third party) — same ABSOLUTE RULE as nextStep / nextStepTitle
-- nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = dealer OR customer only — whichever org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
+- nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
 - nextStepTimeHint = derive from nextStepTime: use "morning", "afternoon", "noon", or 24h "HH:MM" as appropriate
 - nextStepConfidence = same value as confidence (high | medium | low)
-- mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | dealer | company | other)
+- mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | company | other)
 - notes = "" or a very short string if needed
 
 additionalSteps = JSON array of objects: { "action", "date", "time" } for every other action mentioned (not the primary). Use "" for unknown date/time.
@@ -319,14 +313,6 @@ function buildStructureUserDateContext(now: Date): string {
     `Upcoming Monday (next calendar Monday): ${fmtPair(nextMonday)}`,
     `Monday in the following week (+7 days after that — aligns with "la próxima semana" when the note means the week after): ${fmtPair(nextWeekMonday)}`,
   ].join('\n')
-}
-
-function isLikelySpanish(text: string): boolean {
-  if (!text.trim()) return false
-  return (
-    /[áéíóúñ¿¡]/i.test(text) ||
-    /\b(el|la|los|las|que|por|para|con|una|este|esta|distribuidor)\b/i.test(text)
-  )
 }
 
 function extractJson(text: string): string {
@@ -429,8 +415,8 @@ function normalizeNextStepDate(d: string): string {
 }
 
 /**
- * customer must be a real org/grower name. If the model returns only a relational
- * description ("su cuñado", "un vecino", "their client"), treat as empty.
+ * customer must be a real organization name. If the model returns only a relational
+ * description ("their neighbor", "his client" with no company), treat as empty.
  */
 function isRelationalCustomerOnly(value: string): boolean {
   const t = value.trim().replace(/\s+/g, ' ')
@@ -496,6 +482,26 @@ function sanitizeCustomerField(value: string): string {
   return isRelationalCustomerOnly(t) ? '' : t
 }
 
+/** Legacy prompts used 🌱/🌾; normalize to industry-agnostic 📦/📊 for key insights. */
+function normalizeInsightEmojis(lines: string[]): string[] {
+  return lines.map((line) =>
+    line
+      .replace(/^(\s*)🌱/u, '$1📦')
+      .replace(/^(\s*)🌾/u, '$1📊'),
+  )
+}
+
+function mergeCropIntoProduct(crop: string, product: string): { crop: string; product: string } {
+  const c = crop.trim()
+  const normalized = normalizeProductField(product)
+  if (!c) return { crop: '', product: normalized }
+  const parts = productFieldToList(normalized)
+  if (parts.some((p) => p.toLowerCase() === c.toLowerCase())) {
+    return { crop: '', product: normalized }
+  }
+  return { crop: '', product: normalizeProductField([c, ...parts].join(', ')) }
+}
+
 function parseAdditionalSteps(value: unknown): AdditionalStep[] {
   if (!Array.isArray(value)) return []
   const out: AdditionalStep[] = []
@@ -525,7 +531,6 @@ function parseStructureJson(text: string): StructureBody {
 
   return {
     customer: typeof parsed.customer === 'string' ? parsed.customer : '',
-    dealer: typeof parsed.dealer === 'string' ? parsed.dealer : '',
     contact: typeof parsed.contact === 'string' ? parsed.contact : '',
     contactCompany:
       typeof parsed.contactCompany === 'string' ? parsed.contactCompany : '',
@@ -612,7 +617,6 @@ export async function POST(request: Request) {
       customer: dedupeConsecutiveRepeatedWords(
         sanitizeCustomerField(titleCaseWords(result.customer)),
       ),
-      dealer: dedupeConsecutiveRepeatedWords(titleCaseWords(result.dealer)),
       summary: result.summary.trim(),
       nextStep: dedupeConsecutiveRepeatedWords(capitalize(result.nextStep)),
       nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeFirstLetter(result.nextStepTitle)),
@@ -639,30 +643,26 @@ export async function POST(request: Request) {
       })),
     }
 
+    const { crop: mergedCrop, product: mergedProduct } = mergeCropIntoProduct(
+      capitalized.crop,
+      capitalized.product,
+    )
+    const afterProduct = { ...capitalized, crop: mergedCrop, product: mergedProduct }
+
     const resolvedContactCompany = dedupeConsecutiveRepeatedWords(
       resolveContactCompany(
-        capitalized.dealer,
-        capitalized.customer,
-        capitalized.contact,
-        capitalized.nextStepTarget,
+        afterProduct.customer,
+        afterProduct.contact,
+        afterProduct.nextStepTarget,
         titleCaseWords(result.contactCompany),
       ),
     )
 
     const enriched = {
-      ...capitalized,
+      ...afterProduct,
       contactCompany: resolvedContactCompany,
-      crmFull: ensureDealerInsightInCrmFull(
-        capitalized.crmFull,
-        capitalized.dealer,
-        capitalized.contact,
-        resolvedContactCompany,
-      ),
-      crmText: ensureDealerInCrmText(
-        capitalized.crmText,
-        capitalized.dealer,
-        isLikelySpanish(note),
-      ),
+      crmFull: stripDealerLinesFromCrmFull(normalizeInsightEmojis(afterProduct.crmFull)),
+      crmText: stripDealerClosingFromCrmText(afterProduct.crmText),
     }
 
     return NextResponse.json(enriched)

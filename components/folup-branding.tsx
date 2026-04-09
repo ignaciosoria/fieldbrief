@@ -1,3 +1,21 @@
+/** Header: mark SVG (28px tall) + «folup» wordmark. */
+export function FolupHeaderBrand() {
+  return (
+    <div className="flex items-center gap-2">
+      <img
+        src="/folup-mark.svg"
+        alt=""
+        width={48}
+        height={32}
+        decoding="async"
+        className="h-7 w-auto shrink-0 bg-transparent object-contain"
+        aria-hidden
+      />
+      <span className="font-semibold text-zinc-900">folup</span>
+    </div>
+  )
+}
+
 /** Folup lockup; default `/logo.png`. Use `src` for login asset `/folup_logo.png`. */
 export function FolupLogo({
   src = '/logo.png',

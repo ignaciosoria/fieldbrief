@@ -16,11 +16,10 @@ export function contactAlignsWithOrg(contact: string, org: string): boolean {
 }
 
 /**
- * Where the direct contact works: prefer API `contactCompany` (separate from customer/dealer).
- * If empty, infer from dealer/customer + name alignment for legacy notes.
+ * Where the direct contact works: prefer API `contactCompany`.
+ * If empty, infer from customer + name alignment (legacy rows without contactCompany).
  */
 export function resolveContactCompany(
-  dealer: string,
   customer: string,
   contact: string,
   nextStepTarget: string,
@@ -30,16 +29,9 @@ export function resolveContactCompany(
   if (hint) return hint
 
   const person = (nextStepTarget || contact || '').trim()
-  const d = dealer.trim()
   const c = customer.trim()
-
-  if (!d && !c) return ''
-  if (d && !c) return d
-  if (c && !d) return c
-
-  const alignD = contactAlignsWithOrg(person, d)
-  const alignC = contactAlignsWithOrg(person, c)
-  if (alignD && !alignC) return d
-  if (alignC && !alignD) return c
+  if (!c) return ''
+  if (!person) return c
+  if (contactAlignsWithOrg(person, c)) return c
   return ''
 }
