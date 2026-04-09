@@ -7,6 +7,7 @@ import {
   stripDealerLinesFromCrmFull,
 } from '../../../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../../../lib/productField'
+import { detectNoteLanguage } from '../../../lib/detectNoteLanguage'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -48,8 +49,22 @@ Return ONLY valid JSON. No markdown. No explanation.
 
 ---
 
-LANGUAGE RULE:
-Detect the language of the note. ALL fields must be in that same language. Never mix.
+LANGUAGE:
+A MANDATORY block at the very start of this system message names the note's language. Every string VALUE in the JSON (summary, nextStep, crm lines, etc.) MUST use that language only. Never mix languages. JSON keys stay in English as specified.
+
+---
+
+INDUSTRY EXAMPLES (accounts / buyers — non-exhaustive):
+
+The rep could be selling to stakeholders in any B2B vertical, for example:
+- Pharma: doctors, clinics, hospitals
+- Real estate: brokers, developers, property managers
+- Tech: IT managers, CTOs, operations teams
+- CPG: retail buyers, store managers
+- Agriculture: growers, farm managers
+- Any other B2B industry
+
+Never assume a single vertical; extract only what the note states.
 
 ---
 
@@ -183,6 +198,13 @@ THIRD-PARTY OPPORTUNITY (summary bullet — when applicable):
 Include everything mentioned: prices, quantities, problems, new clients, market context.
 Same language as note.
 
+KEY INSIGHTS — align summary bullets with full detail (same ideas as crmFull below):
+- Include **numbers** when stated (headcount, locations, units, revenue, capacity, etc.).
+- Include **deadlines** (internal reviews, decision dates, meetings).
+- Include **competitive** notes (who they use, dissatisfaction) when mentioned.
+- Include **next meetings or events** spelled out in the note.
+- Prefer an extra bullet over dropping a business-relevant fact.
+
 ---
 
 CRM TEXT:
@@ -191,6 +213,15 @@ CRM TEXT:
 
 CRM FULL (Key insights):
 Array of short lines with emojis. All key business details.
+
+KEY INSIGHTS — capture ALL important details (crmFull is the primary checklist):
+- Always capture **numbers** when stated: doctors, employees, locations, units, revenue, capacity, seats, doses, headcount, etc. (📊 / 💰 per emoji rules below).
+- Always capture **deadlines**: internal meetings, decision dates, review dates, RFP cutoffs (📅).
+- Always capture **competitive info**: which competitor they use, why they are unhappy, switching signals (⚠️ / 🤝 as fits).
+- Always capture any **next meeting or event** mentioned (📅), even when it is not the rep-owned primary nextStep.
+- **Maximum detail** — never skip a business-relevant fact from the note; add lines rather than omit.
+
+Emoji discipline:
 - Use **📦** for product/service/program lines (not 🌱). Use **📊** for volume, quantity, capacity, units, or deal scale (not 🌾). Keep **⚠️** problems, **🆕** opportunities, **📅** dates/meetings, **🏪** channel/retail context when relevant.
 - Do NOT add a separate legacy "distributor:" closing line; optional **🏪** insight is enough when a channel partner matters.
 - If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
@@ -210,9 +241,17 @@ VOLUME / QUANTITY — **MANDATORY** when mentioned:
 ---
 
 PRODUCT FIELD (JSON keys **product** and **crop**):
-- Put **all** offerings, SKUs, services, programs, and category labels the rep mentioned into **product** as a **comma-separated list** in the same language as the note.
-- Set JSON **crop** to **""** (empty). Do not use a separate crop field — everything belongs in **product**.
-- One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product**.
+
+STRICT — what belongs in **product**:
+- Only extract **real products or services being sold** (commercial offerings the rep's company sells or would sell).
+- NEVER treat documents, templates, analyses, or internal/marketing **materials** as products (send them via nextStep / summary / crmFull, not as **product** entries).
+- Valid **product** examples: 'Salesforce CRM', 'Quantum Flower', 'Patient Scheduling Software'
+- Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'
+
+FIELD RULES:
+- Put **all qualifying** offerings, SKUs, services, programs, and category labels the rep mentioned into **product** as a **comma-separated list** in the same language as the note.
+- Set JSON **crop** to **""** (empty). Do not use a separate crop field — all qualifying offerings belong in **product**.
+- One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product** only if it is a real offering, not a one-off document.
 
 ---
 
@@ -569,13 +608,20 @@ export async function POST(request: Request) {
     const now = new Date()
     const dateContext = buildStructureUserDateContext(now)
 
-    console.log('[structure] SYSTEM_PROMPT prefix (200 chars):', SYSTEM_PROMPT.slice(0, 200))
+    const detectedLanguage = detectNoteLanguage(note)
+    const languageEnforcement =
+      `The input note is in ${detectedLanguage}. ` +
+      `ALL output fields MUST be in ${detectedLanguage}. This is mandatory.`
+    const systemContent = `${languageEnforcement}\n\n${SYSTEM_PROMPT}`
+
+    console.log('[structure] detected language:', detectedLanguage)
+    console.log('[structure] system prompt prefix (200 chars):', systemContent.slice(0, 200))
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemContent },
         {
           role: 'user',
           content: `${dateContext}\n\n---\n\n${note}`,
