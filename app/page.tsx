@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
@@ -980,6 +981,14 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    if (status === 'unauthenticated') {
+      console.debug(
+        '[Folup login] branding image src=/logo.png (public/logo.png); not using /icon.png or logo-dark on this white shell.',
+      )
+    }
+  }, [status])
+
+  useEffect(() => {
     if (!sessionEmail) {
       setSavedNotes([])
       return
@@ -1727,20 +1736,20 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <picture className="mx-auto mb-8 block w-full sm:mb-10">
-            <source
-              srcSet="/logo-dark.png"
-              media="(prefers-color-scheme: dark)"
-              type="image/png"
-            />
-            <img
+          {/* Login shell is always bg-white: do not swap to logo-dark.png (light wordmark vanishes on white — looks like “icon only”). */}
+          <div
+            className="mx-auto mb-8 flex w-full justify-center sm:mb-10 outline outline-2 outline-red-500/60 [outline-offset:2px]"
+            data-login-branding-src="/logo.png"
+          >
+            <Image
               src="/logo.png"
               alt="Folup"
-              decoding="async"
-              fetchPriority="high"
-              className="mx-auto h-9 w-auto max-w-full object-contain object-center sm:h-11 md:h-[48px] lg:h-[56px]"
+              width={278}
+              height={108}
+              priority
+              className="h-[40px] w-auto max-w-full object-contain md:h-[48px]"
             />
-          </picture>
+          </div>
           <div className="max-w-[20rem] text-center">
             <h1 className="text-[17px] font-bold leading-snug text-[#111111] sm:text-lg">
               Record your visit
