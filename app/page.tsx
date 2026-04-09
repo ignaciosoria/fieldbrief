@@ -7,6 +7,7 @@ import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
+import { FolupAppIcon, FolupWordmark } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -1726,18 +1727,15 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <img
-            src="/logo.svg"
-            alt="Folup"
-            height={48}
-            width={64}
-            className="mx-auto mb-6 h-12 w-auto"
-          />
-          <p className="mt-4 text-[17px] font-medium leading-snug text-[#111111] sm:text-lg">
-            Speak your visit.
-            <br />
-            We turn it into a follow-up you can run.
-          </p>
+          <FolupWordmark className="mx-auto mb-6 block" imgClassName="h-12 w-auto" />
+          <div className="mt-4 max-w-[20rem] text-center">
+            <h1 className="text-[17px] font-bold leading-snug text-[#111111] sm:text-lg">
+              Record your visit
+            </h1>
+            <p className="mt-2 text-sm leading-snug text-[#6b7280] sm:text-[15px]">
+              We&apos;ll turn it into a follow-up
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => signIn('google', { callbackUrl: '/' })}
@@ -1776,13 +1774,19 @@ export default function Home() {
     <main className="flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none">
 
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
-        <button className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
-          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
-          <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
-          <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
-        </button>
-        <img src="/logo.svg" alt="Folup" height={28} className="h-7 w-auto" />
+      <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
+        <div className="relative z-10 flex items-center gap-2">
+          <FolupAppIcon />
+          <button type="button" className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
+            <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
+            <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
+            <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
+          </button>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 flex justify-center px-14">
+          <FolupWordmark imgClassName="h-7 max-h-7 w-auto max-w-[min(12rem,calc(100vw-8rem))] object-contain object-center" />
+        </div>
+        <div className="relative z-10 ml-auto shrink-0">
         {userImage ? (
           <img
             src={userImage}
@@ -1801,6 +1805,7 @@ export default function Home() {
             {userInitial}
           </div>
         )}
+        </div>
       </header>
 
       {/* Full-screen processing — single calm state */}
@@ -2439,12 +2444,12 @@ export default function Home() {
                     : 'auto',
               }}
             >
-              <div className="mb-4 max-w-[20rem] text-center">
-                <h2 className="text-xl font-semibold leading-tight tracking-tight text-[#111111] sm:text-2xl">
-                  Speak your visit
+              <div className="mb-6 max-w-[20rem] text-center">
+                <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
+                  Record your visit
                 </h2>
                 <p className="mt-2 text-sm leading-snug text-[#6b7280] sm:text-[15px]">
-                  We turn it into a follow-up you can run
+                  We&apos;ll turn it into a follow-up
                 </p>
               </div>
               {/* Mic button */}
