@@ -349,7 +349,9 @@ Return ONLY valid JSON. No backticks. No explanation.`
 
 /**
  * Rich calendar anchors (EN + ES) so the model can resolve "jueves", "próxima semana", etc.
- * Weekday offsets match: next occurrence strictly in the future; if today is that weekday, use +7 days.
+ * Weekday offsets: **nearest** calendar occurrence of that weekday (0–6 days ahead).
+ * If today is already that weekday, use **today** (0), not +7 — e.g. Wednesday note saying
+ * "Thursday" → tomorrow; if the server date is already Thursday, "Thursday" → this Thursday.
  */
 function buildStructureUserDateContext(now: Date): string {
   const todayEN = now.toLocaleDateString('en-US', {
@@ -387,16 +389,17 @@ function buildStructureUserDateContext(now: Date): string {
     return d
   }
 
-  const daysUntilNextWeekday = (targetDay: number) => {
-    const d = (targetDay - now.getDay() + 7) % 7
-    return d === 0 ? 7 : d
+  /** Days from `now` to the nearest `targetDay` (getDay(): Sun=0 … Sat=6). 0 = same day. */
+  const daysUntilNearestWeekday = (targetDay: number) => {
+    const today = now.getDay()
+    return (targetDay - today + 7) % 7
   }
 
   const tomorrow = addDays(now, 1)
-  const nextThursday = addDays(now, daysUntilNextWeekday(4))
-  const nextFriday = addDays(now, daysUntilNextWeekday(5))
-  const nextMonday = addDays(now, daysUntilNextWeekday(1))
-  const nextWeekMonday = addDays(now, daysUntilNextWeekday(1) + 7)
+  const nextThursday = addDays(now, daysUntilNearestWeekday(4))
+  const nextFriday = addDays(now, daysUntilNearestWeekday(5))
+  const nextMonday = addDays(now, daysUntilNearestWeekday(1))
+  const nextWeekMonday = addDays(now, daysUntilNearestWeekday(1) + 7)
 
   return [
     'Calendar context (use for relative dates in the note):',

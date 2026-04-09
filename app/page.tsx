@@ -333,11 +333,12 @@ function stripEmojisForCalendar(s: string): string {
     .trim()
 }
 
+/** Calendar description first line: `Contact (contactCompany)` only — never use `customer` (end account). */
 function formatCalendarContactLine(
   data: Pick<StructureResult, 'contact' | 'contactCompany'>,
 ): string {
   const contact = stripEmojisForCalendar(data.contact || '')
-  const company = stripEmojisForCalendar(data.contactCompany || '')
+  const company = stripEmojisForCalendar((data.contactCompany || '').trim())
   if (contact && company) return `${contact} (${company})`
   if (contact) return contact
   if (company) return company

@@ -5,6 +5,9 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const WHISPER_CONTEXT_PROMPT =
+  'Field sales rep voice note recorded after a client visit. May include: company names, contact names, product names, sales terminology, informal speech, filler words, pauses, repetitions. Rep may speak in English or Spanish. Common terms: follow-up, next step, quote, proposal, demo, distributor, ROI, pipeline, close the deal.'
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData()
@@ -17,6 +20,8 @@ export async function POST(request: Request) {
     const transcription = await client.audio.transcriptions.create({
       file,
       model: 'whisper-1',
+      language: undefined,
+      prompt: WHISPER_CONTEXT_PROMPT,
     })
 
     return NextResponse.json({ transcript: transcription.text })
