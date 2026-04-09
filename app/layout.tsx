@@ -14,24 +14,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteDescription =
+  "Record your visit. We turn it into a follow-up.";
+
 export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
   title: "Folup",
-  description: "Capture notes. Execute follow-ups.",
+  description: siteDescription,
   manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/favicon.png", type: "image/png" },
-      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icon-128.png", sizes: "128x128", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon_32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon_128.png", sizes: "128x128", type: "image/png" },
     ],
-    apple: [{ url: "/icon-128.png", sizes: "128x128", type: "image/png" }],
+    apple: [{ url: "/icon_128.png", sizes: "128x128", type: "image/png" }],
     shortcut: "/favicon.png",
   },
   openGraph: {
     title: "Folup",
-    description: "Capture notes. Execute follow-ups.",
+    description: siteDescription,
     siteName: "Folup",
     type: "website",
     locale: "en_US",
@@ -47,7 +49,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Folup",
-    description: "Capture notes. Execute follow-ups.",
+    description: siteDescription,
     images: ["/og.png"],
   },
   appleWebApp: {

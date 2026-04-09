@@ -1,5 +1,5 @@
-/** Wordmark switches automatically with system light/dark preference. */
-export function FolupWordmark({
+/** Full Folup lockup (`/logo.png`) — navbar and login only; `object-contain`, no dark swap (wordmark must stay visible on white). */
+export function FolupLogo({
   className,
   imgClassName,
 }: {
@@ -7,21 +7,27 @@ export function FolupWordmark({
   imgClassName?: string
 }) {
   return (
-    <picture className={className}>
-      <source srcSet="/logo-dark.png" media="(prefers-color-scheme: dark)" />
-      <img src="/logo.png" alt="Folup" className={imgClassName} />
-    </picture>
+    <span className={className}>
+      <img
+        src="/logo.png"
+        alt="Folup"
+        width={278}
+        height={108}
+        decoding="async"
+        className={imgClassName}
+      />
+    </span>
   )
 }
 
-/** Square app icon for chrome bars, nav affordances. */
+/** Small square UI icon (`/icon_32.png`). */
 export function FolupAppIcon({ className }: { className?: string }) {
   return (
     <img
-      src="/icon.png"
+      src="/icon_32.png"
       alt=""
-      width={28}
-      height={28}
+      width={32}
+      height={32}
       decoding="async"
       className={className ?? 'h-7 w-7 shrink-0 object-contain'}
       aria-hidden

@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { filterCrmFullDealerWhenNoDealer } from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
-import { FolupAppIcon, FolupWordmark } from '../components/folup-branding'
+import { FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -981,14 +980,6 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      console.debug(
-        '[Folup login] branding image src=/logo.png (public/logo.png); not using /icon.png or logo-dark on this white shell.',
-      )
-    }
-  }, [status])
-
-  useEffect(() => {
     if (!sessionEmail) {
       setSavedNotes([])
       return
@@ -1736,18 +1727,10 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          {/* Login shell is always bg-white: do not swap to logo-dark.png (light wordmark vanishes on white — looks like “icon only”). */}
-          <div
-            className="mx-auto mb-8 flex w-full justify-center sm:mb-10 outline outline-2 outline-red-500/60 [outline-offset:2px]"
-            data-login-branding-src="/logo.png"
-          >
-            <Image
-              src="/logo.png"
-              alt="Folup"
-              width={278}
-              height={108}
-              priority
-              className="h-[40px] w-auto max-w-full object-contain md:h-[48px]"
+          <div className="mx-auto mb-8 flex w-full justify-center sm:mb-10">
+            <FolupLogo
+              className="flex justify-center"
+              imgClassName="h-[40px] w-auto max-w-full object-contain md:h-[48px]"
             />
           </div>
           <div className="max-w-[20rem] text-center">
@@ -1797,16 +1780,16 @@ export default function Home() {
 
       {/* Header */}
       <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
-        <div className="relative z-10 flex items-center gap-2">
-          <FolupAppIcon />
+        <div className="relative z-10 flex min-w-0 flex-1 items-center gap-3">
+          <FolupLogo
+            className="shrink-0"
+            imgClassName="h-7 w-auto max-h-7 max-w-[min(7rem,42vw)] object-contain object-left"
+          />
           <button type="button" className="flex flex-col gap-[4px] p-1 opacity-90" aria-label="Menu">
             <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
             <span className="block h-[1.5px] w-5 rounded-full bg-zinc-300" />
             <span className="block h-[1.5px] w-3 rounded-full bg-zinc-300" />
           </button>
-        </div>
-        <div className="pointer-events-none absolute inset-x-0 flex justify-center px-14">
-          <FolupWordmark imgClassName="h-7 max-h-7 w-auto max-w-[min(12rem,calc(100vw-8rem))] object-contain object-center" />
         </div>
         <div className="relative z-10 ml-auto shrink-0">
         {userImage ? (
