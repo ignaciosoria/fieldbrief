@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
@@ -917,6 +917,9 @@ Contact: ${result.contact || ''}
 
 export default function Home() {
   const { data: session, status } = useSession()
+  const signInWithGoogle = useCallback(() => {
+    void signIn('google', { callbackUrl: '/' })
+  }, [])
   /** Solo notas de Supabase / localStorage cuando hay sesión con email (sin fallback anónimo). */
   const sessionEmail = session?.user?.email?.trim() ?? null
   const notesStorageKey = sessionEmail ? `voicta-notes:${sessionEmail}` : ''
@@ -1746,7 +1749,7 @@ export default function Home() {
           </div>
           <button
             type="button"
-            onClick={() => signIn('google', { callbackUrl: '/' })}
+            onClick={signInWithGoogle}
             className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-4 text-[15px] font-semibold text-[#111111] shadow-sm transition-[transform,box-shadow] hover:bg-zinc-100 active:scale-[0.99]"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
