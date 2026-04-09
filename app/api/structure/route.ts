@@ -122,9 +122,37 @@ LANGUAGE (nextStep + nextStepTitle) — **MANDATORY:**
 - **nextStep** and **nextStepTitle** MUST be in the **exact same language as the input note**. No exceptions — not mixed language, not a "default" language, not Spanish templates for English notes.
 - If the note is English, every word of nextStep and nextStepTitle must be English (except proper names and company names as spoken). If the note is Spanish, both fields must be Spanish throughout.
 
+DECISION POLICY OVERLAY (layer on top of all existing rules):
+- Your main job is to produce the **most appropriate next actionable step**, not just summarize.
+- Always choose **ONE** primary action only for nextStep / nextStepTitle.
+- Primary action must be **short, realistic, executable**, and grounded in what the customer explicitly requested or strongly implied.
+- If multiple actions exist, prioritize the action explicitly requested by the customer; do not default to the easiest/generic action.
+- Keep other meaningful follow-ups in **additionalSteps** so they do not compete with the main next step in the UI.
+- Do **not** invent strong certainty when the note is vague. If no clear action is requested/implied, keep next step softer and reflect lower confidence.
+
+INTERNAL DECISION CLASSIFICATION (reason internally, do not output extra keys):
+- Case A: clear action + clear timing
+- Case B: clear action + unclear timing
+- Case C: no clear action
+- Internal concepts to reason with: action_defined (true/false), timing_defined (true/false), urgency (high/normal/low), primary_action, secondary_action (optional), confidence_state (confirmed/suggested), short_reason.
+- Keep these internal only; final JSON shape stays unchanged.
+
+CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only):
+- confirmed + clear action/timing + concrete request/agreement → confidence **high** (urgency high/normal based on wording).
+- clear action but weak/unclear timing OR inferred follow-up → confidence **medium** (urgency usually normal/low).
+- vague/no clear action, hesitation, "later", "busy", "not now", neutral talk → confidence **low** and avoid over-assertive nextStep wording.
+- Never treat every note with the same urgency.
+
 STEP 1: Extract ALL actions from the note with their dates/times.
 STEP 2: Sort them chronologically — earliest first.
 STEP 3: The PRIMARY nextStep is ALWAYS the earliest action in time.
+
+Selection refinement:
+- Build the candidate set from actions that are customer-requested or strongly implied first.
+- Then apply chronology to pick the earliest among those candidates.
+- If no such candidate exists, choose the least-assumptive suggested follow-up and lower confidence.
+- If timing is not explicit, do **not** invent an exact date/time in reasoning or wording.
+- If the note signals low urgency ("busy", "not the right moment", "later", neutral interest), keep urgency low and avoid aggressive immediate timing.
 
 Examples:
 - "Le mando muestras esta semana y la llamo el jueves" → PRIMARY = enviar muestras (before Thursday)
@@ -182,12 +210,14 @@ PASSIVE / WAIT — NEVER AS nextStep:
   - Spanish: Llamar a [contact] ([company]) si no hay respuesta antes de [date]
   - English: Call [contact] ([company]) if no response before [date]
 - [company] = org the direct contact belongs to — use **contactCompany** when set; otherwise **customer** when the contact aligns with that end account. [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
+- Do **not** default to "Call" unless it is genuinely the best action from the note context (explicit request, failed contact pattern, or strongest implied follow-up).
 
 nextStepTitle — COMPANY RULE (MANDATORY):
 - **First word:** nextStepTitle MUST **start with an uppercase letter** (same language as the note).
 - Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
 - The name in parentheses MUST be the organization the DIRECT CONTACT works for (contactCompany preferred; customer when it is their client's org).
 - One org only in parentheses — must match affiliation (who employs the contact or whose account they represent in this visit).
+- Wording should be natural and executable; avoid awkward literal phrasing. Prefer concise labels (in note language), e.g. "Send program", "Call Juan", "Follow up with Marta", "Send trial proposal".
 
 nextStepTitle — GRAMMAR (MANDATORY, same language as the note):
 - **Spanish:** The contact name MUST be preceded by **"a"** after the verb phrase. **Never** omit it.
@@ -222,6 +252,7 @@ SUMMARY RULES:
 
 Extract ALL relevant details as bullet points with emojis.
 No prose. No text blocks. Each line = one fact.
+Simplicity rule: if the note is low-information, keep output light/concise (no heavy CRM-style expansion).
 Emojis must match the content:
 📦 **only** products, services, SKUs, programs the **rep's company is selling or proposing** (never a competitor's product — use ⚔️ below)
 📊 volume, quantity, deal size, units, capacity (use for numeric scale — not dollar pricing alone)
@@ -248,6 +279,8 @@ KEY INSIGHTS — align summary bullets with full detail (same ideas as crmFull b
 - Include **competitive** notes (who they use, dissatisfaction) when mentioned; for a named **competitor product**, use **⚔️** (never 📦 — 📦 is rep offerings only).
 - Include **next meetings or events** spelled out in the note.
 - Prefer an extra bullet over dropping a business-relevant fact.
+- Filter for decision impact: prioritize customer requests, risks, objections, timing constraints, opportunities, competitor signals, trial size/scope, and buying hesitation.
+- De-prioritize obvious restatements, filler, and points already fully captured by nextStep.
 
 ---
 
@@ -340,6 +373,7 @@ Rules for the extra keys:
 - nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
 - nextStepTimeHint = derive from nextStepTime: use "morning", "afternoon", "noon", or 24h "HH:MM" as appropriate
 - nextStepConfidence = same value as confidence (high | medium | low)
+- confidence / nextStepConfidence mapping: confirmed + clear request/timing → high; clear action but timing weak or inferred → medium; vague/hesitant/no clear action → low
 - mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | company | other)
 - notes = "" or a very short string if needed
 

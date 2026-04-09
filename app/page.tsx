@@ -1815,27 +1815,30 @@ export default function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <div className="mx-auto mb-8 flex w-full justify-center sm:mb-10">
+          <div className="mx-auto mb-6 flex w-full justify-center sm:mb-7">
             <FolupLogo
               src="/folup_logo.png"
               width={3077}
               height={1200}
               className="flex justify-center"
-              imgClassName="h-[72px] max-h-[72px] w-auto max-w-full"
+              imgClassName="h-[58px] max-h-[58px] w-auto max-w-full"
             />
           </div>
-          <div className="max-w-[20rem] text-center">
-            <h1 className="text-[17px] font-bold leading-snug text-[#111111] sm:text-lg">
-              Record your visit
+          <div className="max-w-[22rem] text-center">
+            <h1 className="text-[31px] font-bold leading-[1.1] text-[#111111] sm:text-[34px]">
+              Turn your visit into a clear next step
             </h1>
-            <p className="mt-2 text-sm leading-snug text-[#6b7280] sm:text-[15px]">
-              We&apos;ll turn it into a follow-up
+            <p className="mt-3 text-[16px] font-medium leading-[1.35] text-[#4b5563]">
+              Speak for 30 seconds.
+              <br />
+              We turn it into a follow-up you can act on.
             </p>
+            <p className="mt-3 text-[13px] font-medium text-[#9ca3af]">Built for field sales reps</p>
           </div>
           <button
             type="button"
             onClick={signInWithGoogle}
-            className="mt-10 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#4F46E5] py-4 text-[15px] font-semibold text-white shadow-md shadow-indigo-500/30 transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] active:scale-[0.99]"
+            className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#4F46E5] px-5 py-[15px] text-[15px] font-bold text-white transition-colors hover:bg-[#4338CA] active:scale-[0.99]"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
               <path
