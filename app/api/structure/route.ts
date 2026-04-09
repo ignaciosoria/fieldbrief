@@ -97,6 +97,13 @@ CUSTOMER — NEVER RELATIONAL LABELS ALONE:
 
 CRITICAL: If rep says "Tyler told me about the issue at Acme Corp" → contact=Tyler, customer=Acme Corp, contactCompany=Tyler's employer org if named, else "".
 
+DISTRIBUTOR / END-ACCOUNT (reference):
+- Note: "Met with James at distributor, introduced me to end client Dr. Chen with 15 staff."
+- **contact** = **James** (person you met / spoke with — the direct conversation partner).
+- **contactCompany** = distributor name if stated, else "".
+- **customer** = the **end-account organization** (the named clinic, practice, buyer company, or brand site Dr. Chen represents) if a real org name appears — NOT a relational label alone.
+- **Dr. Chen** = third party for this visit if you did **not** speak to Chen directly on this call/visit → Chen in **mentionedEntities** / **crmFull**, **never** in **nextStep** or **nextStepTitle**. If the note only describes Chen without a legal org name for **customer**, leave **customer** "" and capture detail in insights.
+
 ---
 
 ABSOLUTE RULE — THIRD PARTIES (NEVER BREAK):
@@ -130,6 +137,34 @@ Rule (chronology): "esta semana" and specific weekdays (lunes, martes, jueves, e
 NEVER choose a later action over an earlier one.
 NEVER choose based on importance — ONLY chronological order.
 The earliest action = the nextStep. Always.
+
+REFERENCE CASES (English phrasing — mirror in the note's language):
+
+**CASE 1 — Send / quote with weekday deadline:**
+- Note: "Visited John at Acme Corp, discussed Product X pricing, interested but wants to compare. Sending quote Friday."
+- Primary action = **Friday** send (earlier than any purely informational step already done).
+- Example alignment: **nextStep** and **nextStepTitle** → **Send quote to John (Acme Corp)** (English: use **to** before the contact for send verbs); **nextStepDate** = that Friday; **contact**=John, **customer**/ **contactCompany**=Acme Corp when that is John's org.
+
+**CASE 2 — No answer / voicemail → follow-up call:**
+- Note: "Called Sarah, no answer, left voicemail."
+- Primary next step = rep-owned **follow-up call**, not passive waiting.
+- Example alignment: **nextStep** and **nextStepTitle** → **Call Sarah again**; **nextStepDate** = **tomorrow** when the note implies prompt follow-up and no other date is given (use calendar context).
+- **Exception to parenthetical company:** when the note names **no** employer for the contact, **contactCompany** may be "" and **nextStepTitle** / **nextStep** may be **Call [name] again** **without** a (COMPANY) suffix — only for this voicemail / unanswered pattern.
+
+**CASE 3 — Distributor intro, end client named:**
+- See DISTRIBUTOR / END-ACCOUNT rule above: **contact** = rep's counterpart (e.g. James at distributor); **customer** = end-account org when named; introduced physician/staff as third party unless they were the party spoken to.
+
+**CASE 4 — Check-in + deferred decision + callback Monday:**
+- Note: "Called to check if they received my info. Needs more time. Calling again Monday."
+- **Past** check-in is not the primary next step. The **earliest forward action** wins: **Call [direct contact's name] Monday** — use the actual **contact** name from the note, not the literal text "[contact]".
+- **nextStepDate** = upcoming Monday from calendar context; same wording in **nextStep** and **nextStepTitle** (with (COMPANY) when org is known per usual rules).
+
+**CASE 5 — Two dated actions (Friday vs next week):**
+- Note: "Discussed two products. Wants prices Friday, sample next week."
+- **Friday** action (prices / quote / send pricing) is **earlier** than **next week** (sample) → that Friday action is the **primary nextStep** / **nextStepTitle**.
+- The **sample** (or follow-on shipment) goes to **additionalSteps** with date/time for **next week**, in chronological order — never flip primary to the later week if Friday comes first.
+
+---
 
 nextStepTitle format: VERB + 'a' + CONTACT + (COMPANY)
 Always capitalize first letter.
@@ -259,12 +294,17 @@ PRODUCT FIELD (JSON keys **product** and **crop**):
 STRICT — what belongs in **product**:
 - Only extract **real products or services the rep's employer sells or is actively proposing** in this conversation.
 - NEVER include **competitor products**, "what they use today" from another vendor, or substitutes sold by rivals — always **⚔️** in **crmFull** instead.
-- NEVER treat documents, templates, analyses, or internal/marketing **materials** as products (send them via nextStep / summary / crmFull, not as **product** entries).
+
+**Documents / deliverables are NEVER products (MANDATORY):**
+- **documents**, **templates**, **analyses**, **reports**, **brochures**, **sell sheets**, **one-pagers**, **decks**, **PDFs/spreadsheets** (as deliverables), **comparison sheets**, **marketing collateral** — these are **not** JSON **product** entries under any name (including "ROI Analysis Template", "QBR deck", "pricing comparison", "product brochure").
+- If the **only** offerings mentioned in the note are deliverables of this kind — **nothing** that is a real sold SKU or subscription/service — set **product** to **""** (empty string). Do **not** output a pill for a document.
+- Describe sends (e.g. "email the ROI template") in **nextStep**, **summary**, and **crmFull** only — **never** duplicate that document name into **product**.
+
 - Valid **product** examples (rep's catalog): 'Salesforce CRM', 'Quantum Flower', 'Patient Scheduling Software'
 - Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'; **also invalid:** a rival's SKU the account already bought — use **⚔️** line in **crmFull**.
 
 FIELD RULES:
-- Put **all qualifying rep-owned** offerings, SKUs, services, programs, and category labels into **product** as a **comma-separated list** in the same language as the note.
+- Put **all qualifying rep-owned** offerings, SKUs, services, programs, and category labels into **product** as a **comma-separated list** in the same language as the note — **never** a document or template string.
 - Set JSON **crop** to **""** (empty). Do not use a separate crop field — all qualifying rep offerings belong in **product**.
 - One offering → single name. When **NEW OFFERING INTEREST** applies, include the new item in **product** only if it is **the rep's** real offering, not a one-off document and **not** a competitor product.
 

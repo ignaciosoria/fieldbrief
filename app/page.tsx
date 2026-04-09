@@ -32,6 +32,8 @@ import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
+type AdditionalStep = { action: string; date: string; time: string }
+
 type StructureResult = {
   customer: string
   contact: string
@@ -54,6 +56,7 @@ type StructureResult = {
   acreage: string
   crmText: string
   crmFull: string[]
+  additionalSteps: AdditionalStep[]
 }
 
 const emptyResult: StructureResult = {
@@ -77,6 +80,7 @@ const emptyResult: StructureResult = {
   acreage: '',
   crmText: '',
   crmFull: [],
+  additionalSteps: [],
 }
 
 function normalizeCrmFull(raw: unknown): string[] {
@@ -110,6 +114,24 @@ function normalizeMentionedEntities(raw: unknown): MentionedEntity[] {
 function normalizeAmbiguityFlags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
+}
+
+function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
+  if (!Array.isArray(raw)) return []
+  const out: AdditionalStep[] = []
+  for (const item of raw) {
+    if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>
+      const action = typeof o.action === 'string' ? o.action.trim() : ''
+      if (!action) continue
+      out.push({
+        action,
+        date: typeof o.date === 'string' ? o.date.trim() : '',
+        time: typeof o.time === 'string' ? o.time.trim() : '',
+      })
+    }
+  }
+  return out
 }
 
 function normalizeConfidence(raw: unknown): string {
@@ -153,6 +175,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     crmText: stripDealerClosingFromCrmText(base.crmText),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
+    additionalSteps: normalizeAdditionalSteps(base.additionalSteps),
     mentionedEntities: base.mentionedEntities.map((e) => ({
       ...e,
       name: dedupeConsecutiveRepeatedWords(e.name),
@@ -311,26 +334,14 @@ function stripEmojisForCalendar(s: string): string {
 }
 
 function formatCalendarContactLine(
-  data: Pick<StructureResult, 'contact' | 'customer'>,
+  data: Pick<StructureResult, 'contact' | 'contactCompany'>,
 ): string {
   const contact = stripEmojisForCalendar(data.contact || '')
-  const customer = stripEmojisForCalendar(data.customer || '')
-  if (contact && customer) return `${contact} (${customer})`
+  const company = stripEmojisForCalendar(data.contactCompany || '')
+  if (contact && company) return `${contact} (${company})`
   if (contact) return contact
-  if (customer) return customer
+  if (company) return company
   return ''
-}
-
-/** One readable context line; keeps first sentence when long, else soft-truncates. */
-function shortCalendarContext(raw: string): string {
-  let s = stripEmojisForCalendar(raw)
-  if (!s) return ''
-  if (s.length <= 280) return s
-  const sentence = s.match(/^.{20,320}?[.!?](?:\s|$)/)
-  if (sentence) return sentence[0].trim()
-  const cut = s.slice(0, 260)
-  const sp = cut.lastIndexOf(' ')
-  return (sp > 48 ? cut.slice(0, sp) : cut) + '…'
 }
 
 /** Strip emoji/bullets; trim a leading arrow so we can re-add a single →. */
@@ -340,11 +351,11 @@ function cleanCalendarBulletLine(raw: string): string {
     .trim()
 }
 
-/** Multi-line summary/crmText → → bullets; single block → short prose (no emojis). */
-function formatCalendarContextBlock(crmText: string, summary: string): string {
-  const raw = (crmText || summary || '').trim()
-  if (!raw) return ''
-  const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean)
+/** Full visit / summary text for calendar body — no length cap (strip emoji only). */
+function formatCalendarProseBlock(raw: string): string {
+  const t = (raw || '').trim()
+  if (!t) return ''
+  const lines = t.split(/\n/).map((l) => l.trim()).filter(Boolean)
   if (lines.length > 1) {
     return lines
       .map((l) => {
@@ -354,8 +365,18 @@ function formatCalendarContextBlock(crmText: string, summary: string): string {
       .filter(Boolean)
       .join('\n')
   }
-  const prose = shortCalendarContext(raw)
-  return prose ? `→ ${prose}` : ''
+  const c = cleanCalendarBulletLine(t)
+  return c ? `→ ${c}` : ''
+}
+
+/** Include both CRM prose and bullet summary when present (full text, no truncation). */
+function formatCalendarContextBlock(crmText: string, summary: string): string {
+  const parts: string[] = []
+  const visit = formatCalendarProseBlock(crmText || '')
+  const bullets = formatCalendarProseBlock(summary || '')
+  if (visit) parts.push(`Visit / CRM text\n${visit}`)
+  if (bullets) parts.push(`Summary\n${bullets}`)
+  return parts.join('\n\n')
 }
 
 /** Google Calendar event title: short structured title first, then long next step. */
@@ -365,27 +386,76 @@ function calendarEventTitle(r: StructureResult): string {
   return (r.nextStep || '').trim()
 }
 
-function buildCalendarDescription(
-  data: Pick<
-    StructureResult,
-    'crmText' | 'summary' | 'crmFull' | 'contact' | 'customer'
-  >,
-) {
+function buildCalendarDescription(data: StructureResult) {
   const contactLine = formatCalendarContactLine(data)
   const contextBlock = formatCalendarContextBlock(data.crmText || '', data.summary || '')
   const insightLines = (data.crmFull || [])
-    .slice(0, 3)
     .map((i) => cleanCalendarBulletLine(i))
     .filter(Boolean)
     .map((line) => `→ ${line}`)
 
-  const headParts: string[] = []
-  if (contactLine) headParts.push(contactLine)
-  if (contextBlock) headParts.push(contextBlock)
-  const head = headParts.join('\n\n')
+  const parts: string[] = []
+  if (contactLine) parts.push(contactLine)
+  if (contextBlock) parts.push(contextBlock)
+  if (insightLines.length > 0) {
+    parts.push(['Key insights (full)', ...insightLines].join('\n'))
+  }
 
-  if (insightLines.length === 0) return head
-  return head ? `${head}\n\n${insightLines.join('\n')}` : insightLines.join('\n')
+  const detailLines: string[] = []
+  const step = (data.nextStepTitle || data.nextStep || '').trim()
+  if (step) detailLines.push(`Next step: ${stripEmojisForCalendar(step)}`)
+  if ((data.nextStepDate || '').trim()) detailLines.push(`Follow-up date: ${(data.nextStepDate || '').trim()}`)
+  if ((data.nextStepTimeHint || '').trim()) {
+    detailLines.push(`Time: ${stripEmojisForCalendar((data.nextStepTimeHint || '').trim())}`)
+  }
+
+  if ((data.customer || '').trim()) {
+    detailLines.push(`Customer (account): ${stripEmojisForCalendar(data.customer.trim())}`)
+  }
+  if ((data.location || '').trim()) {
+    detailLines.push(`Location: ${stripEmojisForCalendar(data.location.trim())}`)
+  }
+  const products = productDisplayItems(data.crop, data.product).filter(Boolean)
+  if (products.length > 0) {
+    detailLines.push(
+      `Products (rep): ${products.map((p) => stripEmojisForCalendar(p)).join(', ')}`,
+    )
+  }
+  if ((data.acreage || '').trim()) {
+    detailLines.push(`Volume / quantity: ${stripEmojisForCalendar(data.acreage.trim())}`)
+  }
+
+  const more = (data.additionalSteps || []).filter((s) => (s.action || '').trim())
+  if (more.length > 0) {
+    const stepBullets = more.map((s) => {
+      const dt = [s.date, s.time].filter(Boolean).join(', ')
+      const suf = dt ? ` — ${dt}` : ''
+      return `→ ${stripEmojisForCalendar(s.action.trim())}${suf}`
+    })
+    detailLines.push(['Other scheduled actions', ...stepBullets].join('\n'))
+  }
+
+  if ((data.mentionedEntities || []).length > 0) {
+    const entityLines = data.mentionedEntities.map((e) => {
+      const type = (e.type || '').trim()
+      return `→ ${stripEmojisForCalendar(e.name)}${type ? ` (${type})` : ''}`
+    })
+    detailLines.push(['People & organizations', ...entityLines].join('\n'))
+  }
+
+  if ((data.ambiguityFlags || []).length > 0) {
+    detailLines.push(
+      `Flags: ${data.ambiguityFlags.map((f) => stripEmojisForCalendar(f)).join('; ')}`,
+    )
+  }
+
+  if ((data.notes || '').trim()) {
+    detailLines.push(`Notes: ${stripEmojisForCalendar(data.notes.trim())}`)
+  }
+
+  if (detailLines.length > 0) parts.push(['Scheduling & account details', ...detailLines].join('\n'))
+
+  return parts.filter(Boolean).join('\n\n')
 }
 
 function needsCalendarConfirmation(r: StructureResult): boolean {
