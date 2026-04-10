@@ -458,8 +458,26 @@ function applyRankedNextStepSelection(
     })
   }
 
-  const tRaw = primary.time.trim()
-  const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
+  /** Model primary slot (structured `primary.*`) — calendar must never take date/time from a supporting row when these were set. */
+  const primarySlot = resolved.find((r) => r.source === 'primary')
+  const modelPrimaryDatePresent = !!(result.nextStepDate || '').trim()
+  const modelPrimaryTimePresent = !!(result.nextStepTimeHint || '').trim()
+
+  const rankedDate = primary.date
+  const tRawRanked = primary.time.trim()
+  const rankedHint = tRawRanked ? normalizeTimeToHint(tRawRanked, '') : ''
+
+  let nextStepDate = rankedDate
+  let nextStepTimeHint = rankedHint
+
+  if (primarySlot && modelPrimaryDatePresent) {
+    nextStepDate = primarySlot.date
+  }
+  if (primarySlot && modelPrimaryTimePresent) {
+    const tRawPrimary = primarySlot._timeRaw.trim()
+    nextStepTimeHint = tRawPrimary ? normalizeTimeToHint(tRawPrimary, '') || tRawPrimary : ''
+  }
+
   const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
     action: r.action,
     contact: '',
@@ -471,8 +489,8 @@ function applyRankedNextStepSelection(
     ...result,
     nextStep: primary.action,
     nextStepTitle: primary.title || result.nextStepTitle,
-    nextStepDate: primary.date,
-    nextStepTimeHint: hint,
+    nextStepDate,
+    nextStepTimeHint,
     additionalSteps: enrichAdditionalStepsList(
       {
         contact: result.contact,
