@@ -11,6 +11,7 @@ import {
 } from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
 import { formatProfessionalCrmNote } from '../lib/formatCrmSalesNote'
+import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 
 /**
  * Merge legacy `crop` + `product` for one Product row (📦 pills).
@@ -646,6 +647,7 @@ function hasVagueNextStepWording(line: string): boolean {
 }
 
 function needsNextStepClarifyPick(r: StructureResult): boolean {
+  if (isNoClearFollowUpResult(r)) return false
   const step = (r.nextStep || '').trim()
   const title = (r.nextStepTitle || '').trim()
   const line = step || title
@@ -1172,6 +1174,19 @@ function inferMissingContact(r: StructureResult): StructureResult {
 }
 
 function finalizeNextStepFields(res: StructureResult, sourceText: string): StructureResult {
+  if (isNoClearFollowUpResult(res)) {
+    const line = (res.nextStepTitle || res.nextStep || '').trim()
+    return {
+      ...res,
+      nextStep: line,
+      nextStepTitle: line,
+      nextStepAction: '',
+      nextStepTarget: '',
+      nextStepDate: '',
+      nextStepTimeHint: '',
+      additionalSteps: [],
+    }
+  }
   const base = { ...res }
   let contact = (base.contact || '').trim()
   let nextStepTarget = (base.nextStepTarget || '').trim()
@@ -1918,7 +1933,10 @@ export default function Home() {
       
       let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
 
-      if (isWeakNextStep(final.nextStep) || !hasStrongVerb(final.nextStep)) {
+      if (
+        !isNoClearFollowUpResult(final) &&
+        (isWeakNextStep(final.nextStep) || !hasStrongVerb(final.nextStep))
+      ) {
         try {
           const fixedNextStep = await fixNextStep({
             nextStep: final.nextStep,
@@ -2032,6 +2050,7 @@ export default function Home() {
 
   /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
   const addResultToCalendar = (r: StructureResult) => {
+    if (isNoClearFollowUpResult(r)) return
     if (navigator.vibrate) navigator.vibrate(10)
     const opts = buildCalendarOpenOptsFromResult(r)
     const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
@@ -2881,24 +2900,26 @@ export default function Home() {
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
                         <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
-                          Next step
+                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'Next step'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {result.nextStepTitle || result.nextStep}
                         </p>
                       </div>
 
-                      <button
-                        onClick={() => addResultToCalendar(result)}
-                        type="button"
-                        className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
-                        style={{ backgroundColor: '#4F46E5' }}
-                      >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        <span className="tracking-tight">Add to calendar</span>
-                      </button>
+                      {!isNoClearFollowUpResult(result) ? (
+                        <button
+                          onClick={() => addResultToCalendar(result)}
+                          type="button"
+                          className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
+                          style={{ backgroundColor: '#4F46E5' }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          <span className="tracking-tight">Add to calendar</span>
+                        </button>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -3124,7 +3145,9 @@ export default function Home() {
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="#818cf8">
                           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                         </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">Next step</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">
+                          {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'Next step'}
+                        </p>
                       </div>
                       <p className="text-[19px] font-bold leading-snug text-[#111111]">
                         {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}

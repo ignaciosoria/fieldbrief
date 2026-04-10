@@ -1,4 +1,5 @@
 import { normalizeProductField, productFieldToList } from './productField'
+import { isNoClearFollowUpResult } from './noFollowUp'
 
 /** Fields needed to build the clipboard / share CRM note (matches app StructureResult). */
 export type CrmSalesNoteInput = {
@@ -122,13 +123,15 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
     stepBullets.push(t)
   }
 
-  if (primary) pushBullet(primary)
-
-  for (const step of r.additionalSteps || []) {
-    const a = (step.action || '').trim()
-    if (!a) continue
-    const dt = [step.date, step.time].filter(Boolean).join(', ')
-    pushBullet(dt ? `${a} (${dt})` : a)
+  const noFollowUp = isNoClearFollowUpResult(r)
+  if (!noFollowUp) {
+    if (primary) pushBullet(primary)
+    for (const step of r.additionalSteps || []) {
+      const a = (step.action || '').trim()
+      if (!a) continue
+      const dt = [step.date, step.time].filter(Boolean).join(', ')
+      pushBullet(dt ? `${a} (${dt})` : a)
+    }
   }
 
   const notes = (r.notes || '').trim()

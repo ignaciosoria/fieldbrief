@@ -8,6 +8,7 @@ import {
 } from '../../../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../../../lib/productField'
 import { detectNoteLanguage } from '../../../lib/detectNoteLanguage'
+import { isNoClearFollowUpLine } from '../../../lib/noFollowUp'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -133,6 +134,29 @@ DISTRIBUTOR / END-ACCOUNT (reference):
 
 ---
 
+NO REAL FOLLOW-UP (MANDATORY — ACCURACY OVER OUTPUT):
+
+You are **deciding what to do next**, not summarizing the note.
+
+**Internal pipeline (do not output these steps as text):**
+1. **Intent:** Does the note contain a real follow-up — a commitment, a planned action, or clear next-step intention in a business/sales context? If **no** → use the sentinel strings below; **do not invent** actions.
+2. **Extract:** If yes, list every forward action (internally).
+3. **Rank:** Apply **ACTION PRIORITY** below. When actions fall on **different calendar days**, **earliest day wins** for the **primary** next step (later days → **additionalSteps**) — see **CHRONOLOGY FIRST** below.
+4. **One primary:** Output **exactly ONE** action in **nextStep** / **nextStepTitle** — never a list, never multiple verbs in one line.
+5. **Timing:** Put dates/times in JSON **only** per the **RELIABILITY MANDATE** (explicit or stated relative day in the note). Resolve "tomorrow", weekday names, etc. using the user date context. **Never** fabricate a calendar date from tone alone.
+6. **Person:** **nextStepTarget** = the person who should receive or be part of **that** action (direct-contact rules; **""** when not applicable).
+
+**If there is no clear intent, commitment, or next step** (e.g. pure social chat, internal admin-only, facts with no forward motion, vague pleasantries with no commercial next step) — set **exactly**:
+- **nextStep** and **nextStepTitle** to the same string: English → **No follow-up needed** | Spanish → **No se requiere seguimiento**
+- **nextStepAction** = "", **nextStepTarget** = "", **nextStepDate** = "", **nextStepTime** = "", **nextStepTimeHint** = ""
+- **additionalSteps** = [] (empty array)
+- **nextStepConfidence** = "low"
+- **crmText** / **crmFull** may still describe what was said; **calendarDescription** = "" unless a brief non-actionable context line is needed (no implied meeting).
+
+Do **not** apply voicemail / no-answer "call again" defaults or PASSIVE/WAIT conversion when this rule applies — those require an implied follow-up; this rule means **there is none**.
+
+---
+
 ABSOLUTE RULE — THIRD PARTIES (NEVER BREAK):
 
 nextStepTitle AND nextStep MUST NEVER contain names of third parties (people the rep did NOT directly speak to in this visit).
@@ -150,11 +174,11 @@ LANGUAGE (nextStep + nextStepTitle) — **MANDATORY:**
 - If the note is English, every word of nextStep and nextStepTitle must be English (except proper names and company names as spoken). If the note is Spanish, both fields must be Spanish throughout.
 
 DECISION POLICY — DEAL ADVANCEMENT (NOT SUMMARY, NOT FIRST TASK IN THE NOTE):
-- Your job is **not** to summarize the visit or list every task. Output **exactly ONE** primary next step — the single action that **best moves this opportunity forward** for the rep to execute.
-- Do **not** pick the **first** action mentioned in the dictation order; do **not** merge multiple actions into one line; do **not** default to generic "send info" when a stronger engagement step exists.
+- Your job is **not** to summarize the visit. Decide **one** next action: output **exactly ONE** primary next step — the single action that **best moves this opportunity forward** for the rep to execute.
+- Do **not** pick the **first** action mentioned in dictation order; do **not** merge multiple actions into one line; do **not** default to generic "send info" when a stronger engagement step exists.
 - **Reliability beats polish:** **nextStep** / **nextStepAction** must be **factually aligned** with the note. For **contact**, **nextStepDate**, and **nextStepTarget**, follow the **RELIABILITY MANDATE** above (empty + **ambiguityFlags** instead of guessing).
 
-INTERNAL (reason only — do not output): List candidate forward actions with resolved **calendar day** for each (from note + context). If days differ, **earliest day wins** primary (before tier). If same day, classify by tier (below), identify who each action targets (must be **direct contact** unless org-only), then pick **one** primary. Secondary actions → **additionalSteps** in chronological order when dated.
+INTERNAL (reason only — do not output): List candidate forward actions with resolved **calendar day** for each (from note + context). If days differ, **earliest day wins** primary (before tier). If same day, classify by **ACTION PRIORITY** (below), identify who each action targets (must be **direct contact** unless org-only), then pick **one** primary. Secondary actions → **additionalSteps** in chronological order when dated.
 
 CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only):
 - confirmed + clear action/timing + concrete request/agreement → confidence **high** (urgency high/normal based on wording).
@@ -164,16 +188,19 @@ CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only)
 
 ---
 
-NEXT STEP — PRIORITY (WHEN MULTIPLE FORWARD ACTIONS EXIST):
+NEXT STEP — ACTION PRIORITY (WHEN MULTIPLE FORWARD ACTIONS EXIST ON THE **SAME CALENDAR DAY**):
 
-**Tier 1 — Highest:** Calls, callbacks, follow-ups, check-ins, voicemail / no-answer follow-ups (live conversation with the **direct contact** or agreed call time).
-**Tier 2:** Meetings, visits, demos, site walkthroughs, scheduled appointments (or **scheduling** one if that is the clear next commercial move).
-**Tier 3 — Lowest:** Sending information only — email, deck, brochure, quote, samples, materials — use as **primary** only when **no** Tier 1 or Tier 2 action is appropriate **or** the note makes a **time-bound send** the explicit gate (e.g. proposal/RFP due **before** a decision meeting — then that send can be primary **for that date**).
+After applying **CHRONOLOGY FIRST** across days, rank same-day candidates:
+
+1. **Highest:** Calls and meetings — live or scheduled calls, callbacks, visits, demos, site walkthroughs, appointments (including scheduling one when that is the clear next commercial move).
+2. **Second:** Follow-ups and check-ins — lighter-touch touchpoints when rank 1 (calls/meetings) is not the right primary for the same day.
+3. **Third:** Sending information — email, deck, brochure, quote, samples, materials — use as **primary** only when **no** higher-tier action is appropriate **or** the note makes a **time-bound send** the explicit gate (e.g. RFP due before a decision meeting).
+4. **Lowest — ignore unless no other option:** Passive or vague actions; **never** as primary if any Tier 1–3 action exists.
 
 **CHRONOLOGY FIRST (MANDATORY — APPLIES BEFORE TIER):**
 - When two or more forward actions are anchored to **different calendar days** (using **today** / **tomorrow** / weekday / explicit date from the note + calendar context), the action on the **earliest** calendar day is **always** the **primary** next step, and later-day actions go to **additionalSteps** — **even if** the earlier-day action is Tier 3 (send) and the later-day action is Tier 1 (call).
 - **Today always beats tomorrow** (and any later day). Example: "Send market analysis today before 5pm" and "Call tomorrow at 10am" → **primary = send market analysis today** (with **nextStepDate** = today and time hint as needed); **additionalSteps** = call tomorrow at 10am.
-- Only when candidates fall on the **same calendar day** does **tier** decide among them (Tier 1 > Tier 2 > Tier 3), then buyer preference, then earlier clock time that day.
+- Only when candidates fall on the **same calendar day** does **rank** decide among them (1 > 2 > 3; passive rank-4 never beats 1–3), then buyer preference, then earlier clock time that day.
 
 Rules:
 - **Prefer chronology across days**, then **tier within the same day**, not dictation order. Example: "I'll send samples this week and call her Thursday" → if **send** is earlier in the week than **Thursday call**, primary = whichever day is **earlier**; if both land on the same day, **primary = call** (Tier 1 over Tier 3).
@@ -936,12 +963,29 @@ function formatNextStepTitleEmDash(title: string): string {
   return t
 }
 
+function normalizeNoFollowUpStructure(result: StructureBody): StructureBody {
+  const line = (result.nextStepTitle || result.nextStep || '').trim()
+  if (!isNoClearFollowUpLine(line)) return result
+  return {
+    ...result,
+    nextStep: line,
+    nextStepTitle: line,
+    nextStepAction: '',
+    nextStepTarget: '',
+    nextStepDate: '',
+    nextStepTimeHint: '',
+    additionalSteps: [],
+    nextStepConfidence: 'low',
+  }
+}
+
 /** Post-parse fixes before title-case / merge (chronology, product, duplicates, title shape). */
 function applyStructureResponsePostProcessing(
   result: StructureBody,
   anchor: Date,
 ): StructureBody {
-  let r = applyChronologicalNextStepValidation(result, anchor)
+  let r = normalizeNoFollowUpStructure(result)
+  r = applyChronologicalNextStepValidation(r, anchor)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   r = {
     ...r,
