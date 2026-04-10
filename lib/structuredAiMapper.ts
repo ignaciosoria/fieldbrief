@@ -210,19 +210,15 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean): string {
 /** Calendar title line from structured supporting fields only (no suffix; app may add contact/company). */
 export function supportingStructuredActionLine(
   type: StructuredSupportingType,
-  label: string,
+  _label: string,
   langEs: boolean,
   contact?: string,
   object?: string,
 ): string {
   const verb = verbForSupportingStructuredType(type, langEs)
   const noteLanguage = langEs ? 'spanish' : 'english'
-  const lab = truncateWords(label, 5)
-  const obj =
-    type === 'call'
-      ? (object || '').trim()
-      : (object || '').trim() || (type === 'send' || type === 'email' ? lab : '')
-  const con = (contact || '').trim() || (type === 'call' || type === 'other' ? lab : '')
+  const obj = (object || '').trim()
+  const con = (contact || '').trim()
   const fields: ActionStructuredFields = {
     type,
     verb,
@@ -317,13 +313,13 @@ export function structuredPayloadToStructureBody(
     const sd = normalizeDateMmdd(s.date)
     const st = normalizeTimeHint(s.time)
     const lab = truncateWords(s.label, 5)
-    const objectPart =
-      s.type === 'call'
-        ? ''
-        : truncateWords(s.object, 5) || (s.type === 'send' || s.type === 'email' ? lab : '')
-    const contactPart =
-      s.contact.trim() || (s.type === 'call' || s.type === 'other' ? lab : '')
     const sv = verbForSupportingStructuredType(s.type, langEs)
+    const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 5)
+    const objectPart =
+      s.type === 'send' || s.type === 'email'
+        ? normalizePrimarySendObjectField(rawObj, s.contact.trim(), sv, noteLanguage)
+        : rawObj
+    const contactPart = s.type === 'call' || s.type === 'other' ? s.contact.trim() : ''
     const actionStructured: ActionStructuredFields = {
       type: s.type,
       verb: sv,

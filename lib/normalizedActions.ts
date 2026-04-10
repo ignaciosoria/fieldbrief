@@ -1,4 +1,5 @@
 import type { AdditionalStep } from './additionalStepEnrichment'
+import type { ActionStructuredFields } from './actionTitleContract'
 import { inferActionKind, type ActionKind } from './nextStepActionKind'
 
 /**
@@ -21,6 +22,8 @@ export type NormalizedAction = {
   time: string
   /** Exactly one action is primary — chosen by backend ranking, not the model slot alone. */
   primary: boolean
+  /** Set for send/email when structured pipeline provided `object` (what to send). */
+  object?: string
 }
 
 /** Map internal ActionKind to normalized type (email handled separately). */
@@ -67,44 +70,66 @@ function stepTime(s: AdditionalStep & { date?: string; time?: string }): string 
   return (s.timeHint || s.time || '').trim()
 }
 
+function structuredObjectForSendEmail(
+  type: NormalizedActionType,
+  structured: ActionStructuredFields | undefined,
+): string | undefined {
+  if (type !== 'send' && type !== 'email') return undefined
+  const o = (structured?.object ?? '').trim()
+  return o || undefined
+}
+
 export function buildNormalizedActionsFromResult(r: {
   nextStep: string
   nextStepTitle?: string
   nextStepDate: string
   nextStepTimeHint: string
   additionalSteps: AdditionalStep[]
+  primaryActionStructured?: ActionStructuredFields
 }): NormalizedAction[] {
   const primary = (r.nextStep || '').trim()
   if (!primary) {
     const steps = r.additionalSteps || []
-    return steps.map((s, i) => ({
-      action: (s.action || '').trim(),
-      type: inferNormalizedActionType(s.action),
-      date: stepDate(s),
-      time: stepTime(s),
-      primary: i === 0,
-    }))
+    return steps.map((s, i) => {
+      const type = inferNormalizedActionType(s.action)
+      const object = structuredObjectForSendEmail(type, s.actionStructured)
+      return {
+        action: (s.action || '').trim(),
+        type,
+        date: stepDate(s),
+        time: stepTime(s),
+        primary: i === 0,
+        ...(object ? { object } : {}),
+      }
+    })
   }
+
+  const primaryType = inferNormalizedActionType(`${primary} ${r.nextStepTitle || ''}`)
+  const primaryObject = structuredObjectForSendEmail(primaryType, r.primaryActionStructured)
 
   const out: NormalizedAction[] = [
     {
       action: primary,
-      type: inferNormalizedActionType(`${primary} ${r.nextStepTitle || ''}`),
+      type: primaryType,
       date: (r.nextStepDate || '').trim(),
       time: (r.nextStepTimeHint || '').trim(),
       primary: true,
+      ...(primaryObject ? { object: primaryObject } : {}),
     },
   ]
 
   for (const s of r.additionalSteps || []) {
     const a = (s.action || '').trim()
     if (!a) continue
+    const type = inferNormalizedActionType(a)
+    const object = structuredObjectForSendEmail(type, s.actionStructured)
     out.push({
       action: a,
-      type: inferNormalizedActionType(a),
+      type,
       date: stepDate(s),
       time: stepTime(s),
       primary: false,
+      ...(object ? { object } : {}),
     })
   }
 

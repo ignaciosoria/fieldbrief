@@ -89,6 +89,7 @@ type NormalizedAction = {
   date: string
   time: string
   primary: boolean
+  object?: string
 }
 
 type StructureResult = {
@@ -205,12 +206,16 @@ function normalizeActions(raw: unknown): NormalizedAction[] {
       typeof t === 'string' && VALID_NORMALIZED_ACTION_TYPES.has(t as NormalizedActionType)
         ? (t as NormalizedActionType)
         : 'other'
+    const objectRaw = o.object
+    const object =
+      typeof objectRaw === 'string' && objectRaw.trim() ? objectRaw.trim() : undefined
     out.push({
       action,
       type,
       date: typeof o.date === 'string' ? o.date.trim() : '',
       time: typeof o.time === 'string' ? o.time.trim() : '',
       primary: o.primary === true,
+      ...(object ? { object } : {}),
     })
   }
   return out

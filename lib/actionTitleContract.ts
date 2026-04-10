@@ -9,6 +9,10 @@ export type ActionStructuredFields = {
   /** Primary: call | send | meeting | follow_up. Supporting: send | email | call | other */
   type: string
   verb: string
+  /**
+   * What is being sent (send/email): e.g. updated program, quote, samples.
+   * Must be empty for call-style actions; never the contact’s name.
+   */
   object: string
   contact: string
   company: string
@@ -108,11 +112,7 @@ export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLangua
     return verb || (langEs ? 'Llamar' : 'Call')
   }
 
-  if (object && company) return `${verb} ${object} ${EM} ${company}`
-  if (contact && company)
-    return `${verb} ${stripLeadingActionVerbFromContactName(contact, langEs)} ${EM} ${company}`
-  if (object) return `${verb} ${object}`
-  if (contact) return `${verb} ${stripLeadingActionVerbFromContactName(contact, langEs)}`
+  /** Unrecognized `type`: do not mix object vs contact (ambiguous); company-only or verb. */
   if (company) return `${verb} ${EM} ${company}`
   return verb
 }
