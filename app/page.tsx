@@ -500,10 +500,20 @@ function compactInsightForCalendar(line: string): string {
   return s
 }
 
-/** Calendar body: max 3 telegraphic lines, ~60 chars each; no repeat of event title. */
-const CALENDAR_DESC_LINE_MAX = 60
+/** First clause only; strip numeric dates (event already carries timing). */
+function telegraphicInsightFragment(raw: string): string {
+  let s = raw.replace(/\s+/g, ' ').trim()
+  s = s.replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '')
+  s = s.replace(/\s+/g, ' ').trim()
+  const oneSentence = (s.split(/[.!?]/)[0] || s).trim()
+  const oneClause = (oneSentence.split(/[,;:]/)[0] || oneSentence).trim()
+  return oneClause.replace(/\.\s*$/g, '').trim()
+}
 
-/** Line 1 — company / account name only. */
+/** Calendar body: max 3 telegraphic lines; event date/time live on the event — not repeated here. */
+const CALENDAR_DESC_LINE_MAX = 56
+
+/** Line 1 — company / account only (short label). */
 function buildCalendarDescriptionLine1Company(data: StructureResult): string {
   const customer = stripEmojisForCalendar((data.customer || '').trim())
   const contactCo = stripEmojisForCalendar((data.contactCompany || '').trim())
@@ -517,39 +527,19 @@ function buildCalendarDescriptionLine1Company(data: StructureResult): string {
   return org ? truncateCalendarLine(org, CALENDAR_DESC_LINE_MAX) : ''
 }
 
-/** Short day label for supporting step (MM/DD/YYYY → today / tomorrow when applicable). */
-function formatCalendarStepDayLabel(dateStr: string): string {
-  const t = (dateStr || '').trim()
-  if (!t) return ''
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) {
-    return truncateCalendarLine(t.replace(/\s+/g, ' '), 14)
-  }
-  const [mm, dd, yyyy] = t.split('/').map((x) => parseInt(x, 10))
-  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return truncateCalendarLine(t, 14)
-  const d = new Date(yyyy, mm - 1, dd)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  d.setHours(0, 0, 0, 0)
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'today'
-  if (diff === 1) return 'tomorrow'
-  return `${mm}/${dd}`
-}
-
 /**
- * Line 2 — first supporting / secondary action only (not the primary next step).
- * Format: `Action — when` (telegraphic).
+ * Line 2 — first supporting action only (no date: calendar event already has timing).
+ * Drops if it duplicates the primary next step.
  */
 function buildCalendarDescriptionLine2Supporting(data: StructureResult): string {
   const first = (data.additionalSteps || [])[0]
   if (!first || !(first.action || '').trim()) return ''
-  const action = truncateCalendarLine(
-    stripEmojisForCalendar(first.action.trim()),
-    44,
-  )
-  const when = formatCalendarStepDayLabel(first.date || '')
-  if (!when) return truncateCalendarLine(action, CALENDAR_DESC_LINE_MAX)
-  return truncateCalendarLine(`${action} — ${when}`, CALENDAR_DESC_LINE_MAX)
+  const actionRaw = stripEmojisForCalendar(first.action.trim())
+  const primaryNs = stripEmojisForCalendar((data.nextStep || '').trim())
+  const pk = normalizeCalendarDedupeKey(primaryNs)
+  const ak = normalizeCalendarDedupeKey(actionRaw)
+  if (pk && ak && (pk === ak || pk.includes(ak) || ak.includes(pk))) return ''
+  return truncateCalendarLine(actionRaw, CALENDAR_DESC_LINE_MAX)
 }
 
 function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): boolean {
@@ -562,20 +552,24 @@ function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): bo
 }
 
 /**
- * Line 3 — one constraint / context fragment (not a full sentence; no repeat of title or prior lines).
+ * Line 3 — one constraint / insight fragment (telegraphic; no date echo; no repeat of title/primary/next lines).
  */
 function buildCalendarDescriptionLine3Context(
   data: StructureResult,
   exclude: Set<string>,
   eventTitle: string,
 ): string {
+  const primaryNs = stripEmojisForCalendar((data.nextStep || '').trim())
+
   const tryLine = (raw: string): string | null => {
-    let s = compactInsightForCalendar(raw)
-    s = s.replace(/\.\s*$/g, '').replace(/\s+/g, ' ').trim()
-    if (s.length < 6) return null
+    let s = telegraphicInsightFragment(compactInsightForCalendar(raw))
+    s = s.replace(/\s+/g, ' ').trim()
+    if (s.length < 8) return null
     const k = normalizeCalendarDedupeKey(s)
     if (k && exclude.has(k)) return null
     if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
+    const pk = normalizeCalendarDedupeKey(primaryNs)
+    if (pk && k && (pk === k || pk.includes(k) || k.includes(pk))) return null
     return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
   }
 
@@ -596,8 +590,7 @@ function buildCalendarDescriptionLine3Context(
 
   const crm = (data.crmText || '').trim()
   if (crm) {
-    const clause = crm.split(/[.!?]/)[0]?.trim() || crm
-    const out = tryLine(clause)
+    const out = tryLine(crm)
     if (out) return out
   }
 
@@ -611,8 +604,8 @@ function buildCalendarDescriptionLine3Context(
 }
 
 /**
- * Calendar description (Google / ICS): 3 lines max — company, optional supporting task, one context fragment.
- * Does not duplicate the event title; telegraphic, ~60 chars/line.
+ * Calendar description (Google / ICS): max 3 lines — (1) company, (2) supporting action if any,
+ * (3) one insight. No event date repeat; no full sentences; no primary next-step echo.
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
@@ -622,6 +615,8 @@ function buildCalendarDescription(data: StructureResult): string {
     if (k) exclude.add(k)
   }
   if (eventTitle) addEx(stripEmojisForCalendar(eventTitle))
+  const ns = stripEmojisForCalendar((data.nextStep || '').trim())
+  if (ns) addEx(ns)
 
   const line1 = buildCalendarDescriptionLine1Company(data)
   if (line1) addEx(line1)

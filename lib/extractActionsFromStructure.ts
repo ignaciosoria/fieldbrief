@@ -1,4 +1,5 @@
 import { inferActionKind } from './nextStepActionKind'
+import { inferNormalizedActionType } from './normalizedActions'
 import { isNoClearFollowUpLine } from './noFollowUp'
 
 export type AdditionalStepInput = { action: string; date: string; time: string }
@@ -24,13 +25,20 @@ function normalizeDedupeKey(s: string): string {
     .trim()
 }
 
+/**
+ * Send/email lines must not be dropped just because a longer tier-0 `nextStep` contains them as a
+ * substring — that was hiding secondary sends when primary became call/follow-up after ranking.
+ */
 function isDuplicateOfExisting(candidate: string, existing: string[]): boolean {
   const c = normalizeDedupeKey(candidate)
   if (c.length < 8) return true
+  const nt = inferNormalizedActionType(candidate)
+  const skipSubstringDedupe = nt === 'send' || nt === 'email'
   for (const e of existing) {
     const ec = normalizeDedupeKey(e)
     if (!ec || ec.length < 4) continue
     if (c === ec) return true
+    if (skipSubstringDedupe) continue
     const shorter = c.length <= ec.length ? c : ec
     const longer = c.length > ec.length ? c : ec
     if (longer.includes(shorter) && shorter.length / longer.length >= 0.5) return true
@@ -63,20 +71,73 @@ function splitIntoSentences(text: string): string[] {
   return parts.length > 0 ? parts : [t]
 }
 
+/**
+ * Split narrative text into segments for action mining. Always splits on sentence boundaries
+ * first so short paragraphs with multiple actions (e.g. "Call Friday. Send deck Monday.") are
+ * not kept as a single blob when `additionalSteps` was empty.
+ */
 function segmentLongText(text: string): string[] {
   const t = text.trim()
   if (!t) return []
-  if (t.length <= 220) return [t]
-  return t
-    .split(/(?<=[.!?])\s+/)
+  let sentences = t.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length >= 8)
+  if (sentences.length === 0 && t.length >= 8) sentences = [t]
+  const out: string[] = []
+  for (const chunk of sentences) {
+    if (chunk.length > 220) {
+      const sub = chunk
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 10)
+      out.push(...(sub.length > 0 ? sub : [chunk]))
+    } else {
+      out.push(chunk)
+    }
+  }
+  return out
+}
+
+/** Bullets / em-dash list items often hide a second action on one line. */
+function splitLineByListMarkers(line: string): string[] {
+  const t = line.trim()
+  if (!t) return []
+  const byBullet = t
+    .split(/\s*(?:^|\n)\s*[-•–—]\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 10)
+    .filter((s) => s.length >= 8)
+  if (byBullet.length > 1) return byBullet
+  return [t]
+}
+
+/**
+ * Last-resort when `additionalSteps` was empty: pull sentences that clearly mention
+ * send / call / meeting / follow-up verbs (EN/ES cues aligned with inferActionKind).
+ */
+function extractVerbLedFallbackSegments(text: string): string[] {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (t.length < 8) return []
+  const verbHint =
+    /\b(?:send|enviar|e-?mail|email|mail|forward|call|llamar|llamada|phone|tel[ée]fono|meeting|reuni[oó]n|reunion|demo|cita|appointment|follow[-\s]?up|seguimiento|check[-\s]?in|touch\s*base|visita\b|site\s+visit|presentaci[oó]n|pitch|webinar|entrevista)\b/i
+  const sentences = t
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 8)
+  const out: string[] = []
+  for (const s of sentences) {
+    if (!verbHint.test(s)) continue
+    if (inferActionKind(s) === 'other') continue
+    out.push(s)
+  }
+  return out
 }
 
 function segmentsFromLine(line: string): string[] {
   const cleaned = stripLeadingInsightNoise(line)
   if (!cleaned) return []
-  return segmentLongText(cleaned)
+  const parts: string[] = []
+  for (const chunk of splitLineByListMarkers(cleaned)) {
+    parts.push(...segmentLongText(chunk))
+  }
+  return parts
 }
 
 /**
@@ -93,14 +154,7 @@ export function splitCompoundNextStep(nextStep: string): string[] {
   if (andParts.length === 2) {
     const a = andParts[0].trim()
     const b = andParts[1].trim()
-    if (
-      a.length >= 8 &&
-      b.length >= 8 &&
-      inferActionKind(a) !== 'other' &&
-      inferActionKind(b) !== 'other'
-    ) {
-      return [a, b]
-    }
+    if (a.length >= 8 && b.length >= 8) return [a, b]
   }
   return [t]
 }
@@ -118,6 +172,8 @@ export function enrichStructureWithExtractedActions<
 >(result: T): T {
   const line = (result.nextStepTitle || result.nextStep || '').trim()
   if (isNoClearFollowUpLine(line)) return result
+
+  const modelAdditionalEmpty = !(result.additionalSteps || []).length
 
   const seen: string[] = []
   const primary0 = (result.nextStep || '').trim()
@@ -192,6 +248,22 @@ export function enrichStructureWithExtractedActions<
 
   if (title0 && normalizeDedupeKey(title0) !== normalizeDedupeKey(primary0)) {
     for (const seg of segmentLongText(title0)) {
+      pushCandidate(seg)
+    }
+  }
+
+  if (modelAdditionalEmpty) {
+    const combined = [
+      primary0,
+      result.summary,
+      ...(result.crmFull || []),
+      result.crmText,
+      result.calendarDescription,
+      title0,
+    ]
+      .filter((x) => typeof x === 'string' && x.trim())
+      .join('\n')
+    for (const seg of extractVerbLedFallbackSegments(combined)) {
       pushCandidate(seg)
     }
   }

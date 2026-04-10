@@ -728,7 +728,8 @@ type ScoredRow = ChronologicalRow & {
  * - **Tier 0** (meeting, call, follow_up) always beats **tier 1** (send, email) and **tier 2** (other).
  * - send/email cannot be primary if any tier-0 action exists (sort + safety net).
  * - Within tier: meeting > call > follow_up > … by kind score, then **earlier date** breaks ties,
- *   then stable idx. **All non-primary rows are preserved** as supporting steps.
+ *   then stable idx. **Every non-primary row is kept** in `additionalSteps` (sorted by original `idx`);
+ *   send/email are never dropped when a tier-0 action is primary.
  */
 function applyRankedNextStepSelection(
   result: StructureBody,
@@ -840,7 +841,17 @@ function applyRankedNextStepSelection(
     }
   }
 
-  const rest = resolved.filter((r) => r.idx !== primary.idx)
+  const rest = resolved
+    .filter((r) => r.idx !== primary.idx)
+    .sort((a, b) => a.idx - b.idx)
+
+  if (resolved.length >= 2 && rest.length !== resolved.length - 1) {
+    console.warn('[structure] rank: expected N-1 supporting rows', {
+      resolvedCount: resolved.length,
+      restCount: rest.length,
+      primaryIdx: primary.idx,
+    })
+  }
 
   const tRaw = primary.time.trim()
   const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
