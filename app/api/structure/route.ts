@@ -709,43 +709,21 @@ type ChronologicalRow = {
   time: string
 }
 
-/** Extra weight when the model anchored time (resolved calendar date scores highest). */
-function timeClarityBonus(dateResolved: string, dateRaw: string, timeRaw: string): number {
-  const dRes = (dateResolved || '').trim()
-  if (dRes && /^\d{2}\/\d{2}\/\d{4}$/.test(dRes)) return 12
-  if ((dateRaw || '').trim() || (timeRaw || '').trim()) return 6
-  return 0
-}
-
-/** Model confidence applies only to the row the model originally marked as primary. */
-function confidenceBonusForRow(
-  source: 'primary' | 'additional',
-  conf: StructureBody['nextStepConfidence'],
-): number {
-  if (source !== 'primary') return 0
-  if (conf === 'high') return 10
-  if (conf === 'medium') return 5
-  return 0
-}
-
 type ScoredRow = ChronologicalRow & {
   _dateRaw: string
   _timeRaw: string
   _kind: ActionKind
   _base: number
-  _timeBonus: number
-  _confBonus: number
-  _total: number
 }
 
 /**
- * Pick primary next step by **action kind** (meeting > call > follow_up > send > other), with
- * time-clarity and confidence bonuses. **Date is only a tie-breaker** when totals tie (earlier wins).
- * Replaces pure chronological promotion so an earlier "send" does not displace a later "call".
+ * Pick primary next step by **action kind only** (meeting > call > follow_up > send > other).
+ * **Earlier dates or clearer timing never outrank a higher-importance action** — e.g. "Send tomorrow"
+ * stays secondary when "Call Friday" exists. **Date/time breaks ties** between rows of the **same**
+ * kind (earlier calendar date wins), then stable order.
  *
- * **Send suppression:** If any candidate is meeting/call/follow_up, a **send** row is never chosen as
- * primary — even with a clearer/earlier date or higher total score. Primary becomes the best-ranked
- * **non-send** (same sort order).
+ * **Send safety net:** If the top row after sorting is still **send** but another row is
+ * meeting/call/follow_up, promote the best non-send (same tie-break rules).
  */
 function applyRankedNextStepSelection(
   result: StructureBody,
@@ -799,9 +777,6 @@ function applyRankedNextStepSelection(
 
     const kind = inferActionKind(`${r.action} ${r.title}`)
     const base = ACTION_KIND_SCORE[kind]
-    const tBonus = timeClarityBonus(dateForSort, r.date, r.time)
-    const cBonus = confidenceBonusForRow(r.source, result.nextStepConfidence)
-    const total = base + tBonus + cBonus
 
     return {
       ...r,
@@ -810,28 +785,22 @@ function applyRankedNextStepSelection(
       _timeRaw: r.time,
       _kind: kind,
       _base: base,
-      _timeBonus: tBonus,
-      _confBonus: cBonus,
-      _total: total,
     }
   })
 
   console.log(
-    '[structure] rank: scores (kind base + time + conf → total; date tie-break only)',
+    '[structure] rank: kind scores (date used only as tie-breaker within same kind)',
     resolved.map((r) => ({
       source: r.source,
       kind: r._kind,
       base: r._base,
-      timeBonus: r._timeBonus,
-      confBonus: r._confBonus,
-      total: r._total,
       action: r.action.slice(0, 100),
       dateResolved: r.date,
     })),
   )
 
   resolved.sort((a, b) => {
-    if (b._total !== a._total) return b._total - a._total
+    if (b._base !== a._base) return b._base - a._base
     const da = parseStepDateMs(a.date)
     const db = parseStepDateMs(b.date)
     if (da !== db) return da - db
@@ -839,11 +808,11 @@ function applyRankedNextStepSelection(
   })
 
   console.log(
-    '[structure] rank: order after sort (total desc, then earliest date, then stable idx)',
+    '[structure] rank: order after sort (kind desc, then earliest date, then stable idx)',
     resolved.map((r) => ({
       source: r.source,
       kind: r._kind,
-      total: r._total,
+      base: r._base,
       action: r.action.slice(0, 120),
       dateResolved: r.date,
     })),
@@ -853,13 +822,14 @@ function applyRankedNextStepSelection(
 
   let primary = resolved[0]
   if (hasHigherValueAction && primary._kind === 'send') {
-    const alt = resolved.find((r) => r._kind !== 'send')
+    const nonSend = resolved.filter((r) => r._kind !== 'send')
+    const alt = nonSend[0]
     if (alt) {
       console.log('[structure] rank: send blocked as primary — higher-value kind exists', {
         skippedSend: primary.action.slice(0, 100),
-        skippedTotal: primary._total,
+        skippedBase: primary._base,
         chosenPrimary: alt.action.slice(0, 100),
-        chosenTotal: alt._total,
+        chosenBase: alt._base,
       })
       primary = alt
     }
