@@ -112,26 +112,27 @@ export type SupportingDisplayTitleInput = {
 }
 
 /**
- * APP only — timing inline. Calendar ICS/Google SUMMARY for supporting is built in `app/page.tsx` with contact/company.
- * Example: `Send contract — Today · 16:00`
+ * APP only — same pattern as `buildPrimaryDisplayTitle`: base action line, then timing in parentheses.
+ * Example: `Send contract — GreenFields (Today · 4:00 PM)`
  */
 export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): string {
-  const action = (step.action || '').trim()
-  if (!action) return ''
-  const date = (step.resolvedDate || '').trim()
-  const th = (step.timeHint || '').trim()
-  const parts: string[] = []
-  if (date) {
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
-      parts.push(relativeDayLabelFromMmdd(date))
-    } else {
-      parts.push(date)
-    }
-  }
-  if (th) {
-    const { hour, minute } = resolveTimeFromHint(th)
-    parts.push(`${pad2(hour)}:${pad2(minute)}`)
-  }
-  if (parts.length === 0) return formatRelativeDayWordsForDisplay(action)
-  return formatRelativeDayWordsForDisplay(`${action} — ${parts.join(' · ')}`)
+  const raw = (step.action || '').trim()
+  if (!raw) return ''
+  const base = cleanCalendarTitle(raw)
+  if (!base) return formatRelativeDayWordsForDisplay(raw)
+
+  const dateRaw = (step.resolvedDate || '').trim()
+  const hint = (step.timeHint || '').trim()
+  const hasMmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(dateRaw)
+  if (!hasMmdd && !dateRaw && !hint) return formatRelativeDayWordsForDisplay(base)
+
+  const dateLabel = hasMmdd
+    ? formatDisplayDateLabelForPrimary(dateRaw)
+    : dateRaw
+      ? formatRelativeDayWordsForDisplay(dateRaw)
+      : ''
+  const timeLabel = hint ? formatClock12FromHint(hint) : ''
+  const inner = [dateLabel, timeLabel].filter(Boolean).join(' · ')
+  if (!inner) return formatRelativeDayWordsForDisplay(base)
+  return formatRelativeDayWordsForDisplay(`${base} (${inner})`)
 }
