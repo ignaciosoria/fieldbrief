@@ -56,6 +56,8 @@ type StructureResult = {
   acreage: string
   crmText: string
   crmFull: string[]
+  /** 3–5 → lines for calendar / before follow-up (from API). */
+  calendarDescription: string
   additionalSteps: AdditionalStep[]
 }
 
@@ -80,6 +82,7 @@ const emptyResult: StructureResult = {
   acreage: '',
   crmText: '',
   crmFull: [],
+  calendarDescription: '',
   additionalSteps: [],
 }
 
@@ -173,6 +176,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     crop: '',
     crmFull: stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
     crmText: stripDealerClosingFromCrmText(base.crmText),
+    calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
     additionalSteps: normalizeAdditionalSteps(base.additionalSteps),
@@ -389,17 +393,21 @@ function calendarEventTitle(r: StructureResult): string {
 
 function buildCalendarDescription(data: StructureResult) {
   const contactLine = formatCalendarContactLine(data)
-  const contextBlock = formatCalendarContextBlock(data.crmText || '', data.summary || '')
-  const insightLines = (data.crmFull || [])
-    .map((i) => cleanCalendarBulletLine(i))
-    .filter(Boolean)
-    .map((line) => `→ ${line}`)
-
+  const calPrep = (data.calendarDescription || '').trim()
   const parts: string[] = []
   if (contactLine) parts.push(contactLine)
-  if (contextBlock) parts.push(contextBlock)
-  if (insightLines.length > 0) {
-    parts.push(['Key insights (full)', ...insightLines].join('\n'))
+  if (calPrep) {
+    parts.push(calPrep)
+  } else {
+    const contextBlock = formatCalendarContextBlock(data.crmText || '', '')
+    const insightLines = (data.crmFull || [])
+      .map((i) => cleanCalendarBulletLine(i))
+      .filter(Boolean)
+      .map((line) => (line.trimStart().startsWith('→') ? line : `→ ${line}`))
+    if (contextBlock) parts.push(contextBlock)
+    if (insightLines.length > 0) {
+      parts.push(insightLines.join('\n'))
+    }
   }
 
   const detailLines: string[] = []
@@ -467,6 +475,23 @@ function needsCalendarConfirmation(r: StructureResult): boolean {
   return conf !== 'high' || !hasDate || !hasTarget || flags > 0
 }
 
+/** Model or pipeline flags asking the app to validate instead of guessing. */
+function hasReliabilityFlag(r: StructureResult, id: string): boolean {
+  const idl = id.toLowerCase()
+  return (r.ambiguityFlags || []).some((x) => x.toLowerCase().includes(idl))
+}
+
+function namesRoughlyMatch(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+function contactTargetMismatch(r: StructureResult): boolean {
+  const c = (r.contact || '').trim()
+  const t = (r.nextStepTarget || '').trim()
+  if (!c || !t) return false
+  return !namesRoughlyMatch(c, t)
+}
+
 function needsTargetPicker(r: StructureResult): boolean {
   if ((r.mentionedEntities?.length ?? 0) > 1) return true
   const f = r.ambiguityFlags || []
@@ -479,15 +504,43 @@ function needsTargetPicker(r: StructureResult): boolean {
 }
 
 function needsNextStepDatePick(r: StructureResult): boolean {
-  return !(r.nextStepDate || '').trim()
+  if (!(r.nextStepDate || '').trim()) return true
+  return hasReliabilityFlag(r, 'unclear_date')
 }
 
 function needsContactPick(r: StructureResult): boolean {
-  return !(r.contact || '').trim()
+  if (!(r.contact || '').trim()) return true
+  return hasReliabilityFlag(r, 'unclear_contact')
+}
+
+/** Confirm follow-up targets the direct contact only (after contact is known). */
+function needsNextStepTargetPick(r: StructureResult): boolean {
+  if (!(r.contact || '').trim()) return false
+  if (hasReliabilityFlag(r, 'unclear_target')) return true
+  if (needsTargetPicker(r)) return true
+  return contactTargetMismatch(r)
 }
 
 function needsContactCompanyPick(r: StructureResult): boolean {
   return !(r.contactCompany || '').trim()
+}
+
+function stripAmbiguityFlagsAfterContactConfirm(r: StructureResult): StructureResult {
+  const flags = (r.ambiguityFlags || []).filter((x) => !x.toLowerCase().includes('unclear_contact'))
+  return { ...r, ambiguityFlags: flags }
+}
+
+function stripAmbiguityFlagsAfterTargetConfirm(r: StructureResult): StructureResult {
+  const drop = ['unclear_target', 'multiple_people', 'multiple_people_mentioned']
+  const flags = (r.ambiguityFlags || []).filter(
+    (x) => !drop.some((d) => x.toLowerCase().includes(d)),
+  )
+  return { ...r, ambiguityFlags: flags }
+}
+
+function stripAmbiguityFlagsAfterDateConfirm(r: StructureResult): StructureResult {
+  const flags = (r.ambiguityFlags || []).filter((x) => !x.toLowerCase().includes('unclear_date'))
+  return { ...r, ambiguityFlags: flags }
 }
 
 /** Calendar-style actions that make a next step concrete enough (no clarify sheet). */
@@ -622,18 +675,97 @@ function dateOptionNextWeekMonday(): string {
   return formatLocalMmDdYyyy(monday)
 }
 
-function openGoogleCalendarWindow(opts: {
+type CalendarOpenOpts = {
   title: string
   dateMmddyyyy: string
   details: string
   time: CalendarTimeInput
-}) {
+}
+
+function openGoogleCalendarWindow(opts: CalendarOpenOpts) {
   const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
   if (!range) return
   const title = encodeURIComponent(opts.title.trim())
   const details = encodeURIComponent(opts.details)
   const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${range.start}/${range.end}&details=${details}`
   window.open(url, '_blank')
+}
+
+/** iPhone, iPod, iPad, or iPadOS (desktop UA). */
+function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  if (/iPad|iPhone|iPod/i.test(ua)) return true
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true
+  return false
+}
+
+/** RFC 5545 TEXT escaping for SUMMARY / DESCRIPTION. */
+function escapeIcsText(s: string): string {
+  return s
+    .replace(/\r\n/g, '\n')
+    .replace(/\n/g, '\\n')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+}
+
+/** Same wall-clock window as Google Calendar — local floating time (no Z) for broad client support. */
+function buildIcsCalendarFile(opts: CalendarOpenOpts): string | null {
+  const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+  if (!range) return null
+  const uid =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+  const now = new Date()
+  const dtstamp = `${now.getUTCFullYear()}${pad2(now.getUTCMonth() + 1)}${pad2(now.getUTCDate())}T${pad2(now.getUTCHours())}${pad2(now.getUTCMinutes())}${pad2(now.getUTCSeconds())}Z`
+  const summary = escapeIcsText(opts.title.trim())
+  const description = escapeIcsText(opts.details.trim())
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Folup//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}@folup`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART:${range.start}`,
+    `DTEND:${range.end}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+  return lines.join('\r\n')
+}
+
+function triggerIcsDownload(icsContent: string, filename: string) {
+  const safeName = filename.endsWith('.ics') ? filename : `${filename}.ics`
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = safeName
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function openAppleCalendarFromOpts(opts: CalendarOpenOpts): boolean {
+  const ics = buildIcsCalendarFile(opts)
+  if (!ics) return false
+  const raw = opts.title.trim() || 'follow-up'
+  const slug = raw
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 48)
+  triggerIcsDownload(ics, slug ? `folup-${slug}` : 'folup-follow-up')
+  return true
 }
 
 /** Only pricing pressure, risk, and blockers/urgency use tinted backgrounds. */
@@ -808,7 +940,7 @@ function hasStrongVerb(nextStep: string) {
   return verbs.some((verb) => lower.startsWith(verb))
 }
 
-/** Company in nextStepTitle parens = org the direct contact belongs to. */
+/** Company in nextStepTitle after ` — ` (or legacy trailing parens) = org the direct contact belongs to. */
 function companyForDirectContact(r: StructureResult): string {
   return resolveContactCompany(
     r.customer,
@@ -818,12 +950,26 @@ function companyForDirectContact(r: StructureResult): string {
   )
 }
 
-/** Affiliation-based org, then API title parens, then location. */
+/** Parse company suffix from nextStepTitle: ` — Company` (preferred) or legacy `(Company)`. */
+function companyFromNextStepTitle(title: string): string | null {
+  const t = (title || '').trim()
+  if (!t) return null
+  const emSep = t.lastIndexOf(' — ')
+  if (emSep !== -1) {
+    const after = t.slice(emSep + 3).trim()
+    if (after) return after
+  }
+  const paren = t.match(/\(([^)]+)\)\s*$/)
+  if (paren) return paren[1].trim()
+  return null
+}
+
+/** Affiliation-based org, then API title (` — ` or parens), then location. */
 function resolveCompanyForTitle(r: StructureResult): string {
   const affiliated = companyForDirectContact(r)
   if (affiliated) return affiliated
-  const fromTitle = (r.nextStepTitle || '').match(/\(([^)]+)\)\s*$/)
-  if (fromTitle) return fromTitle[1].trim()
+  const fromTitle = companyFromNextStepTitle(r.nextStepTitle || '')
+  if (fromTitle) return fromTitle
   return (r.location || '').trim()
 }
 
@@ -859,7 +1005,7 @@ function joinActionAndTarget(action: string, target: string): string {
 }
 
 /**
- * Calendar-only title: VERB + CONTACT + (COMPANY). Company = org the direct contact belongs to.
+ * Calendar-only title: VERB + CONTACT + ` — ` + COMPANY. Company = org the direct contact belongs to.
  * Does not use enrichNextStep (avoids stacking customer/contact/location).
  */
 function buildCleanNextStepTitle(r: StructureResult): string {
@@ -876,10 +1022,11 @@ function buildCleanNextStepTitle(r: StructureResult): string {
     if (company) {
       const coreLower = core.toLowerCase()
       const companyLower = company.toLowerCase()
-      if (coreLower.includes(`(${companyLower})`)) {
+      const emSuffix = ` — ${companyLower}`
+      if (coreLower.includes(`(${companyLower})`) || coreLower.endsWith(emSuffix)) {
         return dedupeConsecutiveRepeatedWords(core)
       }
-      return dedupeConsecutiveRepeatedWords(`${core} (${company})`)
+      return dedupeConsecutiveRepeatedWords(`${core} — ${company}`)
     }
     const preserved = (r.nextStepTitle || '').trim()
     if (preserved) return dedupeConsecutiveRepeatedWords(preserved)
@@ -900,7 +1047,10 @@ function enrichNextStep(
 
   let enriched = nextStep.trim()
 
-  const hasCompany = enriched.includes(')')
+  const hasCompany =
+    !!company &&
+    (enriched.includes(`(${company})`) ||
+      enriched.toLowerCase().endsWith(` — ${company}`.toLowerCase()))
   const hasContact =
     contact && enriched.toLowerCase().includes(contact.toLowerCase())
 
@@ -912,7 +1062,7 @@ function enrichNextStep(
   }
 
   if (company && !hasCompany) {
-    enriched = `${enriched} (${company})`
+    enriched = `${enriched} — ${company}`
   }
 
   return dedupeConsecutiveRepeatedWords(enriched)
@@ -955,11 +1105,24 @@ function forceLanguage(nextStep: string, originalText: string) {
 
 function finalizeNextStepFields(res: StructureResult, sourceText: string): StructureResult {
   const base = { ...res }
-  let nextLine = enrichNextStep(base.nextStep, base)
-  let nextTitle = buildCleanNextStepTitle(base)
+  const contact = (base.contact || '').trim()
+  let nextStepTarget = (base.nextStepTarget || '').trim()
+  if (!contact) {
+    nextStepTarget = ''
+  } else if (!nextStepTarget) {
+    nextStepTarget = contact
+  }
+  const baseAligned = { ...base, nextStepTarget }
+  let nextLine = enrichNextStep(baseAligned.nextStep, baseAligned)
+  let nextTitle = buildCleanNextStepTitle(baseAligned)
   nextLine = dedupeConsecutiveRepeatedWords(forceLanguage(nextLine, sourceText))
   nextTitle = dedupeConsecutiveRepeatedWords(forceLanguage(nextTitle, sourceText))
-  return { ...base, nextStep: nextLine, nextStepTitle: nextTitle }
+  return {
+    ...base,
+    nextStep: nextLine,
+    nextStepTitle: nextTitle,
+    nextStepTarget: dedupeConsecutiveRepeatedWords(nextStepTarget),
+  }
 }
 
 async function fixNextStep(result: {
@@ -971,7 +1134,7 @@ async function fixNextStep(result: {
 Fix this next step so it becomes specific and directly usable as a calendar event title.
 
 Rules:
-- Use format: ACTION + TARGET + (COMPANY if available)
+- Use format: ACTION + TARGET + " — " + COMPANY (space, em dash, space) when company is available
 - Keep it short
 - Use a strong verb
 - Avoid generic phrases
@@ -1029,6 +1192,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
   const [calendarConfirm, setCalendarConfirm] = useState<CalendarConfirmState | null>(null)
+  const [iosCalendarPick, setIosCalendarPick] = useState<CalendarOpenOpts | null>(null)
   const [pendingDatePick, setPendingDatePick] = useState<{
     result: StructureResult
     transcript: string
@@ -1038,6 +1202,11 @@ export default function Home() {
     transcript: string
   } | null>(null)
   const [contactPickInput, setContactPickInput] = useState('')
+  const [pendingTargetPick, setPendingTargetPick] = useState<{
+    result: StructureResult
+    transcript: string
+  } | null>(null)
+  const [targetPickInput, setTargetPickInput] = useState('')
   const [pendingCompanyPick, setPendingCompanyPick] = useState<{
     result: StructureResult
     transcript: string
@@ -1050,8 +1219,8 @@ export default function Home() {
   const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
-  const [resultSummaryExpanded, setResultSummaryExpanded] = useState(false)
-  const [historySummaryExpanded, setHistorySummaryExpanded] = useState(false)
+  const [resultCrmRecordExpanded, setResultCrmRecordExpanded] = useState(false)
+  const [historyCrmRecordExpanded, setHistoryCrmRecordExpanded] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1128,6 +1297,7 @@ export default function Home() {
               acreage: n.acreage || '',
               crmText: n.crm_text || '',
               crmFull: normalizeCrmFull(n.crm_full),
+              calendarDescription: n.calendar_description || '',
             }),
           }))
           setSavedNotes(mapped)
@@ -1185,17 +1355,24 @@ export default function Home() {
 
   useEffect(() => {
     setResultInsightsExpanded(false)
-    setResultSummaryExpanded(false)
+    setResultCrmRecordExpanded(false)
   }, [result])
 
   useEffect(() => {
     setHistoryInsightsExpanded(false)
-    setHistorySummaryExpanded(false)
+    setHistoryCrmRecordExpanded(false)
   }, [selectedNote?.id])
 
   useEffect(() => {
     if (pendingContactPick) setContactPickInput('')
   }, [pendingContactPick])
+
+  useEffect(() => {
+    if (pendingTargetPick) {
+      const r = pendingTargetPick.result
+      setTargetPickInput((r.contact || r.nextStepTarget || '').trim())
+    }
+  }, [pendingTargetPick])
 
   useEffect(() => {
     if (pendingCompanyPick) setCompanyPickInput('')
@@ -1248,6 +1425,7 @@ export default function Home() {
       location: res.location,
       crm_text: res.crmText,
       crm_full: res.crmFull,
+      calendar_description: res.calendarDescription,
     }
     try {
       const { data, error } = await supabase.from('notes').insert(insertPayload).select()
@@ -1265,15 +1443,20 @@ export default function Home() {
   const commitPendingDatePick = (mmdd: string) => {
     setPendingDatePick((p) => {
       if (!p) return null
-      const merged = { ...p.result, nextStepDate: mmdd }
+      let merged: StructureResult = { ...p.result, nextStepDate: mmdd }
+      merged = stripAmbiguityFlagsAfterDateConfirm(merged)
       setResult(merged)
       saveNote(merged, p.transcript)
       return null
     })
   }
 
-  /** After contact step only: maybe show empresa modal, else fecha/resultado. */
+  /** After contact step only: confirm follow-up target → empresa → fecha/resultado. */
   const advanceValidationFlow = (merged: StructureResult, transcript: string) => {
+    if (needsNextStepTargetPick(merged)) {
+      setPendingTargetPick({ result: merged, transcript })
+      return
+    }
     if (needsContactCompanyPick(merged)) {
       setPendingCompanyPick({ result: merged, transcript })
     } else {
@@ -1326,7 +1509,44 @@ export default function Home() {
     }
     merged = normalizeStructureResult(merged)
     merged = finalizeNextStepFields(merged, p.transcript)
+    merged = stripAmbiguityFlagsAfterContactConfirm(merged)
     advanceValidationFlow(merged, p.transcript)
+  }
+
+  const commitPendingTargetSaltar = () => {
+    const p = pendingTargetPick
+    if (!p) return
+    setPendingTargetPick(null)
+    setTargetPickInput('')
+    const c = (p.result.contact || '').trim()
+    let merged: StructureResult = { ...p.result, nextStepTarget: c }
+    merged = normalizeStructureResult(merged)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    merged = stripAmbiguityFlagsAfterTargetConfirm(merged)
+    if (needsContactCompanyPick(merged)) {
+      setPendingCompanyPick({ result: merged, transcript: p.transcript })
+    } else {
+      advanceAfterCompanyResolved(merged, p.transcript)
+    }
+  }
+
+  const commitPendingTargetContinuar = () => {
+    const raw = targetPickInput.trim()
+    if (!raw) return
+    const p = pendingTargetPick
+    if (!p) return
+    const name = dedupeConsecutiveRepeatedWords(raw)
+    setPendingTargetPick(null)
+    setTargetPickInput('')
+    let merged: StructureResult = { ...p.result, contact: name, nextStepTarget: name }
+    merged = normalizeStructureResult(merged)
+    merged = finalizeNextStepFields(merged, p.transcript)
+    merged = stripAmbiguityFlagsAfterTargetConfirm(merged)
+    if (needsContactCompanyPick(merged)) {
+      setPendingCompanyPick({ result: merged, transcript: p.transcript })
+    } else {
+      advanceAfterCompanyResolved(merged, p.transcript)
+    }
   }
 
   const commitPendingCompanySaltar = () => {
@@ -1432,6 +1652,7 @@ export default function Home() {
           location: res.location,
           crm_text: res.crmText,
           crm_full: res.crmFull,
+          calendar_description: res.calendarDescription,
         })
         .eq('id', id)
         .eq('user_id', sessionEmail)
@@ -1448,17 +1669,22 @@ export default function Home() {
     const productPills = productDisplayItems(r.crop, r.product).map((p) => `📦 ${p}`)
     const pills = [r.location && `📍 ${r.location}`, ...productPills].filter(Boolean)
     if (pills.length) lines.push(pills.join('  '))
-    if (r.summary) { lines.push(''); lines.push('SUMMARY'); lines.push(r.summary) }
     const stepLine = (r.nextStepTitle || r.nextStep).trim()
     if (stepLine) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(stepLine) }
     if (r.crmFull.length > 0) {
       lines.push('')
-      lines.push('CRM DETAIL')
+      lines.push('KEY INSIGHTS')
       lines.push(...r.crmFull)
+    }
+    const cal = (r.calendarDescription || '').trim()
+    if (cal) {
+      lines.push('')
+      lines.push('BEFORE FOLLOW-UP')
+      lines.push(cal)
     }
     if (r.crmText) {
       lines.push('')
-      lines.push('NOTE')
+      lines.push('CRM RECORD')
       lines.push(r.crmText)
     }
     return lines.join('\n')
@@ -1542,6 +1768,11 @@ export default function Home() {
     if (!r) return ''
     const parts: string[] = []
     if (r.crmFull.length > 0) parts.push(...r.crmFull)
+    const cal = (r.calendarDescription || '').trim()
+    if (cal) {
+      if (parts.length) parts.push('')
+      parts.push(cal)
+    }
     const narrative = r.crmText?.trim()
     if (narrative) {
       if (parts.length) parts.push('')
@@ -1585,6 +1816,7 @@ export default function Home() {
       setResult(null)
       setPendingDatePick(null)
       setPendingContactPick(null)
+      setPendingTargetPick(null)
       setPendingCompanyPick(null)
       setPendingNextStepClarifyPick(null)
       setTranscript('')
@@ -1625,6 +1857,7 @@ export default function Home() {
     setResult(null)
     setPendingDatePick(null)
     setPendingContactPick(null)
+    setPendingTargetPick(null)
     setPendingCompanyPick(null)
     setPendingNextStepClarifyPick(null)
     try {
@@ -1673,6 +1906,8 @@ export default function Home() {
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: tx })
+      } else if (needsNextStepTargetPick(final)) {
+        setPendingTargetPick({ result: final, transcript: tx })
       } else if (needsContactCompanyPick(final)) {
         setPendingCompanyPick({ result: final, transcript: tx })
       } else if (needsNextStepClarifyPick(final)) {
@@ -1699,6 +1934,7 @@ export default function Home() {
     setResult(null)
     setPendingDatePick(null)
     setPendingContactPick(null)
+    setPendingTargetPick(null)
     setPendingCompanyPick(null)
     setPendingNextStepClarifyPick(null)
     setCopied(false)
@@ -1715,6 +1951,8 @@ export default function Home() {
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: input })
+      } else if (needsNextStepTargetPick(final)) {
+        setPendingTargetPick({ result: final, transcript: input })
       } else if (needsContactCompanyPick(final)) {
         setPendingCompanyPick({ result: final, transcript: input })
       } else if (needsNextStepClarifyPick(final)) {
@@ -1748,6 +1986,7 @@ export default function Home() {
     setResult(null)
     setPendingDatePick(null)
     setPendingContactPick(null)
+    setPendingTargetPick(null)
     setPendingCompanyPick(null)
     setPendingNextStepClarifyPick(null)
     setError('')
@@ -1757,6 +1996,7 @@ export default function Home() {
     setShowEditArea(false)
     setShowCalendarToast(false)
     setCalendarConfirm(null)
+    setIosCalendarPick(null)
   }
 
   const openCalendarFromStructuredResult = (r: StructureResult) => {
@@ -1792,12 +2032,17 @@ export default function Home() {
       return
     }
     const dateMmdd = (r.nextStepDate || '').trim()
-    openGoogleCalendarWindow({
+    const opts: CalendarOpenOpts = {
       title: calendarEventTitle(r),
       dateMmddyyyy: dateMmdd,
       details: buildCalendarDescription(r),
       time: { kind: 'hint', hint: r.nextStepTimeHint || '' },
-    })
+    }
+    if (isIOSDevice()) {
+      setIosCalendarPick(opts)
+      return
+    }
+    openGoogleCalendarWindow(opts)
     setShowCalendarToast(true)
   }
 
@@ -1813,53 +2058,50 @@ export default function Home() {
 
   if (status === 'unauthenticated') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6 text-[#111111] antialiased">
-        <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <div className="mx-auto mb-6 flex w-full justify-center sm:mb-7">
-            <FolupLogo
-              src="/folup_logo.png"
-              width={3077}
-              height={1200}
-              className="flex justify-center"
-              imgClassName="h-[58px] max-h-[58px] w-auto max-w-full"
-            />
-          </div>
-          <div className="max-w-[22rem] text-center">
-            <h1 className="text-[31px] font-bold leading-[1.1] text-[#111111] sm:text-[34px]">
-              Turn your visit into a clear next step
+      <main className="flex min-h-[100dvh] flex-col bg-white px-6 pb-10 text-[#111111] antialiased sm:px-8 sm:pb-12">
+        <div className="mx-auto w-full max-w-[19rem] pt-[4.25rem] pb-[min(7.5rem,22vh)] sm:max-w-[20rem] sm:pt-[4.75rem]">
+          <div className="flex flex-col items-center text-center">
+            <div className="mb-8 flex w-full justify-center">
+              <FolupLogo
+                src="/folup_logo.png"
+                width={3077}
+                height={1200}
+                className="flex justify-center"
+                imgClassName="h-10 w-auto max-w-[min(100%,14rem)] object-contain sm:h-11"
+              />
+            </div>
+            <h1 className="max-w-[16rem] text-balance text-[1.375rem] font-bold leading-snug tracking-[-0.012em] text-zinc-950 sm:max-w-[17rem] sm:text-[1.5rem] sm:leading-tight">
+              Record your visit
             </h1>
-            <p className="mt-3 text-[16px] font-medium leading-[1.35] text-[#4b5563]">
-              Speak for 30 seconds.
-              <br />
-              We turn it into a follow-up you can act on.
+            <p className="mt-2.5 max-w-[18rem] text-pretty text-[0.875rem] font-medium leading-relaxed text-zinc-600 sm:text-[0.9375rem]">
+              We turn it into your next step
             </p>
-            <p className="mt-3 text-[13px] font-medium text-[#9ca3af]">Built for field sales reps</p>
+            <button
+              type="button"
+              onClick={signInWithGoogle}
+              className="mt-9 flex w-full max-w-[14.125rem] items-center justify-center gap-1.5 self-center rounded-lg bg-[#4F46E5] px-4 py-2 text-[0.9375rem] font-semibold text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] hover:shadow-md active:scale-[0.99]"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" className="shrink-0" aria-hidden>
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                />
+              </svg>
+              Continue with Google
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={signInWithGoogle}
-            className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#4F46E5] px-5 py-[15px] text-[15px] font-bold text-white transition-colors hover:bg-[#4338CA] active:scale-[0.99]"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Continue with Google
-          </button>
         </div>
       </main>
     )
@@ -2016,6 +2258,95 @@ export default function Home() {
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8)
                   commitPendingContactContinuar()
+                }}
+                className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                style={{ backgroundColor: '#4F46E5' }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Follow-up target — direct contact only (reliability) */}
+      {pendingTargetPick && !loading && (
+        <div
+          className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
+          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="target-pick-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Use contact as follow-up target"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(6)
+              commitPendingTargetSaltar()
+            }}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p id="target-pick-title" className="text-[15px] font-bold leading-snug text-[#111111]">
+                  Who is this follow-up for?
+                </p>
+                <p className="mt-0.5 text-[12px] leading-snug text-[#6b7280]">
+                  Must be the person you spoke with directly — not someone only mentioned in passing
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingTargetSaltar()
+                }}
+                className="shrink-0 rounded-full p-1.5 text-[#6b7280] transition-colors hover:bg-zinc-100 hover:text-[#111111]"
+                aria-label="Skip"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="target-pick-input">
+              Follow-up contact name
+            </label>
+            <input
+              id="target-pick-input"
+              type="text"
+              value={targetPickInput}
+              onChange={(e) => setTargetPickInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && targetPickInput.trim()) {
+                  e.preventDefault()
+                  commitPendingTargetContinuar()
+                }
+              }}
+              placeholder="Direct contact name"
+              autoComplete="name"
+              autoFocus
+              className="mb-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[15px] font-medium text-[#111111] outline-none placeholder:text-[#6b7280]/55 focus:border-indigo-500/55 focus:ring-0"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(6)
+                  commitPendingTargetSaltar()
+                }}
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
+              >
+                Use saved contact
+              </button>
+              <button
+                type="button"
+                disabled={!targetPickInput.trim()}
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  commitPendingTargetContinuar()
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 style={{ backgroundColor: '#4F46E5' }}
@@ -2489,13 +2820,18 @@ export default function Home() {
                     const line = `Target: ${c.target.trim()}`
                     details = details ? `${details}\n\n${line}` : line
                   }
-                  openGoogleCalendarWindow({
+                  const opts: CalendarOpenOpts = {
                     title: c.title.trim(),
                     dateMmddyyyy: mmdd,
                     details,
                     time: { kind: 'clock', hour, minute },
-                  })
+                  }
                   setCalendarConfirm(null)
+                  if (isIOSDevice()) {
+                    setIosCalendarPick(opts)
+                    return
+                  }
+                  openGoogleCalendarWindow(opts)
                   setShowCalendarToast(true)
                 }}
                 className="flex-[1.15] rounded-xl py-3 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
@@ -2508,6 +2844,105 @@ export default function Home() {
         </div>
       )}
 
+      {/* iOS — choose Google Calendar (web) or Apple Calendar (.ics) */}
+      {iosCalendarPick && (
+        <div
+          className="fixed inset-0 z-[103] flex flex-col justify-end bg-black/45 px-0 pt-8 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ios-calendar-pick-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close"
+            onClick={() => setIosCalendarPick(null)}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_8px_28px_rgba(0,0,0,0.05)]">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
+            <h2
+              id="ios-calendar-pick-title"
+              className="mb-1 text-center text-[15px] font-bold tracking-tight text-[#111111]"
+            >
+              Add to calendar
+            </h2>
+            <p className="mb-4 text-center text-[13px] font-medium leading-snug text-[#6b7280]">
+              Choose where to add this event
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const o = iosCalendarPick
+                  openGoogleCalendarWindow(o)
+                  setIosCalendarPick(null)
+                  setShowCalendarToast(true)
+                }}
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#e5e7eb] bg-white py-3.5 pl-4 pr-4 text-[14px] font-bold text-[#111111] shadow-sm transition-[transform,filter] active:scale-[0.99]"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+                Google Calendar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const o = iosCalendarPick
+                  const ok = openAppleCalendarFromOpts(o)
+                  setIosCalendarPick(null)
+                  if (ok) {
+                    setShowCalendarToast(true)
+                  } else {
+                    setError('Could not create the calendar file. Check the date and time.')
+                  }
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#111111] py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="shrink-0 opacity-95"
+                  aria-hidden
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Apple Calendar
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIosCalendarPick(null)}
+              className="mt-3 w-full rounded-xl py-2.5 text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#111111]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
 
@@ -2516,7 +2951,7 @@ export default function Home() {
           <div
             className="relative flex flex-col"
             style={
-              result || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick
+              result || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
                 ? undefined
                 : { minHeight: 'calc(100vh - 132px)' }
             }
@@ -2527,10 +2962,10 @@ export default function Home() {
               className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 opacity:
-                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick ? 0 : 1,
+                  result || loading || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick ? 0 : 1,
                 transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
                 pointerEvents:
-                  result || loading || pendingDatePick || pendingContactPick || pendingCompanyPick || pendingNextStepClarifyPick
+                  result || loading || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
                     ? 'none'
                     : 'auto',
               }}
@@ -2777,31 +3212,42 @@ export default function Home() {
                     </div>
                   )}
 
-                  {result.summary && (
+                  {(result.calendarDescription || '').trim() ? (
+                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-zinc-200/60">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                        Before follow-up
+                      </p>
+                      <p className="whitespace-pre-line text-[13px] font-medium leading-snug tracking-tight text-[#111111]">
+                        {(result.calendarDescription || '').trim()}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {(result.crmText || '').trim() ? (
                     <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                       <button
                         type="button"
-                        onClick={() => setResultSummaryExpanded((e) => !e)}
+                        onClick={() => setResultCrmRecordExpanded((e) => !e)}
                         className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
                       >
-                        {resultSummaryExpanded ? 'Hide summary' : 'View summary'}
+                        {resultCrmRecordExpanded ? 'Hide CRM record' : 'View CRM record'}
                       </button>
                       <div
-                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${resultSummaryExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${resultCrmRecordExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
                       >
                         <div className="min-h-0 overflow-hidden">
                           <div
-                            className={`origin-top pt-3 transition-all duration-300 ease-out ${resultSummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
-                            style={{ pointerEvents: resultSummaryExpanded ? 'auto' : 'none' }}
+                            className={`origin-top pt-3 transition-all duration-300 ease-out ${resultCrmRecordExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
+                            style={{ pointerEvents: resultCrmRecordExpanded ? 'auto' : 'none' }}
                           >
                             <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
-                              {result.summary}
+                              {(result.crmText || '').trim()}
                             </p>
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Copy / Share / Correct — inline, directly under content */}
                   <div className="flex items-center gap-2 border-t border-[#e5e7eb]/70/90 pt-2 pb-0">
@@ -2950,31 +3396,42 @@ export default function Home() {
                     </div>
                   )}
 
-                  {selectedNote.result.summary && (
+                  {(selectedNote.result.calendarDescription || '').trim() ? (
+                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-zinc-200/60">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                        Before follow-up
+                      </p>
+                      <p className="whitespace-pre-line text-[15px] font-medium leading-snug tracking-tight text-[#111111]">
+                        {(selectedNote.result.calendarDescription || '').trim()}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {(selectedNote.result.crmText || '').trim() ? (
                     <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
                       <button
                         type="button"
-                        onClick={() => setHistorySummaryExpanded((e) => !e)}
+                        onClick={() => setHistoryCrmRecordExpanded((e) => !e)}
                         className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
                       >
-                        {historySummaryExpanded ? 'Hide summary' : 'View summary'}
+                        {historyCrmRecordExpanded ? 'Hide CRM record' : 'View CRM record'}
                       </button>
                       <div
-                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${historySummaryExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${historyCrmRecordExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
                       >
                         <div className="min-h-0 overflow-hidden">
                           <div
-                            className={`origin-top pt-3 transition-all duration-300 ease-out ${historySummaryExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
-                            style={{ pointerEvents: historySummaryExpanded ? 'auto' : 'none' }}
+                            className={`origin-top pt-3 transition-all duration-300 ease-out ${historyCrmRecordExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
+                            style={{ pointerEvents: historyCrmRecordExpanded ? 'auto' : 'none' }}
                           >
                             <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
-                              {selectedNote.result.summary}
+                              {(selectedNote.result.crmText || '').trim()}
                             </p>
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {(selectedNote.result.nextStep || selectedNote.result.nextStepTitle) && (
                     <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-4 ring-1 ring-indigo-500/20">
@@ -3089,7 +3546,9 @@ export default function Home() {
                         note.result.location?.toLowerCase().includes(q) ||
                         note.result.nextStep?.toLowerCase().includes(q) ||
                         note.result.nextStepTitle?.toLowerCase().includes(q) ||
-                        note.result.crmFull.some((line) => line.toLowerCase().includes(q))
+                        note.result.crmFull.some((line) => line.toLowerCase().includes(q)) ||
+                        note.result.crmText?.toLowerCase().includes(q) ||
+                        note.result.calendarDescription?.toLowerCase().includes(q)
                       )
                     }).map((note) => (
                       <button

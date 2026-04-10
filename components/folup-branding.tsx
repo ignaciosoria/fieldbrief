@@ -1,17 +1,16 @@
-/** Header: mark SVG (28px tall) + «folup» wordmark. */
+/** Header when logged in: icon only (no wordmark), 28px tall. */
 export function FolupHeaderBrand() {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center">
       <img
         src="/folup-mark.svg"
         alt=""
-        width={48}
-        height={32}
+        width={42}
+        height={28}
         decoding="async"
-        className="h-7 w-auto shrink-0 bg-transparent object-contain"
+        className="h-[28px] w-auto max-h-[28px] shrink-0 bg-transparent object-contain object-left"
         aria-hidden
       />
-      <span className="font-semibold text-zinc-900">folup</span>
     </div>
   )
 }

@@ -34,6 +34,8 @@ type StructureBody = {
   acreage: string
   crmText: string
   crmFull: string[]
+  /** 3–5 scannable → lines for calendar / before follow-up; separate from crmFull and crmText. */
+  calendarDescription: string
   additionalSteps: AdditionalStep[]
 }
 
@@ -58,6 +60,28 @@ A MANDATORY block at the very start of this system message names the note's lang
 
 ---
 
+RELIABILITY MANDATE (HIGHEST PRIORITY — OVERRIDES GUESSING):
+
+These JSON fields must be **100% grounded in explicit note wording** or left **empty** (""). **Never invent, assume, or infer** to fill them.
+
+1. **contact** (person name)
+   - Fill **only** when the note **explicitly names or clearly identifies** the person the rep spoke with (spoken full name, first name + unmistakable context, or "the buyer at X" only if that person is named elsewhere in the same note).
+   - If the note does **not** clearly name the direct contact → **contact = ""** and add **"unclear_contact"** to **ambiguityFlags**.
+
+2. **nextStepDate** (and derive **nextStepTime** / hints only when the note anchors time)
+   - Fill **nextStepDate** (MM/DD/YYYY) **only** when the note states an explicit calendar anchor: a **weekday** ("Thursday", "el jueves"), **relative day** ("tomorrow", "mañana", "next Friday"), a **numeric date** ("April 9", "3/15"), or **"this week" / "next week"** only if paired with a **specific day or date** in the same note.
+   - **Never** infer a date from tone alone ("soon", "follow up", "I'll call her", no time stated) or from **voicemail / no-answer** patterns unless the note literally says **tomorrow** / a day / a date.
+   - If no explicit day or date for the follow-up → **nextStepDate = ""**, **nextStepTime = ""** as appropriate, and add **"unclear_date"** to **ambiguityFlags**.
+
+3. **nextStepTarget**
+   - Must be the **same person** as the **direct contact** when a person is the object of the next step. **Never** put a third party, dealer's customer, or mentioned-but-not-present person here.
+   - If **contact** is empty, **nextStepTarget** must be **""**. If **contact** is set, **nextStepTarget** must match **contact** (same person) or be **""** with **"unclear_target"** in **ambiguityFlags** when disambiguation is needed.
+   - If who receives the follow-up is ambiguous → add **"unclear_target"** (and/or keep **multiple_people** / **multiple_people_mentioned** when several names appear).
+
+**ambiguityFlags:** Use short snake_case strings. Whenever you withhold or leave a field empty because of this mandate, include the matching flag: **unclear_contact**, **unclear_date**, **unclear_target**. The app shows validation modals instead of guessing.
+
+---
+
 INDUSTRY EXAMPLES (accounts / buyers — non-exhaustive):
 
 The rep could be selling to stakeholders in any B2B vertical, for example:
@@ -72,15 +96,18 @@ Never assume a single vertical; extract only what the note states.
 
 ---
 
-ROLES (UNDERSTAND THESE BEFORE EXTRACTING):
+ROLES (UNDERSTAND THESE BEFORE EXTRACTING — READ THE WHOLE NOTE FIRST):
 
-There are 3 possible people in a note:
+Before choosing **contact**, **nextStepTarget**, or any next step, infer **who the rep actually interacted with** in this visit/call (voice, in person, live video). Do not treat a lead or account name as the "contact" if the rep only spoke to someone else.
+
 1. THE REP — always "I/yo". Never extract as contact.
-2. CONTACT — the person the rep DIRECTLY spoke to. This is who nextStep targets.
-3. THIRD PARTY — someone mentioned but not present (e.g. "her colleague Luis who wasn't in the meeting"). Never the nextStep target.
+2. **DIRECT CONTACT** — the person the rep **directly** spoke with in this interaction (the counterparty in the conversation). **nextStepTarget** must always be this person's name when a person is involved — never an indirect name.
+3. **CUSTOMER** — the **account organization** (legal entity, site, buyer company, clinic, farm, brand unit). Not a relationship label alone ("their client") unless a real org name is given.
+4. **DEALER / DISTRIBUTOR / CHANNEL** — if the rep met **their** counterpart at a distributor, dealer, agency, or reseller, that person is usually the **direct contact**; the **end customer account** may appear as **customer** or in insights. Do **not** confuse the **end user** mentioned in passing with the person you spoke to — if you did not speak to the grower/doctor/buyer, they are **not** **contact** or **nextStepTarget**.
+5. **THIRD PARTY / INDIRECT** — anyone **named or described** but **not** part of this conversation (colleague not in the room, boss to "run it by", a prospect the dealer mentioned). **Never** **nextStepTarget**; capture in **mentionedEntities** / **crmFull** only.
 
-- contact = person directly spoken to
-- customer = named client / account ORGANIZATION only (legal entity, site, brand unit, clinic, buyer company). Must be a real organization name when filled — not a role label alone.
+- contact = **direct** conversation partner (may work for dealer OR for end account — match the note).
+- customer = named **organization** for the **account** being worked (may differ from **contactCompany** when the rep spoke to a channel partner).
 
 contactCompany (MANDATORY — where the DIRECT CONTACT works or operates):
 Add field contactCompany = the company where the contact directly works or operates. This is NOT necessarily the same as customer — it is simply where the person the rep spoke to belongs.
@@ -110,9 +137,9 @@ ABSOLUTE RULE — THIRD PARTIES (NEVER BREAK):
 
 nextStepTitle AND nextStep MUST NEVER contain names of third parties (people the rep did NOT directly speak to in this visit).
 
-- If Luis was not present in the conversation, his name MUST NOT appear in nextStepTitle or nextStep under any circumstance — not in the verb line, not in parentheses, not as "context".
-- ONLY the direct contact's name may appear in nextStep and nextStepTitle (nextStepTitle MUST also always include exactly one company in parentheses — see nextStepTitle COMPANY RULE below).
-- Third-party names may appear in summary, crmText, crmFull, mentionedEntities — but NEVER in nextStep or nextStepTitle. Put named end-account organizations in customer only (never relational labels alone — see CUSTOMER rules above).
+- If Luis was not present in the conversation, his name MUST NOT appear in nextStepTitle or nextStep under any circumstance — not in the verb line, not after the company em dash, not as "context".
+- ONLY the direct contact's name may appear in nextStep and nextStepTitle (nextStepTitle must include the company using the separator " — " (space + em dash U+2014 + space) when the COMPANY RULE applies — see below).
+- Third-party names may appear in crmText, crmFull, calendarDescription, mentionedEntities — but NEVER in nextStep or nextStepTitle. Put named end-account organizations in customer only (never relational labels alone — see CUSTOMER rules above).
 
 ---
 
@@ -122,20 +149,12 @@ LANGUAGE (nextStep + nextStepTitle) — **MANDATORY:**
 - **nextStep** and **nextStepTitle** MUST be in the **exact same language as the input note**. No exceptions — not mixed language, not a "default" language, not Spanish templates for English notes.
 - If the note is English, every word of nextStep and nextStepTitle must be English (except proper names and company names as spoken). If the note is Spanish, both fields must be Spanish throughout.
 
-DECISION POLICY OVERLAY (layer on top of all existing rules):
-- Your main job is to produce the **most appropriate next actionable step**, not just summarize.
-- Always choose **ONE** primary action only for nextStep / nextStepTitle.
-- Primary action must be **short, realistic, executable**, and grounded in what the customer explicitly requested or strongly implied.
-- If multiple actions exist, prioritize the action explicitly requested by the customer; do not default to the easiest/generic action.
-- Keep other meaningful follow-ups in **additionalSteps** so they do not compete with the main next step in the UI.
-- Do **not** invent strong certainty when the note is vague. If no clear action is requested/implied, keep next step softer and reflect lower confidence.
+DECISION POLICY — DEAL ADVANCEMENT (NOT SUMMARY, NOT FIRST TASK IN THE NOTE):
+- Your job is **not** to summarize the visit or list every task. Output **exactly ONE** primary next step — the single action that **best moves this opportunity forward** for the rep to execute.
+- Do **not** pick the **first** action mentioned in the dictation order; do **not** merge multiple actions into one line; do **not** default to generic "send info" when a stronger engagement step exists.
+- **Reliability beats polish:** **nextStep** / **nextStepAction** must be **factually aligned** with the note. For **contact**, **nextStepDate**, and **nextStepTarget**, follow the **RELIABILITY MANDATE** above (empty + **ambiguityFlags** instead of guessing).
 
-INTERNAL DECISION CLASSIFICATION (reason internally, do not output extra keys):
-- Case A: clear action + clear timing
-- Case B: clear action + unclear timing
-- Case C: no clear action
-- Internal concepts to reason with: action_defined (true/false), timing_defined (true/false), urgency (high/normal/low), primary_action, secondary_action (optional), confidence_state (confirmed/suggested), short_reason.
-- Keep these internal only; final JSON shape stays unchanged.
+INTERNAL (reason only — do not output): List candidate forward actions, classify each by tier (below), identify who each action targets (must be **direct contact** unless org-only), then pick **one** primary. Secondary actions → **additionalSteps** in chronological order when dated.
 
 CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only):
 - confirmed + clear action/timing + concrete request/agreement → confidence **high** (urgency high/normal based on wording).
@@ -143,62 +162,72 @@ CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only)
 - vague/no clear action, hesitation, "later", "busy", "not now", neutral talk → confidence **low** and avoid over-assertive nextStep wording.
 - Never treat every note with the same urgency.
 
-STEP 1: Extract ALL actions from the note with their dates/times.
-STEP 2: Sort them chronologically — earliest first.
-STEP 3: The PRIMARY nextStep is ALWAYS the earliest action in time.
+---
 
-Selection refinement:
-- Build the candidate set from actions that are customer-requested or strongly implied first.
-- Then apply chronology to pick the earliest among those candidates.
-- If no such candidate exists, choose the least-assumptive suggested follow-up and lower confidence.
-- If timing is not explicit, do **not** invent an exact date/time in reasoning or wording.
+NEXT STEP — PRIORITY (WHEN MULTIPLE FORWARD ACTIONS EXIST):
+
+**Tier 1 — Highest:** Calls, callbacks, follow-ups, check-ins, voicemail / no-answer follow-ups (live conversation with the **direct contact** or agreed call time).
+**Tier 2:** Meetings, visits, demos, site walkthroughs, scheduled appointments (or **scheduling** one if that is the clear next commercial move).
+**Tier 3 — Lowest:** Sending information only — email, deck, brochure, quote, samples, materials — use as **primary** only when **no** Tier 1 or Tier 2 action is appropriate **or** the note makes a **time-bound send** the explicit gate (e.g. proposal/RFP due **before** a decision meeting — then that send can be primary **for that date**).
+
+Rules:
+- **Prefer the tier**, not dictation order. Example: "I'll send samples this week and call her Thursday" → **primary = call Thursday** (Tier 1); samples → **additionalSteps** with this week's date if known.
+- **Do not** choose a weak Tier 3 send as primary when the note commits to a **call or meeting** that advances the deal.
+- **Exception:** If the only explicit forward commitments are sends (no call/meeting to book), Tier 3 wins by default — still pick the **single** send that best advances the deal (often the earliest deadline).
+- **Among actions in the same tier:** prefer (1) what the buyer **explicitly asked for or confirmed**, then (2) **earlier** date/time when both are comparable, then (3) the action that unlocks the next decision.
+- **Past** actions (already done this visit) are **not** the next step — the **next forward** action is.
+- If timing is not explicit, do **not** invent an exact date/time in JSON fields.
 - If the note signals low urgency ("busy", "not the right moment", "later", neutral interest), keep urgency low and avoid aggressive immediate timing.
 
-Examples:
-- "Le mando muestras esta semana y la llamo el jueves" → PRIMARY = enviar muestras (before Thursday)
-- "La llamo el jueves y si quiere le mando info el viernes" → PRIMARY = llamar el jueves
-- "Hoy le mando precios y la llamo mañana" → PRIMARY = enviar precios (today)
-- "Le mando muestras la próxima semana y la llamo el jueves" → PRIMARY = Llamar el jueves. Reason: Thursday comes BEFORE "next week". "La próxima semana" = next week = after Thursday.
-
-Rule (chronology): "esta semana" and specific weekdays (lunes, martes, jueves, etc.) are always BEFORE "la próxima semana" or "next week" when comparing action times.
-
-NEVER choose a later action over an earlier one.
-NEVER choose based on importance — ONLY chronological order.
-The earliest action = the nextStep. Always.
+WEAK OUTPUTS — NEVER AS PRIMARY nextStep:
+- Generic summaries ("Discussed pricing", "Good meeting")
+- Multiple actions crammed into one line
+- Vague tasks ("Follow up", "Stay in touch" without **who** / **what** / **when** when the note allows specificity)
+- **Administrative** work (update CRM, file report, internal email) as the main next step when a **customer-facing** action exists
+- Choosing an **indirect** person as **nextStepTarget** when the rep spoke to someone else
 
 REFERENCE CASES (English phrasing — mirror in the note's language):
 
-**CASE 1 — Send / quote with weekday deadline:**
+**CASE 1 — Send / quote with weekday deadline (send is the committed forward beat):**
 - Note: "Visited John at Acme Corp, discussed Product X pricing, interested but wants to compare. Sending quote Friday."
-- Primary action = **Friday** send (earlier than any purely informational step already done).
-- Example alignment: **nextStep** and **nextStepTitle** → **Send quote to John (Acme Corp)** (English: use **to** before the contact for send verbs); **nextStepDate** = that Friday; **contact**=John, **customer**/ **contactCompany**=Acme Corp when that is John's org.
+- Only explicit forward step is **send quote** → primary = **Send quote to John — Acme Corp**; **nextStepDate** = that Friday; **contact**=John, **customer**/ **contactCompany**=Acme Corp when that is John's org.
 
 **CASE 2 — No answer / voicemail → follow-up call:**
 - Note: "Called Sarah, no answer, left voicemail."
 - Primary next step = rep-owned **follow-up call**, not passive waiting.
-- Example alignment: **nextStep** and **nextStepTitle** → **Call Sarah again**; **nextStepDate** = **tomorrow** when the note implies prompt follow-up and no other date is given (use calendar context).
-- **Exception to parenthetical company:** when the note names **no** employer for the contact, **contactCompany** may be "" and **nextStepTitle** / **nextStep** may be **Call [name] again** **without** a (COMPANY) suffix — only for this voicemail / unanswered pattern.
+- Example alignment: **nextStep** and **nextStepTitle** → **Call Sarah again**; **nextStepDate** = **""** and **unclear_date** in **ambiguityFlags** unless the note explicitly says **tomorrow**, a **weekday**, or a **date** (never infer "tomorrow" from voicemail alone).
+- **Exception — no company suffix:** when the note names **no** employer for the contact, **contactCompany** may be "" and **nextStepTitle** / **nextStep** may be **Call [name] again** **without** a ** — COMPANY** suffix — only for this voicemail / unanswered pattern.
 
 **CASE 3 — Distributor intro, end client named:**
 - See DISTRIBUTOR / END-ACCOUNT rule above: **contact** = rep's counterpart (e.g. James at distributor); **customer** = end-account org when named; introduced physician/staff as third party unless they were the party spoken to.
 
 **CASE 4 — Check-in + deferred decision + callback Monday:**
 - Note: "Called to check if they received my info. Needs more time. Calling again Monday."
-- **Past** check-in is not the primary next step. The **earliest forward action** wins: **Call [direct contact's name] Monday** — use the actual **contact** name from the note, not the literal text "[contact]".
-- **nextStepDate** = upcoming Monday from calendar context; same wording in **nextStep** and **nextStepTitle** (with (COMPANY) when org is known per usual rules).
+- **Past** check-in is not the primary next step. The **forward** commitment wins: **Call [direct contact's name] Monday** — use the actual **contact** name from the note, not the literal text "[contact]".
+- **nextStepDate** = upcoming Monday from calendar context; same wording in **nextStep** and **nextStepTitle** (with ** — COMPANY** when org is known per usual rules).
 
-**CASE 5 — Two dated actions (Friday vs next week):**
+**CASE 5 — Call + send both mentioned (tier beats order):**
+- Note: "Hoy le mando precios y la llamo mañana" / "Sending prices today, call her tomorrow."
+- **Primary = call tomorrow** (Tier 1 over Tier 3); **send prices today** → **additionalSteps** with today's date if stated.
+- If the note says the **decision** depends on **receiving** the quote **today** before any call, the send can be primary — rare; use **confidence** + **ambiguityFlags** if ambiguous.
+
+**CASE 6 — Two dated send actions (same tier — use deadline order):**
 - Note: "Discussed two products. Wants prices Friday, sample next week."
-- **Friday** action (prices / quote / send pricing) is **earlier** than **next week** (sample) → that Friday action is the **primary nextStep** / **nextStepTitle**.
-- The **sample** (or follow-on shipment) goes to **additionalSteps** with date/time for **next week**, in chronological order — never flip primary to the later week if Friday comes first.
+- Both Tier 3 → primary = **earlier** deadline (**Friday** pricing); sample → **additionalSteps** for next week.
+
+**CASE 7 — Samples this week vs call Thursday (chronology vs tier):**
+- Note: "Le mando muestras esta semana y la llamo el jueves."
+- **Primary = call Thursday** (Tier 1); samples → **additionalSteps** (with "this week" date if resolvable). Do **not** pick send only because it was said first.
 
 ---
 
-nextStepTitle format: VERB + 'a' + CONTACT + (COMPANY)
+nextStepTitle format: **VERB + CONTACT NAME + em dash separator + COMPANY NAME** (separator is exactly: space, Unicode em dash U+2014, space — never hyphen-minus for the separator).
 Always capitalize first letter.
-CORRECT: 'Enviar materiales a Carmen (Pacific Brands)'
-CORRECT: 'Llamar a Tyler (Coastal Supplies)'
-WRONG: 'enviar muestras Carmen López'
+CORRECT: 'Call Ignacio Soria — Agrinova Science'
+CORRECT: 'Enviar materiales a Carmen — Pacific Brands'
+CORRECT: 'Llamar a Tyler — Coastal Supplies'
+WRONG: 'Call Ignacio Soria (Agrinova Science)' ← never parentheses around company
+WRONG: 'enviar muestras Carmen López' ← missing company separator when org is known
 
 Store every non-primary action in additionalSteps with date/time when known, in chronological order.
 
@@ -206,117 +235,79 @@ NEVER use conditional language ("si puedo", "if I go"). Convert to definitive ac
 
 PASSIVE / WAIT — NEVER AS nextStep:
 - NEVER use esperar, wait, or a que me llame as nextStep, nextStepTitle, or nextStepAction (the rep must own a concrete action).
-- If the client said they will call back, will reach out, or asked the rep to wait — do NOT encode that as passive waiting. Convert to a proactive action in the SAME language as the note, while keeping nextStepTitle COMPANY RULE (VERB + CONTACT + (COMPANY)):
-  - Spanish: Llamar a [contact] ([company]) si no hay respuesta antes de [date]
-  - English: Call [contact] ([company]) if no response before [date]
+- If the client said they will call back, will reach out, or asked the rep to wait — do NOT encode that as passive waiting. Convert to a proactive action in the SAME language as the note, while keeping nextStepTitle COMPANY RULE (VERB + CONTACT + em dash + COMPANY):
+  - Spanish: Llamar a [contact] — [company] si no hay respuesta antes de [date]
+  - English: Call [contact] — [company] if no response before [date]
 - [company] = org the direct contact belongs to — use **contactCompany** when set; otherwise **customer** when the contact aligns with that end account. [date] = align with nextStepDate. Mirror the same wording in nextStep and nextStepTitle (nextStepAction should be the leading verb phrase, e.g. Llamar / Call).
 - Do **not** default to "Call" unless it is genuinely the best action from the note context (explicit request, failed contact pattern, or strongest implied follow-up).
 
 nextStepTitle — COMPANY RULE (MANDATORY):
 - **First word:** nextStepTitle MUST **start with an uppercase letter** (same language as the note).
-- Format is ALWAYS: VERB + CONTACT + (COMPANY). Never omit the parentheses; never leave them empty.
-- The name in parentheses MUST be the organization the DIRECT CONTACT works for (contactCompany preferred; customer when it is their client's org).
-- One org only in parentheses — must match affiliation (who employs the contact or whose account they represent in this visit).
-- Wording should be natural and executable; avoid awkward literal phrasing. Prefer concise labels (in note language), e.g. "Send program", "Call Juan", "Follow up with Marta", "Send trial proposal".
+- Format is ALWAYS: **VERB + CONTACT NAME + " — " + COMPANY NAME** (space + em dash + space). Never use parentheses around the company; never leave the company part empty when **contactCompany** or a clear org for the direct contact exists.
+- The segment after the em dash separator MUST be the organization the DIRECT CONTACT works for (contactCompany preferred; customer when it is their client's org).
+- One org only after the separator — must match affiliation (who employs the contact or whose account they represent in this visit).
+- Wording should be natural and executable; avoid awkward literal phrasing. Prefer concise labels (in note language), e.g. "Send program — …", "Call Juan — …", "Follow up with Marta — …", "Send trial proposal — …".
 
 nextStepTitle — GRAMMAR (MANDATORY, same language as the note):
-- **Spanish:** The contact name MUST be preceded by **"a"** after the verb phrase. **Never** omit it.
-  - Call / follow-up verbs → **"Llamar a [nombre] ([empresa])"** — WRONG: "Llamar Carmen ([empresa])" or any form missing **a** before the contact name.
-  - Send / ship / email verbs (enviar, mandar, pasar, reenviar, etc.) → **"Enviar … a [nombre] ([empresa])"** — e.g. "Enviar documentos a Carmen (Pacific Brands)", "Mandar la cotización a Carmen (Pacific Brands)" — WRONG: "Enviar documentos Carmen (…)", "Mandar cotización Carmen (…)".
-- **English:** Use natural grammar: **"Call Carmen (Pacific Brands)"**; for send-style verbs use **"to"** before the name when required — e.g. **"Send deck to Carmen (Pacific Brands)"**.
+- **Spanish:** The contact name MUST be preceded by **"a"** after the verb phrase when grammar requires it. **Never** omit it.
+  - Call / follow-up verbs → **"Llamar a [nombre] — [empresa]"** — WRONG: "Llamar Carmen — …" or any form missing **a** before the contact name.
+  - Send / ship / email verbs (enviar, mandar, pasar, reenviar, etc.) → **"Enviar … a [nombre] — [empresa]"** — e.g. "Enviar documentos a Carmen — Pacific Brands", "Mandar la cotización a Carmen — Pacific Brands" — WRONG: "Enviar documentos Carmen — …", "Mandar cotización Carmen — …".
+- **English:** Use natural grammar: **"Call Carmen — Pacific Brands"**; for send-style verbs use **"to"** before the name when required — e.g. **"Send deck to Carmen — Pacific Brands"**.
 - Mirror the same correct phrasing in **nextStep** and **nextStepAction** / **nextStepTarget** so nothing contradicts the title.
 
-CORRECT: Tyler works for Coastal Supplies → contactCompany=Coastal Supplies → "Llamar a Tyler (Coastal Supplies)".
-CORRECT: Alfonso is the buyer at Laguna LLC → contactCompany or customer = Laguna LLC → "Llamar a Alfonso (Laguna LLC)".
-CORRECT (Spanish send): "Enviar propuesta a Carmen (Pacific Brands)" — includes **a** before the contact.
-WRONG: "Enviar cotización a Tyler" when the parenthetical company is missing or wrong — title must be VERB + **a** + contact + **(CORRECT COMPANY)**; never "Enviar cotización Tyler (…)" (missing **a**).
-WRONG: "Llamar Tyler (Coastal Supplies)" — missing **a** before Tyler.
-WRONG: "Llamar a Tyler (Luis)" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
-WRONG: "Llamar a Luis..." when Luis was only mentioned, not spoken to — use the direct contact name only
+CORRECT: Tyler works for Coastal Supplies → contactCompany=Coastal Supplies → "Llamar a Tyler — Coastal Supplies".
+CORRECT: Alfonso is the buyer at Laguna LLC → contactCompany or customer = Laguna LLC → "Llamar a Alfonso — Laguna LLC".
+CORRECT (Spanish send): "Enviar propuesta a Carmen — Pacific Brands" — includes **a** before the contact.
+WRONG: "Enviar cotización a Tyler — …" when the company after the em dash is missing or wrong — title must be VERB + **a** + contact + em dash separator + **CORRECT COMPANY**; never "Enviar cotización Tyler — …" (missing **a** before contact).
+WRONG: "Llamar Tyler — Coastal Supplies" — missing **a** before Tyler (Spanish).
+WRONG: "Llamar a Tyler — Luis" ← Luis is third party, forbidden in BOTH nextStepTitle and nextStep
+WRONG: "Llamar a Luis — …" when Luis was only mentioned, not spoken to — use the direct contact name only
 - NEVER repeat the same word twice in a row in the contact name part of nextStepTitle (WRONG: "Call David David Kim", "Mike Mike", "Llamar a Narciso Narciso Estrada"). nextStepAction + nextStepTarget must not concatenate a duplicated first name.
 
 ---
 
-DATE/TIME RULES:
+DATE/TIME RULES (for JSON **nextStepDate** / **nextStepTime** only — RELIABILITY MANDATE applies):
 
-- "mañana por la mañana" → tomorrow 9:00am
+- Map **explicit** phrases in the note to wall-clock times; **nextStepDate** must follow the mandate above (no inferred dates).
+- "mañana por la mañana" → tomorrow 9:00am (only when **mañana** / tomorrow is explicitly in the note for that action)
 - "por la tarde" → 3:00pm
 - "al mediodía" → 12:00pm
 - "por la mañana" → 9:00am
-- Relative dates: calculate from today's date provided
-- If no date mentioned → ""
+- When an explicit weekday or relative day is stated, calculate **nextStepDate** from today's date provided in the user message.
+- If **no** explicit day/date for the follow-up appears in the note → **nextStepDate = ""** and **unclear_date** in **ambiguityFlags**
 
 ---
 
-SUMMARY RULES:
-
-Extract ALL relevant details as bullet points with emojis.
-No prose. No text blocks. Each line = one fact.
-Simplicity rule: if the note is low-information, keep output light/concise (no heavy CRM-style expansion).
-Emojis must match the content:
-📦 **only** products, services, SKUs, programs the **rep's company is selling or proposing** (never a competitor's product — use ⚔️ below)
-📊 volume, quantity, deal size, units, capacity (use for numeric scale — not dollar pricing alone)
-💰 price / commercial terms / deal economics
-🤝 relationship / new client / stakeholder context
-📅 meetings, visits, deadlines
-⚠️ problems, risks, blockers
-🆕 new opportunity (rep's offering the contact is leaning toward)
-⚔️ **competitor or incumbent product** the account already uses (separate line; same language as note — e.g. English: "⚔️ Competitor: Patient Scheduling Solution")
-🏪 channel partner, retailer, or intermediary location (when relevant — optional line)
-
-THIRD-PARTY OPPORTUNITY (summary bullet — when applicable):
-- If the note mentions a THIRD person (not the direct contact) who shows potential interest, a problem your solution could address, or could realistically become a future customer, add ONE bullet using this label in the SAME language as the note:
-  - Spanish: 🆕 Oportunidad: [descripción breve — quién / interés o problema]
-  - English: 🆕 Opportunity: [short description — who / interest or problem]
-- Use this for referral-style or overheard leads; do NOT use it for the account you are actually visiting (use 🤝 or other lines for that). If no such third party appears, omit this bullet.
-
-Include everything mentioned: prices, quantities, problems, new clients, market context.
-Same language as note.
-
-KEY INSIGHTS — align summary bullets with full detail (same ideas as crmFull below):
-- Include **numbers** when stated (headcount, locations, units, revenue, capacity, etc.).
-- Include **deadlines** (internal reviews, decision dates, meetings).
-- Include **competitive** notes (who they use, dissatisfaction) when mentioned; for a named **competitor product**, use **⚔️** (never 📦 — 📦 is rep offerings only).
-- Include **next meetings or events** spelled out in the note.
-- Prefer an extra bullet over dropping a business-relevant fact.
-- Filter for decision impact: prioritize customer requests, risks, objections, timing constraints, opportunities, competitor signals, trial size/scope, and buying hesitation.
-- De-prioritize obvious restatements, filler, and points already fully captured by nextStep.
+JSON key **summary**:
+- Always **""** (empty string). Legacy field — do not put content here.
 
 ---
 
-CRM TEXT:
-2-3 natural sentences. No bullets in the main paragraph. Concise. Human tone.
-- Do NOT add a dedicated "distributor" or "Distribuidor:" closing line. Do not structure output around a separate distributor field.
+THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence across zones):
 
-CRM FULL (Key insights):
-Array of short lines with emojis. All key business details.
+**1) KEY INSIGHTS — JSON array **crmFull****
+- **Maximum 4** lines. No filler. Each line must directly help **execute the next step** or answer **what you must know before doing it** (objection, risk, competitor, deadline that affects the follow-up, quantity/deal size if it changes the pitch, rep offering interest if it drives the ask).
+- Short lines with emojis when helpful (same emoji discipline as before):
+  - **📦** = rep's own offering only · **📊** = volume/scale · **💰** = pricing/terms · **📅** = dates/deadlines that matter for the follow-up · **⚠️** = risk/blocker · **⚔️** = competitor/incumbent product (never in **product** JSON) · **🆕** = direct contact interest in **your** offering (ties to **product** field) · **🏪** channel when relevant.
+- If more than four facts compete, keep the four that most affect **how** the rep will run the next call, visit, or send.
+- Ruthlessly omit repetition of the next step line and generic pleasantries.
 
-KEY INSIGHTS — capture ALL important details (crmFull is the primary checklist):
-- Always capture **numbers** when stated: doctors, employees, locations, units, revenue, capacity, seats, doses, headcount, etc. (📊 / 💰 per emoji rules below).
-- Always capture **deadlines**: internal meetings, decision dates, review dates, RFP cutoffs (📅).
-- Always capture **competitive info**: which competitor they use, why they are unhappy, switching signals (⚠️ / 🤝 as fits). When a **competitor or incumbent product name** is stated, add **exactly one** dedicated crmFull line starting with **⚔️** (e.g. "⚔️ Competitor: [product name]") in the note's language — **never** put that name in JSON **product**.
-- Always capture any **next meeting or event** mentioned (📅), even when it is not the rep-owned primary nextStep.
-- **Maximum detail** — never skip a business-relevant fact from the note; add lines rather than omit.
+**2) CRM TEXT — JSON string **crmText****
+- The **complete structured CRM record** of the visit: **all** topics discussed, client concerns, competitor mentions, opportunities, quantities, stakeholders, context — nothing important omitted.
+- Use clear structure: short paragraphs and/or labeled lines (e.g. "Topics:", "Concerns:", "Competition:", "Numbers:") in the **same language** as the note. This is the full file copy for the CRM system.
+- Do NOT add a dedicated "distributor" or "Distribuidor:" closing line.
+- **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
-Emoji discipline:
-- Use **📦** only for **the rep's own** product/service/program lines being pitched or sold (not 🌱). **Never** use 📦 for a competitor's SKU; those lines use **⚔️** (competitor flag — Key Insights only).
-- Use **📊** for volume, quantity, capacity, units, or deal scale (not 🌾). Keep **⚠️** problems, **🆕** opportunities, **📅** dates/meetings, **🏪** channel/retail context when relevant.
-- **Competitor products:** one line per named incumbent/competitor offering: **⚔️** + label in the note's language (English template: "⚔️ Competitor: …"; Spanish: "⚔️ Competidor: …" or natural equivalent). Do **not** duplicate that name in JSON **product**.
-- Do NOT add a separate legacy "distributor:" closing line; optional **🏪** insight is enough when a channel partner matters.
-- If you added a third-party opportunity line in summary (🆕 Oportunidad / 🆕 Opportunity), include the same insight here as one line with the same emoji and wording.
+**3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
+- **3 to 5** lines only. Plain text. Each line must start with **→** then a space (example: **→ Client concerned about pricing**).
+- Purpose: what to **remember in 5 seconds** before the follow-up **call or visit** — concerns, comparisons, deadlines, decision timing. No emojis in this field. Same language as the note.
+- Scannable; no long sentences. Not a duplicate of **crmText** — extract the **highest-signal** reminders only.
 
-DIRECT CONTACT — NEW OFFERING INTEREST (crmFull + **product** field — **MANDATORY** when applicable):
-- When the **direct contact** shows interest in a **new** product, SKU, service, or program **that the rep's company sells or is proposing** (not merely what they currently buy from someone else):
-  - You MUST add **exactly one** dedicated crmFull line using **🆕** in the **same language** as the note (mirror the third-party 🆕 template style but for the direct contact’s interest in **your** offering).
-  - You MUST **append that rep-offered item** to the JSON **product** string as a **comma-separated** item with any other **rep** offerings already listed — the app builds **product** pills **only** from the rep's catalog / pitch.
-- If the contrast is only "they use **[competitor product]** today" → put the incumbent in **crmFull** as **⚔️**, **not** in **product**.
-- Do not output duplicate identical 🆕 lines.
+---
 
-VOLUME / QUANTITY — **MANDATORY** when mentioned:
-- If the note states any **numeric volume, quantity, units, capacity, seats, licenses, square footage, doses, headcount, or deal size**, add **at least one** crmFull line that **starts with 📊** and includes the **number**, **unit**, and brief context in the **same language as the note**.
-- **Never omit** this line when such an amount appears.
-- Examples: "📊 120 units" · "📊 45% uplift" · "📊 2.4M sq ft" · "📊 500 seats" (adapt to the note’s language).
-- Set JSON **acreage** to a short phrase restating that volume/quantity fact (same language), or "" if none was stated. (The key name is legacy; use it for any volume/quantity summary.)
+DIRECT CONTACT — NEW OFFERING INTEREST (**product** + **crmFull** when space allows):
+- When the direct contact shows interest in a **new** rep-offered product/service: append to JSON **product**; if **crmFull** still has room (≤4 lines), add one **🆕** line; otherwise ensure **crmText** still captures the interest in full.
+- Competitor/incumbent products: **⚔️** in **crmFull** if it fits the 4-line budget for next-step relevance; always detail in **crmText**.
 
 ---
 
@@ -331,10 +322,10 @@ STRICT — what belongs in **product**:
 **Documents / deliverables are NEVER products (MANDATORY):**
 - **documents**, **templates**, **analyses**, **reports**, **brochures**, **sell sheets**, **one-pagers**, **decks**, **PDFs/spreadsheets** (as deliverables), **comparison sheets**, **marketing collateral** — these are **not** JSON **product** entries under any name (including "ROI Analysis Template", "QBR deck", "pricing comparison", "product brochure").
 - If the **only** offerings mentioned in the note are deliverables of this kind — **nothing** that is a real sold SKU or subscription/service — set **product** to **""** (empty string). Do **not** output a pill for a document.
-- Describe sends (e.g. "email the ROI template") in **nextStep**, **summary**, and **crmFull** only — **never** duplicate that document name into **product**.
+- Describe sends (e.g. "email the ROI template") in **nextStep**, **crmText**, and **crmFull** (if relevant) only — **never** duplicate that document name into **product**.
 
 - Valid **product** examples (rep's catalog): 'Salesforce CRM', 'Quantum Flower', 'Patient Scheduling Software'
-- Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'; **also invalid:** a rival's SKU the account already bought — use **⚔️** line in **crmFull**.
+- Invalid as **product** (use elsewhere): 'ROI Analysis Template', 'price comparison', 'brochure'; **also invalid:** a rival's SKU the account already bought — use **⚔️** line in **crmFull** when that line is one of the four execution-critical insights, and always document in **crmText**.
 
 FIELD RULES:
 - Put **all qualifying rep-owned** offerings, SKUs, services, programs, and category labels into **product** as a **comma-separated list** in the same language as the note — **never** a document or template string.
@@ -354,6 +345,7 @@ nextStepTime,
 additionalSteps,
 crmText,
 crmFull,
+calendarDescription,
 confidence,
 ambiguityFlags,
 
@@ -368,13 +360,13 @@ notes
 Rules for the extra keys:
 - crop = always "" (empty string). Deprecated key — put **only the rep's** offering labels in **product**; competitor products → **crmFull** with **⚔️** only.
 - contactCompany = employer / org of the direct contact only (see contactCompany rules above). Independent consultant → "". Not a copy-paste alias of customer unless that truly is their company name.
-- nextStepAction = single verb phrase for the PRIMARY next step only
-- nextStepTarget = contact name for that action only (never third party) — same ABSOLUTE RULE as nextStep / nextStepTitle
-- nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + (COMPANY); parenthetical = org the direct contact belongs to; never bare title without parentheses; never mismatch org vs contact affiliation)
+- nextStepAction = single verb phrase for the PRIMARY next step only (one action — no compound "and / or" lists)
+- nextStepTarget = the **direct contact's** name for that action (never third party, never dealer's end-customer name if you did not speak to them) — must **match** JSON **contact** whenever the step targets the person you met; same ABSOLUTE RULE as nextStep / nextStepTitle
+- nextStepTitle must follow the nextStepTitle COMPANY RULE above (VERB + CONTACT + em dash + COMPANY; company after em dash = org the direct contact belongs to; when org is known never omit the separator + company; never mismatch org vs contact affiliation)
 - nextStepTimeHint = derive from nextStepTime: use "morning", "afternoon", "noon", or 24h "HH:MM" as appropriate
 - nextStepConfidence = same value as confidence (high | medium | low)
 - confidence / nextStepConfidence mapping: confirmed + clear request/timing → high; clear action but timing weak or inferred → medium; vague/hesitant/no clear action → low
-- mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | company | other)
+- mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | dealer | company | other — use **dealer** for distributor/channel rep or org when relevant)
 - notes = "" or a very short string if needed
 
 additionalSteps = JSON array of objects: { "action", "date", "time" } for every other action mentioned (not the primary). Use "" for unknown date/time.
@@ -685,6 +677,8 @@ function parseStructureJson(text: string): StructureBody {
     acreage: typeof parsed.acreage === 'string' ? parsed.acreage : '',
     crmText: typeof parsed.crmText === 'string' ? parsed.crmText : '',
     crmFull: parseCrmFull(parsed.crmFull),
+    calendarDescription:
+      typeof parsed.calendarDescription === 'string' ? parsed.calendarDescription : '',
     additionalSteps: parseAdditionalSteps(parsed.additionalSteps),
   }
 }
@@ -775,6 +769,7 @@ export async function POST(request: Request) {
       location: titleCaseWords(result.location),
       acreage: result.acreage,
       crmText: capitalize(result.crmText),
+      calendarDescription: result.calendarDescription.trim(),
       additionalSteps: result.additionalSteps.map((s) => ({
         action: capitalize(s.action.trim()),
         date: s.date.trim(),
@@ -800,7 +795,10 @@ export async function POST(request: Request) {
     const enriched = {
       ...afterProduct,
       contactCompany: resolvedContactCompany,
-      crmFull: stripDealerLinesFromCrmFull(normalizeInsightEmojis(afterProduct.crmFull)),
+      crmFull: stripDealerLinesFromCrmFull(normalizeInsightEmojis(afterProduct.crmFull)).slice(
+        0,
+        4,
+      ),
       crmText: stripDealerClosingFromCrmText(afterProduct.crmText),
     }
 
