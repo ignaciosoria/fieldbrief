@@ -1536,6 +1536,55 @@ Contact: ${result.contact || ''}
   return data.nextStep || result.nextStep || ''
 }
 
+const CALENDAR_ADDED_LS_KEY = 'folup-calendar-added-v1'
+
+type CalendarAddedBlob = Record<string, { p?: boolean; s?: number[] }>
+
+function calendarResultFingerprint(r: StructureResult): string {
+  const steps = (r.additionalSteps || [])
+    .map((s) => `${s.action}|${s.resolvedDate}|${s.timeHint}`)
+    .join('¦')
+  return [r.nextStep || '', r.nextStepDate || '', r.nextStepTimeHint || '', r.contact || '', steps].join('§')
+}
+
+function getCalendarStorageKey(r: StructureResult, noteId: string | null | undefined): string {
+  if (noteId) return `id:${noteId}`
+  return `fp:${calendarResultFingerprint(r)}`
+}
+
+function loadCalendarAddedBlob(): CalendarAddedBlob {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(CALENDAR_ADDED_LS_KEY)
+    if (!raw) return {}
+    const o = JSON.parse(raw) as CalendarAddedBlob
+    return o && typeof o === 'object' ? o : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistPrimaryToCalendarAdded(key: string, added: boolean) {
+  const all = loadCalendarAddedBlob()
+  const prev = all[key] || {}
+  all[key] = { ...prev, p: added }
+  try {
+    localStorage.setItem(CALENDAR_ADDED_LS_KEY, JSON.stringify(all))
+  } catch {}
+}
+
+function persistSupportingToCalendarAdded(key: string, index: number, added: boolean) {
+  const all = loadCalendarAddedBlob()
+  const prev = all[key] || {}
+  const set = new Set(prev.s || [])
+  if (added) set.add(index)
+  else set.delete(index)
+  all[key] = { ...prev, p: prev.p, s: [...set].sort((a, b) => a - b) }
+  try {
+    localStorage.setItem(CALENDAR_ADDED_LS_KEY, JSON.stringify(all))
+  } catch {}
+}
+
 export default function Home() {
   const { data: session, status } = useSession()
   const signInWithGoogle = useCallback(() => {
@@ -1590,9 +1639,8 @@ export default function Home() {
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [primaryAdded, setPrimaryAdded] = useState(false)
-  const [primaryPending, setPrimaryPending] = useState(false)
+  const [supportingAdded, setSupportingAdded] = useState<Record<number, boolean>>({})
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const primaryCalendarResultKeyRef = useRef<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -1609,43 +1657,28 @@ export default function Home() {
     setMounted(true)
   }, [])
 
-  useEffect(() => {
-    const flushPrimaryPending = () => {
-      setPrimaryPending((pending) => {
-        if (pending) {
-          setPrimaryAdded(true)
-          return false
-        }
-        return pending
-      })
+  const calendarStorageKey = useMemo(() => {
+    if (activeTab === 'history' && selectedNote) {
+      return getCalendarStorageKey(selectedNote.result, selectedNote.id)
     }
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') flushPrimaryPending()
+    if (activeTab === 'record' && result) {
+      return getCalendarStorageKey(result, null)
     }
-    const onFocus = () => flushPrimaryPending()
-    document.addEventListener('visibilitychange', onVisibility)
-    window.addEventListener('focus', onFocus)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [])
+    return null
+  }, [activeTab, selectedNote, result])
 
   useEffect(() => {
-    if (!result) {
+    if (!calendarStorageKey) {
       setPrimaryAdded(false)
-      setPrimaryPending(false)
-      primaryCalendarResultKeyRef.current = null
+      setSupportingAdded({})
       return
     }
-    const key = `${result.nextStep || ''}|${result.nextStepDate || ''}|${result.contact || ''}`
-    const prev = primaryCalendarResultKeyRef.current
-    if (prev !== null && prev !== key) {
-      setPrimaryAdded(false)
-      setPrimaryPending(false)
-    }
-    primaryCalendarResultKeyRef.current = key
-  }, [result])
+    const blob = loadCalendarAddedBlob()[calendarStorageKey]
+    setPrimaryAdded(!!blob?.p)
+    const next: Record<number, boolean> = {}
+    for (const i of blob?.s || []) next[i] = true
+    setSupportingAdded(next)
+  }, [calendarStorageKey])
 
   useEffect(() => {
     if (!sessionEmail) {
@@ -2410,11 +2443,11 @@ export default function Home() {
     setShowEditArea(false)
     setShowCalendarToast(false)
     setPrimaryAdded(false)
-    setPrimaryPending(false)
+    setSupportingAdded({})
   }
 
   /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
-  const addResultToCalendar = (r: StructureResult, flowOpts?: { trackPrimaryFlow?: boolean }) => {
+  const addResultToCalendar = (r: StructureResult, opts?: { noteId?: string | null }) => {
     if (isNoClearFollowUpResult(r)) return
     if (navigator.vibrate) navigator.vibrate(10)
     const calendarOpts = buildCalendarOpenOptsFromResult(r)
@@ -2423,40 +2456,58 @@ export default function Home() {
       setError('Could not build the event. Check date and time in the note.')
       return
     }
-    const trackPrimary = flowOpts?.trackPrimaryFlow === true
+    const key = getCalendarStorageKey(r, opts?.noteId ?? null)
+    setPrimaryAdded(true)
+    persistPrimaryToCalendarAdded(key, true)
+
     if (session?.user) {
       openGoogleCalendarWindow(calendarOpts)
-      if (trackPrimary) setPrimaryPending(true)
       setShowCalendarToast(true)
       return
     }
     const ok = openAppleCalendarFromOpts(calendarOpts)
     if (ok) {
-      if (trackPrimary) setPrimaryPending(true)
       setShowCalendarToast(true)
     } else {
+      setPrimaryAdded(false)
+      persistPrimaryToCalendarAdded(key, false)
       setError('Could not create the calendar file.')
     }
   }
 
-  const addSupportingStepToCalendar = (r: StructureResult, step: AdditionalStep) => {
+  const addSupportingStepToCalendar = (
+    r: StructureResult,
+    step: AdditionalStep,
+    index: number,
+    opts?: { noteId?: string | null },
+  ) => {
     if (isNoClearFollowUpResult(r)) return
     if (navigator.vibrate) navigator.vibrate(10)
-    const opts = buildCalendarOpenOptsForSupportingStep(r, step)
-    const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+    const calendarOpts = buildCalendarOpenOptsForSupportingStep(r, step)
+    const range = buildGoogleCalendarDateRangeParts(calendarOpts.dateMmddyyyy, calendarOpts.time)
     if (!range) {
       setError('Could not build the event. Check date and time for this action.')
       return
     }
+    const key = getCalendarStorageKey(r, opts?.noteId ?? null)
+    setSupportingAdded((prev) => ({ ...prev, [index]: true }))
+    persistSupportingToCalendarAdded(key, index, true)
+
     if (session?.user) {
-      openGoogleCalendarWindow(opts)
+      openGoogleCalendarWindow(calendarOpts)
       setShowCalendarToast(true)
       return
     }
-    const ok = openAppleCalendarFromOpts(opts)
+    const ok = openAppleCalendarFromOpts(calendarOpts)
     if (ok) {
       setShowCalendarToast(true)
     } else {
+      setSupportingAdded((prev) => {
+        const next = { ...prev }
+        delete next[index]
+        return next
+      })
+      persistSupportingToCalendarAdded(key, index, false)
       setError('Could not create the calendar file.')
     }
   }
@@ -3304,7 +3355,7 @@ export default function Home() {
 
                       {!isNoClearFollowUpResult(result) ? (
                         <button
-                          onClick={() => addResultToCalendar(result, { trackPrimaryFlow: true })}
+                          onClick={() => addResultToCalendar(result)}
                           type="button"
                           disabled={primaryAdded}
                           className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased transition-[transform,box-shadow,filter] duration-200 ease-out ${
@@ -3345,10 +3396,24 @@ export default function Home() {
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => addSupportingStepToCalendar(result, s)}
-                                    className="shrink-0 rounded-lg border border-indigo-200/90 bg-white px-2.5 py-1 text-[11px] font-semibold leading-none text-[#4F46E5] shadow-sm transition-[transform,background-color] hover:bg-indigo-50 active:scale-[0.97]"
+                                    onClick={() => addSupportingStepToCalendar(result, s, i)}
+                                    disabled={!!supportingAdded[i]}
+                                    className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
+                                      supportingAdded[i]
+                                        ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
+                                        : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
+                                    }`}
                                   >
-                                    + Add
+                                    {supportingAdded[i] ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                        Added
+                                      </span>
+                                    ) : (
+                                      '+ Add'
+                                    )}
                                   </button>
                                 </li>
                               ))}
@@ -3571,14 +3636,25 @@ export default function Home() {
                       {!isNoClearFollowUpResult(selectedNote.result) ? (
                         <button
                           type="button"
-                          onClick={() => addResultToCalendar(selectedNote.result)}
-                          className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:brightness-[0.95]"
-                          style={{ backgroundColor: '#4F46E5' }}
+                          onClick={() => addResultToCalendar(selectedNote.result, { noteId: selectedNote.id })}
+                          disabled={primaryAdded}
+                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased transition-[transform,box-shadow,filter] duration-200 ${
+                            primaryAdded
+                              ? 'cursor-default bg-emerald-600 shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
+                              : 'shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:brightness-[0.95]'
+                          }`}
+                          style={primaryAdded ? undefined : { backgroundColor: '#4F46E5' }}
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                          </svg>
-                          <span className="tracking-tight">Add to calendar</span>
+                          {primaryAdded ? (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                          )}
+                          <span className="tracking-tight">{primaryAdded ? 'Added' : 'Add to calendar'}</span>
                         </button>
                       ) : null}
 
@@ -3600,10 +3676,28 @@ export default function Home() {
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => addSupportingStepToCalendar(selectedNote.result, s)}
-                                    className="shrink-0 rounded-lg border border-indigo-200/90 bg-white px-2.5 py-1 text-[11px] font-semibold leading-none text-[#4F46E5] shadow-sm transition-[transform,background-color] hover:bg-indigo-50 active:scale-[0.97]"
+                                    onClick={() =>
+                                      addSupportingStepToCalendar(selectedNote.result, s, i, {
+                                        noteId: selectedNote.id,
+                                      })
+                                    }
+                                    disabled={!!supportingAdded[i]}
+                                    className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
+                                      supportingAdded[i]
+                                        ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
+                                        : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
+                                    }`}
                                   >
-                                    + Add
+                                    {supportingAdded[i] ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                        Added
+                                      </span>
+                                    ) : (
+                                      '+ Add'
+                                    )}
                                   </button>
                                 </li>
                               ))}
