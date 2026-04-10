@@ -508,9 +508,9 @@ function needsNextStepDatePick(r: StructureResult): boolean {
   return hasReliabilityFlag(r, 'unclear_date')
 }
 
+/** Only prompt when no contact after processing; never block on unclear_contact if a name is present. */
 function needsContactPick(r: StructureResult): boolean {
-  if (!(r.contact || '').trim()) return true
-  return hasReliabilityFlag(r, 'unclear_contact')
+  return !(r.contact || '').trim()
 }
 
 /** Confirm follow-up targets the direct contact only (after contact is known). */
@@ -1103,22 +1103,63 @@ function forceLanguage(nextStep: string, originalText: string) {
   return nextStep
 }
 
+function stripUnclearContactAmbiguity(r: StructureResult): StructureResult {
+  if (!(r.contact || '').trim()) return r
+  const flags = (r.ambiguityFlags || []).filter(
+    (x) => !x.toLowerCase().includes('unclear_contact'),
+  )
+  return { ...r, ambiguityFlags: flags }
+}
+
+function isProbablyOrganizationEntityType(type: string): boolean {
+  const t = (type || '').toLowerCase().trim()
+  if (!t || t === 'other') return false
+  return /\b(org|organization|company|account|customer|farm|clinic|hospital|distributor|dealer|retail|store|brand|buyer\s*org|site|location)\b/i.test(
+    t,
+  )
+}
+
+/**
+ * If the model left contact empty but only one non-org person is listed, treat that as the contact.
+ * Caller runs before finalizeNextStepFields (which also promotes nextStepTarget → contact).
+ */
+function inferMissingContact(r: StructureResult): StructureResult {
+  let next = stripUnclearContactAmbiguity(r)
+  if ((next.contact || '').trim()) return next
+  const ents = next.mentionedEntities || []
+  if (ents.length !== 1) return next
+  const e = ents[0]
+  const name = (e.name || '').trim()
+  if (name.length < 2 || name.length > 120 || isProbablyOrganizationEntityType(e.type)) return next
+  next = { ...next, contact: name }
+  return stripUnclearContactAmbiguity(next)
+}
+
 function finalizeNextStepFields(res: StructureResult, sourceText: string): StructureResult {
   const base = { ...res }
-  const contact = (base.contact || '').trim()
+  let contact = (base.contact || '').trim()
   let nextStepTarget = (base.nextStepTarget || '').trim()
+  if (!contact && nextStepTarget) {
+    contact = nextStepTarget
+  }
   if (!contact) {
     nextStepTarget = ''
   } else if (!nextStepTarget) {
     nextStepTarget = contact
   }
-  const baseAligned = { ...base, nextStepTarget }
+  let ambiguityFlags = base.ambiguityFlags || []
+  if (contact) {
+    ambiguityFlags = ambiguityFlags.filter((x) => !x.toLowerCase().includes('unclear_contact'))
+  }
+  const baseAligned = { ...base, contact, nextStepTarget, ambiguityFlags }
   let nextLine = enrichNextStep(baseAligned.nextStep, baseAligned)
   let nextTitle = buildCleanNextStepTitle(baseAligned)
   nextLine = dedupeConsecutiveRepeatedWords(forceLanguage(nextLine, sourceText))
   nextTitle = dedupeConsecutiveRepeatedWords(forceLanguage(nextTitle, sourceText))
   return {
     ...base,
+    contact: dedupeConsecutiveRepeatedWords(contact),
+    ambiguityFlags,
     nextStep: nextLine,
     nextStepTitle: nextTitle,
     nextStepTarget: dedupeConsecutiveRepeatedWords(nextStepTarget),
@@ -1736,6 +1777,7 @@ export default function Home() {
           const strData = await strRes.json()
           if (!strRes.ok) throw new Error(strData.error)
           let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
+          final = inferMissingContact(final)
           final = finalizeNextStepFields(final, combined)
           await awaitMinProcessingDisplay()
           updateNote(noteId, final, combined)
@@ -1901,6 +1943,7 @@ export default function Home() {
         }
       }
 
+      final = inferMissingContact(final)
       final = finalizeNextStepFields(final, tx)
 
       await awaitMinProcessingDisplay()
@@ -1947,6 +1990,7 @@ export default function Home() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
+      final = inferMissingContact(final)
       final = finalizeNextStepFields(final, input)
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {

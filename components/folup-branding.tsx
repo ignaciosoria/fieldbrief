@@ -1,15 +1,14 @@
-/** Header when logged in: icon only (no wordmark), 28px tall. */
+/** Header when logged in: wordmark from `/logo.png`. */
 export function FolupHeaderBrand() {
   return (
-    <div className="flex items-center">
+    <div className="flex min-w-0 items-center">
       <img
-        src="/folup-mark.svg"
-        alt=""
-        width={42}
-        height={28}
+        src="/logo.png"
+        alt="Folup"
+        width={278}
+        height={108}
         decoding="async"
-        className="h-[28px] w-auto max-h-[28px] shrink-0 bg-transparent object-contain object-left"
-        aria-hidden
+        className="h-7 w-auto max-w-[min(100%,9.5rem)] shrink-0 bg-transparent object-contain object-left sm:max-w-[11rem]"
       />
     </div>
   )
