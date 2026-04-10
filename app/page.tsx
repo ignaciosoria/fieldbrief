@@ -1119,6 +1119,25 @@ function getInsightStyle(text: string) {
   return `${ink} bg-transparent`
 }
 
+/** UI display only — sentence-case first letter; title-case "today"/"tomorrow" as words. */
+function capitalizeFirstLetterOnlyForDisplay(s: string): string {
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (/\p{L}/u.test(ch)) {
+      return s.slice(0, i) + ch.toLocaleUpperCase('en-US') + s.slice(i + 1)
+    }
+  }
+  return s
+}
+
+function formatInsightRelativeDayWordsForDisplay(s: string): string {
+  return s.replace(/\btoday\b/gi, 'Today').replace(/\btomorrow\b/gi, 'Tomorrow')
+}
+
+function formatKeyInsightLineForDisplay(line: string): string {
+  return formatInsightRelativeDayWordsForDisplay(capitalizeFirstLetterOnlyForDisplay(line))
+}
+
 function insightsCollapsedMaxPx(): number {
   if (typeof window === 'undefined') return 400
   const vh = window.innerHeight
@@ -1177,7 +1196,7 @@ function KeyInsightsList({
         >
           {lines.map((line, i) => (
             <p key={i} className={`${lineClassName} ${getInsightStyle(line)}`}>
-              {line}
+              {formatKeyInsightLineForDisplay(line)}
             </p>
           ))}
         </div>
@@ -1187,7 +1206,7 @@ function KeyInsightsList({
         >
           {lines.map((line, i) => (
             <p key={i} className={`${lineClassName} ${getInsightStyle(line)}`}>
-              {line}
+              {formatKeyInsightLineForDisplay(line)}
             </p>
           ))}
         </div>
@@ -3346,7 +3365,7 @@ export default function Home() {
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
                         <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
-                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'Primary'}
+                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'PRIMARY'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {buildPrimaryDisplayTitle(result)}
@@ -3382,7 +3401,7 @@ export default function Home() {
                         (result.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 text-left ring-1 ring-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
-                              Supporting
+                              SUPPORTING
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
                               {(result.additionalSteps || []).map((s, i) => {
@@ -3470,7 +3489,7 @@ export default function Home() {
                   {filterKeyInsightsForDisplay(result.crmFull).length > 0 && (
                     <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-3.5">
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
-                        Key insights
+                        KEY INSIGHTS
                       </p>
                       <KeyInsightsList
                         lines={filterKeyInsightsForDisplay(result.crmFull)}
@@ -3606,7 +3625,7 @@ export default function Home() {
                   {filterKeyInsightsForDisplay(selectedNote.result.crmFull).length > 0 && (
                     <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-4">
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
-                        Key insights
+                        KEY INSIGHTS
                       </p>
                       <KeyInsightsList
                         lines={filterKeyInsightsForDisplay(selectedNote.result.crmFull)}
@@ -3628,7 +3647,7 @@ export default function Home() {
                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                           </svg>
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">
-                            {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'Primary'}
+                            {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'PRIMARY'}
                           </p>
                         </div>
                         <p className="text-[19px] font-bold leading-snug text-[#111111]">
@@ -3665,7 +3684,7 @@ export default function Home() {
                         (selectedNote.result.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 ring-1 ring-zinc-200/80">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
-                              Supporting
+                              SUPPORTING
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
                               {(selectedNote.result.additionalSteps || []).map((s, i) => {

@@ -40,6 +40,11 @@ function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   return { hour: 9, minute: 0 }
 }
 
+/** UI display only — does not affect calendar payloads. */
+function formatRelativeDayWordsForDisplay(s: string): string {
+  return s.replace(/\btoday\b/gi, 'Today').replace(/\btomorrow\b/gi, 'Tomorrow')
+}
+
 function relativeDayLabelFromMmdd(mmdd: string): string {
   const t = (mmdd || '').trim()
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
@@ -50,14 +55,14 @@ function relativeDayLabelFromMmdd(mmdd: string): string {
   today.setHours(0, 0, 0, 0)
   d.setHours(0, 0, 0, 0)
   const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'today'
-  if (diff === 1) return 'tomorrow'
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Tomorrow'
   return t
 }
 
 function formatDisplayDateLabelForPrimary(mmdd: string): string {
   const rel = relativeDayLabelFromMmdd(mmdd)
-  if (rel === 'today' || rel === 'tomorrow') return rel
+  if (rel === 'Today' || rel === 'Tomorrow') return rel
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) {
     const [m, d, y] = mmdd.split('/').map((x) => parseInt(x, 10))
     const dt = new Date(y, m - 1, d)
@@ -87,17 +92,17 @@ export type PrimaryDisplayTitleInput = {
 export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const raw = (r.nextStepTitle || r.nextStep || '').trim()
   const base = cleanCalendarTitle(raw)
-  if (!base) return raw
+  if (!base) return formatRelativeDayWordsForDisplay(raw)
   const mmdd = (r.nextStepDate || '').trim()
   const hint = (r.nextStepTimeHint || '').trim()
   const hasDate = /^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)
-  if (!hasDate && !hint) return base
+  if (!hasDate && !hint) return formatRelativeDayWordsForDisplay(base)
 
   const dateLabel = hasDate ? formatDisplayDateLabelForPrimary(mmdd) : ''
   const timeLabel = hint ? formatClock12FromHint(hint) : ''
   const inner = [dateLabel, timeLabel].filter(Boolean).join(' · ')
-  if (!inner) return base
-  return `${base} (${inner})`
+  if (!inner) return formatRelativeDayWordsForDisplay(base)
+  return formatRelativeDayWordsForDisplay(`${base} (${inner})`)
 }
 
 export type SupportingDisplayTitleInput = {
@@ -108,7 +113,7 @@ export type SupportingDisplayTitleInput = {
 
 /**
  * APP only — timing inline. Calendar event title for supporting stays action-only via `cleanCalendarTitle`.
- * Example: `Send contract — today · 16:00`
+ * Example: `Send contract — Today · 16:00`
  */
 export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): string {
   const action = (step.action || '').trim()
@@ -127,6 +132,6 @@ export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): 
     const { hour, minute } = resolveTimeFromHint(th)
     parts.push(`${pad2(hour)}:${pad2(minute)}`)
   }
-  if (parts.length === 0) return action
-  return `${action} — ${parts.join(' · ')}`
+  if (parts.length === 0) return formatRelativeDayWordsForDisplay(action)
+  return formatRelativeDayWordsForDisplay(`${action} — ${parts.join(' · ')}`)
 }
