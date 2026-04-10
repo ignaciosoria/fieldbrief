@@ -18,11 +18,8 @@ import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
 import type { ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
-import {
-  filterInsightsToContextOnly,
-  insightLineContainsActionLanguage,
-  insightLineTooVagueForCalendarDescription,
-} from '../lib/filterInsightLines'
+import { filterInsightsToContextOnly } from '../lib/filterInsightLines'
+import { buildCalendarEventDescriptionBody } from '../lib/calendarEventDescription'
 import {
   isWakeLockHeld,
   releaseWakeLock,
@@ -510,259 +507,34 @@ function stripEmojisForCalendar(s: string): string {
     .trim()
 }
 
-function normalizeCalendarDedupeKey(s: string): string {
-  return s.replace(/\s+/g, ' ').trim().toLowerCase()
-}
-
-function truncateCalendarLine(s: string, max: number): string {
-  const t = s.replace(/\s+/g, ' ').trim()
-  if (!t) return ''
-  return t.length > max ? `${t.slice(0, max - 1).trim()}…` : t
-}
-
-function compactInsightForCalendar(line: string): string {
-  let s = normalizeLegacyInsightLine(line).trim()
-  s = stripEmojisForCalendar(s).replace(/^[\s\-•*→]+/g, '').trim()
-  return s
-}
-
-/** First clause only; strip numeric dates (event already carries timing). */
-function telegraphicInsightFragment(raw: string): string {
-  let s = raw.replace(/\s+/g, ' ').trim()
-  s = s.replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '')
-  s = s.replace(/\s+/g, ' ').trim()
-  const oneSentence = (s.split(/[.!?]/)[0] || s).trim()
-  const oneClause = (oneSentence.split(/[,;:]/)[0] || oneSentence).trim()
-  return oneClause.replace(/\.\s*$/g, '').trim()
-}
-
-/** One line for the Supporting list: `Action — today · 10:00` (uses resolved date + time hint when set). */
-function relativeDayLabelFromMmdd(mmdd: string): string {
-  const t = (mmdd || '').trim()
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
-  const [mm, dd, y] = t.split('/').map((x) => parseInt(x, 10))
-  if ([mm, dd, y].some((n) => Number.isNaN(n))) return t
-  const d = new Date(y, mm - 1, dd)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  d.setHours(0, 0, 0, 0)
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'today'
-  if (diff === 1) return 'tomorrow'
-  return t
-}
-
-function formatSupportingStepLine(step: AdditionalStep): string {
-  const action = (step.action || '').trim()
-  if (!action) return ''
-  const date = (step.resolvedDate || '').trim()
-  const th = (step.timeHint || '').trim()
-  const parts: string[] = []
-  if (date) parts.push(relativeDayLabelFromMmdd(date))
-  if (th) parts.push(th)
-  if (parts.length === 0) return action
-  return `${action} — ${parts.join(' · ')}`
-}
-
-/** Calendar body: max 3 telegraphic lines; event date/time live on the event — not repeated here. */
-const CALENDAR_DESC_LINE_MAX = 56
-
-/** Line 1 — company / account only (short label). */
-function buildCalendarDescriptionLine1Company(data: StructureResult): string {
-  const customer = stripEmojisForCalendar((data.customer || '').trim())
-  const contactCo = stripEmojisForCalendar((data.contactCompany || '').trim())
-  let org = ''
-  if (customer && contactCo && customer.toLowerCase() !== contactCo.toLowerCase()) {
-    org = `${customer} · ${contactCo}`
-  } else {
-    org = customer || contactCo
-  }
-  if (!org) org = stripEmojisForCalendar((data.contact || '').trim())
-  return org ? truncateCalendarLine(org, CALENDAR_DESC_LINE_MAX) : ''
-}
-
-function supportingStepDuplicatesPrimary(step: AdditionalStep, primaryNs: string): boolean {
-  const actionRaw = stripEmojisForCalendar((step.action || '').trim())
-  if (!actionRaw) return true
-  const pk = normalizeCalendarDedupeKey(primaryNs)
-  const ak = normalizeCalendarDedupeKey(actionRaw)
-  if (pk && ak && (pk === ak || pk.includes(ak) || ak.includes(pk))) return true
-  return false
-}
-
-/** True if this line is redundant with the exclude set or echoes the primary next step. */
-function calendarLineDuplicatesContext(
-  line: string,
-  exclude: Set<string>,
-  primaryNs: string,
-): boolean {
-  const k = normalizeCalendarDedupeKey(line)
-  if (!k) return true
-  if (exclude.has(k)) return true
-  const pk = normalizeCalendarDedupeKey(primaryNs)
-  if (pk && k && (pk === k || pk.includes(k) || k.includes(pk))) return true
-  for (const ex of exclude) {
-    if (!ex || !k) continue
-    if (k === ex) return true
-    if (k.length >= 10 && ex.length >= 10 && (ex.includes(k) || k.includes(ex))) return true
-  }
-  return false
-}
-
-function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): boolean {
-  const f = normalizeCalendarDedupeKey(fragment)
-  const e = normalizeCalendarDedupeKey(stripEmojisForCalendar(eventTitle))
-  if (!f || !e) return false
-  if (f === e) return true
-  if (f.length >= 14 && (e.includes(f) || f.includes(e))) return true
-  return false
-}
-
 /**
- * Fallback context for calendar body when crmFull lines are generic — notes/summary/product+location.
- * Same dedupe rules as insight lines; still telegraphic.
- */
-function buildCalendarDescriptionFallbackContext(
-  data: StructureResult,
-  exclude: Set<string>,
-  primaryNs: string,
-  eventTitle: string,
-): string {
-  const tryOut = (raw: string): string | null => {
-    const compact = compactInsightForCalendar(raw)
-    if (!compact.trim()) return null
-    if (insightLineContainsActionLanguage(compact)) return null
-    if (insightLineTooVagueForCalendarDescription(compact)) return null
-    let s = telegraphicInsightFragment(compact)
-    s = s.replace(/\s+/g, ' ').trim()
-    if (s.length < 8) return null
-    if (insightLineTooVagueForCalendarDescription(s)) return null
-    if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
-    if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
-    return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
-  }
-
-  const notes = (data.notes || '').trim()
-  if (notes) {
-    const o = tryOut(notes)
-    if (o) return o
-  }
-  const summary = (data.summary || '').trim()
-  if (summary) {
-    const o = tryOut(summary)
-    if (o) return o
-  }
-  const product = stripEmojisForCalendar((data.product || '').trim())
-  const loc = stripEmojisForCalendar((data.location || '').trim())
-  if (product || loc) {
-    const combined = [product, loc].filter(Boolean).join(' · ')
-    if (combined.length >= 8) {
-      const o = tryOut(combined)
-      if (o) return o
-    }
-  }
-  return ''
-}
-
-/**
- * One telegraphic key insight from crmFull (context-only, non-action) — prefers concrete lines; may fall back to notes/summary/product.
- */
-function buildCalendarDescriptionKeyInsight(
-  data: StructureResult,
-  exclude: Set<string>,
-  eventTitle: string,
-): string {
-  const primaryNs = stripEmojisForCalendar((data.nextStep || '').trim())
-
-  const tryLine = (raw: string): string | null => {
-    const compact = compactInsightForCalendar(raw)
-    if (!compact.trim()) return null
-    if (insightLineContainsActionLanguage(compact)) return null
-    if (insightLineTooVagueForCalendarDescription(compact)) return null
-    let s = telegraphicInsightFragment(compact)
-    s = s.replace(/\s+/g, ' ').trim()
-    if (s.length < 6) return null
-    if (insightLineTooVagueForCalendarDescription(s)) return null
-    if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
-    if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
-    return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
-  }
-
-  for (const line of data.crmFull || []) {
-    if (!line.trim() || line.trimStart().startsWith('📅')) continue
-    const out = tryLine(line)
-    if (out) return out
-  }
-
-  return buildCalendarDescriptionFallbackContext(data, exclude, primaryNs, eventTitle)
-}
-
-/** Same date+time as the primary calendar event (`buildCalendarOpenOptsFromResult`). */
-function calendarPrimaryEventInstant(data: StructureResult): Date {
-  const mmddRaw = (data.nextStepDate || '').trim()
-  const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
-    ? mmddRaw
-    : isoDateToMmddyyyy(todayIsoDate())
-  const resolved = resolveTimeFromHint(data.nextStepTimeHint || '')
-  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
-  const [mm, dd, yyyy] = adj.dateMmddyyyy.split('/').map((x) => parseInt(x, 10))
-  return new Date(yyyy, mm - 1, dd, adj.hour, adj.minute, 0, 0)
-}
-
-/** Local instant for a supporting step when `resolvedDate` is MM/DD/YYYY; otherwise unknown. */
-function supportingStepScheduledInstant(step: AdditionalStep): Date | null {
-  const ds = (step.resolvedDate || '').trim()
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) return null
-  const [mm, dd, yyyy] = ds.split('/').map((x) => parseInt(x, 10))
-  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return null
-  const t = resolveTimeFromHint(step.timeHint || '')
-  return new Date(yyyy, mm - 1, dd, t.hour, t.minute, 0, 0)
-}
-
-/**
- * Calendar export body: structured data only (max 3 lines).
- * Line 1: company (plain) · After company, max 2 lines: `- ` supporting (if any), then `- ` key insight (if any).
+ * Calendar export body: line 1 = Company — Contact; lines 2–3 = short visit context (max 2).
+ * Timing lives on the event fields, not repeated here.
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
-  const exclude = new Set<string>()
-  const addEx = (s: string) => {
-    const k = normalizeCalendarDedupeKey(s.replace(/^\s*-\s*/, '').trim())
-    if (k) exclude.add(k)
-  }
-  if (eventTitle) addEx(stripEmojisForCalendar(eventTitle))
-  const ns = stripEmojisForCalendar((data.nextStep || '').trim())
-  if (ns) addEx(ns)
-
-  const line1 = buildCalendarDescriptionLine1Company(data)
-  if (line1) addEx(line1)
-
-  const primaryInstant = calendarPrimaryEventInstant(data)
-
-  let supportingPlain = ''
-  for (const step of data.additionalSteps || []) {
-    if (supportingStepDuplicatesPrimary(step, ns)) continue
-    const supInstant = supportingStepScheduledInstant(step)
-    if (supInstant !== null && supInstant.getTime() < primaryInstant.getTime()) continue
-    const formatted = formatSupportingStepLine(step)
-    if (!formatted.trim()) continue
-    let s = stripEmojisForCalendar(formatted.trim())
-    s = truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
-    if (calendarLineDuplicatesContext(s, exclude, ns)) continue
-    supportingPlain = s
-    addEx(s)
-    break
-  }
-
-  const insightRaw = buildCalendarDescriptionKeyInsight(data, exclude, eventTitle)
-  const insightPlain = insightRaw.replace(/^\s*-\s*/, '').trim()
-
-  const lines: string[] = []
-  if (line1) lines.push(line1)
-  if (supportingPlain) lines.push(`- ${supportingPlain}`)
-  if (insightPlain) lines.push(`- ${insightPlain}`)
-
-  return lines.slice(0, 3).join('\n').trim()
+  const exclude = [
+    stripEmojisForCalendar((data.nextStep || '').trim()),
+    stripEmojisForCalendar((data.nextStepTitle || '').trim()),
+    stripEmojisForCalendar(eventTitle),
+  ].filter(Boolean)
+  return buildCalendarEventDescriptionBody(
+    {
+      customer: data.customer,
+      contact: data.contact,
+      contactCompany: data.contactCompany,
+      crop: data.crop,
+      product: data.product,
+      location: data.location,
+      acreage: data.acreage,
+      calendarDescription: data.calendarDescription,
+      crmText: data.crmText,
+      crmFull: data.crmFull || [],
+      notes: data.notes,
+      summary: data.summary,
+    },
+    { eventTitle, excludeActionPhrases: exclude },
+  )
 }
 
 /** Primary calendarTitle (event SUMMARY) — no date/time in string; timing is in event fields. */
@@ -831,19 +603,7 @@ function supportingStepCalendarTitle(step: AdditionalStep, r: StructureResult): 
   return supportingCalendarEventTitleWithContext(raw || 'Follow-up', step, r)
 }
 
-/** Event description: only structured supporting fields (type, label, date, time). */
-function buildSupportingStructuredCalendarDescription(step: AdditionalStep): string {
-  const lines: string[] = []
-  if (step.supportingType) lines.push(step.supportingType)
-  if (step.label?.trim()) lines.push(step.label.trim())
-  const d = (step.structuredDate || '').trim()
-  const t = (step.structuredTime || '').trim()
-  if (d) lines.push(d)
-  if (t) lines.push(t)
-  return lines.join('\n').trim()
-}
-
-/** One calendar event for exactly one supporting step — structured type/label/date/time only (no primary fields). */
+/** One calendar event for exactly one supporting step — same description shape as primary (header + context). */
 function buildCalendarOpenOptsForSupportingStep(
   r: StructureResult,
   step: AdditionalStep,
@@ -871,7 +631,31 @@ function buildCalendarOpenOptsForSupportingStep(
     : isoDateToMmddyyyy(todayIsoDate())
   const resolved = resolveTimeFromHint((step.structuredTime || step.timeHint || '').trim())
   const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
-  const details = buildSupportingStructuredCalendarDescription(step)
+  const details = buildCalendarEventDescriptionBody(
+    {
+      customer: r.customer,
+      contact: r.contact,
+      contactCompany: r.contactCompany,
+      crop: r.crop,
+      product: r.product,
+      location: r.location,
+      acreage: r.acreage,
+      calendarDescription: r.calendarDescription,
+      crmText: r.crmText,
+      crmFull: r.crmFull || [],
+      notes: r.notes,
+      summary: r.summary,
+    },
+    {
+      eventTitle: title,
+      excludeActionPhrases: [
+        stripEmojisForCalendar((r.nextStep || '').trim()),
+        stripEmojisForCalendar((r.nextStepTitle || '').trim()),
+        stripEmojisForCalendar((step.action || '').trim()),
+        stripEmojisForCalendar(title),
+      ].filter(Boolean),
+    },
+  )
   return {
     title,
     dateMmddyyyy: adj.dateMmddyyyy,
@@ -3434,7 +3218,7 @@ export default function Home() {
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
                         <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
-                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'PRIMARY'}
+                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'NEXT STEP'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {buildPrimaryDisplayTitle(result)}
@@ -3470,7 +3254,7 @@ export default function Home() {
                         (result.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 text-left ring-1 ring-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
-                              SUPPORTING
+                              OTHER ACTIONS
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
                               {(result.additionalSteps || []).map((s, i) => {
@@ -3716,7 +3500,7 @@ export default function Home() {
                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                           </svg>
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">
-                            {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'PRIMARY'}
+                            {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'NEXT STEP'}
                           </p>
                         </div>
                         <p className="text-[19px] font-bold leading-snug text-[#111111]">
@@ -3753,7 +3537,7 @@ export default function Home() {
                         (selectedNote.result.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 ring-1 ring-zinc-200/80">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
-                              SUPPORTING
+                              OTHER ACTIONS
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
                               {(selectedNote.result.additionalSteps || []).map((s, i) => {

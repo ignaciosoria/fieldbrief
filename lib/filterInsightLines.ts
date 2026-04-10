@@ -41,10 +41,15 @@ const VAGUE_CALENDAR_DESCRIPTION_PATTERNS: RegExp[] = [
   /\binter[eé]s\s+en\b/i,
   /\bpositive\s+momentum\b/i,
   /\bnegative\s+momentum\b/i,
+  /\bpotential\s+deal\b/i,
   /\bpotential\s+closing\b/i,
   /\bcierre\s+potencial\b/i,
   /\bgood\s+momentum\b/i,
   /\bstrong\s+interest\b/i,
+  /\bdeal\s+potential\b/i,
+  /\bopportunity\s+to\s+(close|win)\b/i,
+  /\bnegocio\s+potencial\b/i,
+  /\boportunidad\s+de\s+cierre\b/i,
 ]
 
 export function insightLineTooVagueForCalendarDescription(line: string): boolean {
