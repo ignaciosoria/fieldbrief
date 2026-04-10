@@ -458,24 +458,28 @@ function applyRankedNextStepSelection(
     })
   }
 
-  /** Model primary slot (structured `primary.*`) — calendar must never take date/time from a supporting row when these were set. */
+  /**
+   * Primary calendar event date/time must come only from the structured primary slot — never from a
+   * supporting row. If ranking picks a supporting action as `nextStep`, `nextStepDate` / `nextStepTimeHint`
+   * still use the `source === 'primary'` row (resolved primary.date / primary.time), not the winner's.
+   */
   const primarySlot = resolved.find((r) => r.source === 'primary')
-  const modelPrimaryDatePresent = !!(result.nextStepDate || '').trim()
-  const modelPrimaryTimePresent = !!(result.nextStepTimeHint || '').trim()
 
-  const rankedDate = primary.date
-  const tRawRanked = primary.time.trim()
-  const rankedHint = tRawRanked ? normalizeTimeToHint(tRawRanked, '') : ''
+  let nextStepDate: string
+  let nextStepTimeHint: string
 
-  let nextStepDate = rankedDate
-  let nextStepTimeHint = rankedHint
-
-  if (primarySlot && modelPrimaryDatePresent) {
+  if (primary.source === 'primary') {
+    const tRaw = primary.time.trim()
+    nextStepDate = primary.date
+    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
+  } else if (primarySlot) {
+    const tRaw = primarySlot._timeRaw.trim()
     nextStepDate = primarySlot.date
-  }
-  if (primarySlot && modelPrimaryTimePresent) {
-    const tRawPrimary = primarySlot._timeRaw.trim()
-    nextStepTimeHint = tRawPrimary ? normalizeTimeToHint(tRawPrimary, '') || tRawPrimary : ''
+    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') || tRaw : ''
+  } else {
+    const tRaw = (result.nextStepTimeHint || '').trim()
+    nextStepDate = (result.nextStepDate || '').trim()
+    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') || tRaw : ''
   }
 
   const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
