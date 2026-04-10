@@ -830,6 +830,11 @@ const ACTION_KIND_SCORE = {
 
 type ActionKind = keyof typeof ACTION_KIND_SCORE
 
+/** Kinds that must never lose primary to a "send" when any of them exist in the candidate set. */
+function isHigherValueKindThanSend(k: ActionKind): boolean {
+  return k === 'meeting' || k === 'call' || k === 'follow_up'
+}
+
 /**
  * Infer kind from action text (EN/ES). Order: meeting → call → follow_up → send → other.
  * Tuned so "send … tomorrow" does not outrank "call … next week" on date alone — handled in ranking.
@@ -898,6 +903,10 @@ type ScoredRow = ChronologicalRow & {
  * Pick primary next step by **action kind** (meeting > call > follow_up > send > other), with
  * time-clarity and confidence bonuses. **Date is only a tie-breaker** when totals tie (earlier wins).
  * Replaces pure chronological promotion so an earlier "send" does not displace a later "call".
+ *
+ * **Send suppression:** If any candidate is meeting/call/follow_up, a **send** row is never chosen as
+ * primary — even with a clearer/earlier date or higher total score. Primary becomes the best-ranked
+ * **non-send** (same sort order).
  */
 function applyRankedNextStepSelection(result: StructureBody, anchor: Date): StructureBody {
   const rows: ChronologicalRow[] = []
@@ -996,14 +1005,31 @@ function applyRankedNextStepSelection(result: StructureBody, anchor: Date): Stru
     })),
   )
 
-  const [first, ...rest] = resolved
-  const tRaw = first.time.trim()
+  const hasHigherValueAction = resolved.some((r) => isHigherValueKindThanSend(r._kind))
+
+  let primary = resolved[0]
+  if (hasHigherValueAction && primary._kind === 'send') {
+    const alt = resolved.find((r) => r._kind !== 'send')
+    if (alt) {
+      console.log('[structure] rank: send blocked as primary — higher-value kind exists', {
+        skippedSend: primary.action.slice(0, 100),
+        skippedTotal: primary._total,
+        chosenPrimary: alt.action.slice(0, 100),
+        chosenTotal: alt._total,
+      })
+      primary = alt
+    }
+  }
+
+  const rest = resolved.filter((r) => r.idx !== primary.idx)
+
+  const tRaw = primary.time.trim()
   const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
   return {
     ...result,
-    nextStep: first.action,
-    nextStepTitle: first.title || result.nextStepTitle,
-    nextStepDate: first.date,
+    nextStep: primary.action,
+    nextStepTitle: primary.title || result.nextStepTitle,
+    nextStepDate: primary.date,
     nextStepTimeHint: hint,
     additionalSteps: rest.map((r) => ({
       action: r.action,
