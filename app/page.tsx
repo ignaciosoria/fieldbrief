@@ -1395,12 +1395,24 @@ function joinActionAndTarget(action: string, target: string): string {
 }
 
 /**
- * Calendar-only title: VERB + CONTACT + ` — ` + COMPANY. Company = org the direct contact belongs to.
+ * Middle segment for VERB + [middle] + ` — ` + COMPANY: deliverable for send/email, person for call-style.
+ */
+function resolveActionMiddleSlot(r: StructureResult): string {
+  const primary = (r.actions || []).find((a) => a.primary === true)
+  if (primary && (primary.type === 'send' || primary.type === 'email')) {
+    const o = (primary.object || '').trim()
+    if (o) return o
+  }
+  return (r.nextStepTarget || r.contact || '').trim()
+}
+
+/**
+ * Calendar-only title: VERB + middle + ` — ` + COMPANY (middle = object for send/email, else contact).
  * Does not use enrichNextStep (avoids stacking customer/contact/location).
  */
 function buildCleanNextStepTitle(r: StructureResult): string {
   const action = (r.nextStepAction || '').trim()
-  const target = (r.nextStepTarget || r.contact || '').trim()
+  const target = resolveActionMiddleSlot(r)
   const company = resolveCompanyForTitle(r)
 
   if (action || target) {
