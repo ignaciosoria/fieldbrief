@@ -647,11 +647,11 @@ function buildCalendarDescriptionKeyDependency(
   return ''
 }
 
-const CALENDAR_DESC_MAX_SUPPORTING_LINES = 12
+const CALENDAR_DESC_MAX_LINES = 3
 
 /**
- * Calendar body: company, then each supporting step (same format as UI), then one ⚠️ dependency if any.
- * Telegraphic fragments only; no duplicate of primary step, title, or prior lines.
+ * Calendar body (max 3 lines), structured fields only — no transcript, summary, or model calendarDescription.
+ * Line 1: company · Line 2+: supporting steps (packed) · Last: ⚠️ dependency if any.
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
@@ -664,32 +664,44 @@ function buildCalendarDescription(data: StructureResult): string {
   const ns = stripEmojisForCalendar((data.nextStep || '').trim())
   if (ns) addEx(ns)
 
-  const lines: string[] = []
-
   const line1 = buildCalendarDescriptionLine1Company(data)
-  if (line1) {
-    lines.push(line1)
-    addEx(line1)
-  }
+  if (line1) addEx(line1)
 
-  let supportingCount = 0
+  const supportingCandidates: string[] = []
   for (const step of data.additionalSteps || []) {
-    if (supportingCount >= CALENDAR_DESC_MAX_SUPPORTING_LINES) break
     if (supportingStepDuplicatesPrimary(step, ns)) continue
     const formatted = formatSupportingStepLine(step)
     if (!formatted.trim()) continue
     let s = stripEmojisForCalendar(formatted.trim())
     s = truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
     if (calendarLineDuplicatesContext(s, exclude, ns)) continue
-    lines.push(s)
+    supportingCandidates.push(s)
     addEx(s)
-    supportingCount += 1
   }
 
   const dep = buildCalendarDescriptionKeyDependency(data, exclude, eventTitle)
-  if (dep) lines.push(dep)
 
-  return lines.join('\n').trim()
+  const out: string[] = []
+  if (line1) out.push(line1)
+
+  let room = CALENDAR_DESC_MAX_LINES - out.length
+  const depLine = dep
+  const supportSlots = depLine ? Math.max(0, room - 1) : room
+
+  if (supportSlots > 0 && supportingCandidates.length > 0) {
+    if (supportingCandidates.length <= supportSlots) {
+      out.push(...supportingCandidates.slice(0, supportSlots))
+    } else {
+      const head = supportingCandidates.slice(0, supportSlots - 1)
+      const tail = supportingCandidates.slice(supportSlots - 1)
+      const merged = truncateCalendarLine(tail.join(' · '), CALENDAR_DESC_LINE_MAX)
+      out.push(...head, merged)
+    }
+  }
+
+  if (depLine && out.length < CALENDAR_DESC_MAX_LINES) out.push(depLine)
+
+  return out.slice(0, CALENDAR_DESC_MAX_LINES).join('\n').trim()
 }
 
 /** Calendar event SUMMARY only — timing stripped; UI uses raw `nextStepTitle`. */

@@ -32,6 +32,7 @@ import {
   buildNormalizedActionsFromResult,
   type NormalizedActionType,
 } from '../../../lib/normalizedActions'
+import { normalizeNextStepTitleStrict } from '../../../lib/normalizeNextStepTitle'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -281,6 +282,7 @@ REFERENCE CASES (English phrasing — mirror in the note's language):
 ---
 
 nextStepTitle format: **VERB + CONTACT NAME + em dash separator + COMPANY NAME** (separator is exactly: space, Unicode em dash U+2014, space — never hyphen-minus for the separator).
+**Strict title verbs (server-enforced):** English notes → first word **Call**, **Send**, **Email**, or **Meet** only — never narrative ("we agreed", "I will", "we will", "plan to"), never full sentences; **max 8 words**. Spanish notes → **Llamar**, **Enviar**, **Email**, or **Reunirse** only — same rules.
 Always capitalize first letter.
 CORRECT: 'Call Ignacio Soria — Agrinova Science'
 CORRECT: 'Enviar materiales a Carmen — Pacific Brands'
@@ -358,7 +360,7 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 - **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
-- Set to **""** (empty). The app builds the calendar event body from **customer** / **contactCompany**, formatted **additionalSteps**, and at most one **⚠️** (blocker/dependency) line from **crmFull** — do not duplicate that content here or write full sentences for this field.
+- Set to **""** (empty). The app builds the calendar export **only** from structured JSON (never transcript or summaries): **max 3 lines** — (1) company from **customer** / **contactCompany** / **contact**, (2) one or more **additionalSteps** lines packed as space allows, (3) last line optional **⚠️** blocker from **crmFull**. No duplication; telegraphic phrases only.
 
 ---
 
@@ -996,14 +998,22 @@ function applyStructureResponsePostProcessing(
   result: StructureBody,
   timeZone: string,
   userNow: Date,
+  noteLanguage: string,
 ): StructureBody {
   let r = normalizeNoFollowUpStructure(result)
   r = applyRankedNextStepSelection(r, timeZone, userNow)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
+  const titleRaw = formatNextStepTitleEmDash(removeDuplicateWords(r.nextStepTitle))
   r = {
     ...r,
     contact: removeDuplicateWords(r.contact),
-    nextStepTitle: formatNextStepTitleEmDash(removeDuplicateWords(r.nextStepTitle)),
+    nextStepTitle: normalizeNextStepTitleStrict(titleRaw, {
+      noteLanguage,
+      contact: r.contact,
+      contactCompany: r.contactCompany,
+      customer: r.customer,
+      nextStep: r.nextStep,
+    }),
   }
   return r
 }
@@ -1102,7 +1112,7 @@ export async function POST(request: Request) {
     }
 
     result = enrichStructureWithExtractedActions(result)
-    result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow)
+    result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow, detectedLanguage)
     result = applyServerCalendarResolution(result, timeZone, userLocalNow)
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
