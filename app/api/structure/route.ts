@@ -33,6 +33,7 @@ import {
   type NormalizedActionType,
 } from '../../../lib/normalizedActions'
 import { normalizeNextStepTitleStrict } from '../../../lib/normalizeNextStepTitle'
+import { sanitizeAdditionalSteps } from '../../../lib/sanitizeAdditionalSteps'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -360,7 +361,7 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 - **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
-- Set to **""** (empty). The app builds the calendar export **only** from structured JSON (never transcript or summaries): **max 3 lines** — (1) company from **customer** / **contactCompany** / **contact**, (2) one or more **additionalSteps** lines packed as space allows, (3) last line optional **⚠️** blocker from **crmFull**. No duplication; telegraphic phrases only.
+- Set to **""** (empty). The app builds the calendar body **only** from structured JSON (never transcript, summaries, or this field): **max 3 lines** — (1) company plain text, (2) optional dash-prefixed first **additionalSteps** action, (3) optional dash-prefixed short **⚠️** line from **crmFull**. No sentences; no repetition.
 
 ---
 
@@ -433,7 +434,7 @@ Rules for the extra keys:
 - mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | dealer | company | other — use **dealer** for distributor/channel rep or org when relevant)
 - notes = "" or a very short string if needed
 
-additionalSteps = JSON array of objects: { "action", "contact", "company", "resolvedDate", "timeHint" } (legacy: "date", "time") for every other action. Use "" when unknown. Include timing when stated in the note.
+additionalSteps = JSON array of objects: { "action", "contact", "company", "resolvedDate", "timeHint" } for **secondary calendar actions only**. Each **action** MUST start with a real verb: English **Send** / **Email** / **Call** / **Follow up** / **Meet** (Spanish: **Enviar** / **Email** / **Llamar** / **Seguimiento** or **Dar seguimiento** / **Reunirse**). Short telegraphic lines only (**max ~8 words**); **never** full sentences, summaries, or context ("he is interested", "I just finished…"). **At most 2** items. Use "" when unknown for other fields. Include timing when stated in the note.
 
 Return ONLY valid JSON. No backticks. No explanation.`
 
@@ -1114,6 +1115,12 @@ export async function POST(request: Request) {
     result = enrichStructureWithExtractedActions(result)
     result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow, detectedLanguage)
     result = applyServerCalendarResolution(result, timeZone, userLocalNow)
+    result = {
+      ...result,
+      additionalSteps: sanitizeAdditionalSteps(result.additionalSteps, {
+        noteLanguage: detectedLanguage,
+      }),
+    }
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 

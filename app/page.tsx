@@ -13,6 +13,8 @@ import { normalizeProductField, productFieldToList } from '../lib/productField'
 import { formatProfessionalCrmNote } from '../lib/formatCrmSalesNote'
 import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 import { cleanCalendarTitle } from '../lib/calendarTitle'
+import { detectNoteLanguage } from '../lib/detectNoteLanguage'
+import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
 import {
   isWakeLockHeld,
   releaseWakeLock,
@@ -357,6 +359,10 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   const productMerged = normalizeProductField(
     productDisplayItems(base.crop, normalizeProductField(base.product)).join(', '),
   )
+  const noteLanguageHint = [base.nextStep, base.nextStepTitle, base.crmText].filter(Boolean).join('\n')
+  const additionalStepsSanitized = sanitizeAdditionalSteps(normalizeAdditionalSteps(base.additionalSteps), {
+    noteLanguage: detectNoteLanguage(noteLanguageHint.trim() || 'Note'),
+  })
   return {
     ...base,
     customer,
@@ -369,7 +375,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
-    additionalSteps: normalizeAdditionalSteps(base.additionalSteps),
+    additionalSteps: additionalStepsSanitized,
     mentionedEntities: base.mentionedEntities.map((e) => ({
       ...e,
       name: dedupeConsecutiveRepeatedWords(e.name),
@@ -631,7 +637,7 @@ function buildCalendarDescriptionKeyDependency(
   const tryLine = (raw: string): string | null => {
     let s = telegraphicInsightFragment(compactInsightForCalendar(raw))
     s = s.replace(/\s+/g, ' ').trim()
-    if (s.length < 8) return null
+    if (s.length < 6) return null
     if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
     if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
     return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
@@ -647,17 +653,15 @@ function buildCalendarDescriptionKeyDependency(
   return ''
 }
 
-const CALENDAR_DESC_MAX_LINES = 3
-
 /**
- * Calendar body (max 3 lines), structured fields only — no transcript, summary, or model calendarDescription.
- * Line 1: company · Line 2+: supporting steps (packed) · Last: ⚠️ dependency if any.
+ * Calendar export body: structured data only (max 3 lines).
+ * Line 1: company (plain) · Line 2: `- ` + first supporting action (if any) · Line 3: `- ` + ⚠️ dependency (if any).
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
   const exclude = new Set<string>()
   const addEx = (s: string) => {
-    const k = normalizeCalendarDedupeKey(s)
+    const k = normalizeCalendarDedupeKey(s.replace(/^\s*-\s*/, '').trim())
     if (k) exclude.add(k)
   }
   if (eventTitle) addEx(stripEmojisForCalendar(eventTitle))
@@ -667,7 +671,7 @@ function buildCalendarDescription(data: StructureResult): string {
   const line1 = buildCalendarDescriptionLine1Company(data)
   if (line1) addEx(line1)
 
-  const supportingCandidates: string[] = []
+  let supportingPlain = ''
   for (const step of data.additionalSteps || []) {
     if (supportingStepDuplicatesPrimary(step, ns)) continue
     const formatted = formatSupportingStepLine(step)
@@ -675,33 +679,20 @@ function buildCalendarDescription(data: StructureResult): string {
     let s = stripEmojisForCalendar(formatted.trim())
     s = truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
     if (calendarLineDuplicatesContext(s, exclude, ns)) continue
-    supportingCandidates.push(s)
+    supportingPlain = s
     addEx(s)
+    break
   }
 
-  const dep = buildCalendarDescriptionKeyDependency(data, exclude, eventTitle)
+  const depRaw = buildCalendarDescriptionKeyDependency(data, exclude, eventTitle)
+  const depPlain = depRaw.replace(/^\s*-\s*/, '').trim()
 
-  const out: string[] = []
-  if (line1) out.push(line1)
+  const lines: string[] = []
+  if (line1) lines.push(line1)
+  if (supportingPlain) lines.push(`- ${supportingPlain}`)
+  if (depPlain) lines.push(`- ${depPlain}`)
 
-  let room = CALENDAR_DESC_MAX_LINES - out.length
-  const depLine = dep
-  const supportSlots = depLine ? Math.max(0, room - 1) : room
-
-  if (supportSlots > 0 && supportingCandidates.length > 0) {
-    if (supportingCandidates.length <= supportSlots) {
-      out.push(...supportingCandidates.slice(0, supportSlots))
-    } else {
-      const head = supportingCandidates.slice(0, supportSlots - 1)
-      const tail = supportingCandidates.slice(supportSlots - 1)
-      const merged = truncateCalendarLine(tail.join(' · '), CALENDAR_DESC_LINE_MAX)
-      out.push(...head, merged)
-    }
-  }
-
-  if (depLine && out.length < CALENDAR_DESC_MAX_LINES) out.push(depLine)
-
-  return out.slice(0, CALENDAR_DESC_MAX_LINES).join('\n').trim()
+  return lines.slice(0, 3).join('\n').trim()
 }
 
 /** Calendar event SUMMARY only — timing stripped; UI uses raw `nextStepTitle`. */
