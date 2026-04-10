@@ -33,6 +33,11 @@ import {
   type SupportingStructuredType,
 } from '../../../lib/additionalStepEnrichment'
 import {
+  buildPrimaryBaseTitle,
+  buildSupportingBaseTitle,
+  type ActionStructuredFields,
+} from '../../../lib/actionTitleContract'
+import {
   buildNormalizedActionsFromResult,
   type NormalizedActionType,
 } from '../../../lib/normalizedActions'
@@ -72,6 +77,8 @@ type StructureBody = {
   /** 3–5 scannable → lines for calendar event body; separate from crmFull and crmText. */
   calendarDescription: string
   additionalSteps: AdditionalStep[]
+  /** Present when titles came from structured AI fields (verb/object/contact), not free-form prose. */
+  primaryActionStructured?: ActionStructuredFields
 }
 
 const client = new OpenAI({
@@ -375,6 +382,7 @@ type ChronologicalRow = {
   label?: string
   structuredDate?: string
   structuredTime?: string
+  actionStructured?: ActionStructuredFields
 }
 
 type ScoredRow = ChronologicalRow & {
@@ -445,6 +453,7 @@ function applyRankedNextStepSelection(
   timeZone: string,
   userNow: Date,
   rawNote: string,
+  noteLanguage: string,
 ): StructureBody {
   const anchor = toUserAnchorDateTime(userNow, timeZone)
   const rows: ChronologicalRow[] = []
@@ -458,6 +467,7 @@ function applyRankedNextStepSelection(
       title: (result.nextStepTitle || result.nextStep).trim(),
       date: (result.nextStepDate || '').trim(),
       time: (result.nextStepTimeHint || '').trim(),
+      actionStructured: result.primaryActionStructured,
     })
   }
   for (const s of result.additionalSteps || []) {
@@ -474,6 +484,7 @@ function applyRankedNextStepSelection(
       label: s.label,
       structuredDate: s.structuredDate,
       structuredTime: s.structuredTime,
+      actionStructured: s.actionStructured,
     })
   }
   if (rows.length === 0) return result
@@ -578,6 +589,19 @@ function applyRankedNextStepSelection(
   }
   const nextStepTimeHint = hintRaw ? normalizeTimeToHint(hintRaw, '') || hintRaw : ''
 
+  const winnerStructured = primary.actionStructured
+    ? {
+        ...primary.actionStructured,
+        date: nextStepDate,
+        time: nextStepTimeHint,
+      }
+    : undefined
+  const primaryLine = winnerStructured
+    ? primary.source === 'primary'
+      ? buildPrimaryBaseTitle(winnerStructured, noteLanguage)
+      : buildSupportingBaseTitle(winnerStructured, noteLanguage)
+    : primary.action
+
   logPrimaryCalendarDebug('ranking:after_selection', {
     candidatesBeforeSort: rows.map((r) => ({
       idx: r.idx,
@@ -588,7 +612,7 @@ function applyRankedNextStepSelection(
     })),
     selectedPrimary: {
       source: primary.source,
-      action: primary.action.slice(0, 160),
+      action: primaryLine.slice(0, 160),
       nextStepDate,
       nextStepTimeHint,
       timeRawUsed: hintRaw || '(empty)',
@@ -601,23 +625,40 @@ function applyRankedNextStepSelection(
     })),
   })
 
-  const rankedSupporting: AdditionalStep[] = restDeduped.map((r) => ({
-    action: r.action,
-    contact: '',
-    company: '',
-    resolvedDate: r.date,
-    timeHint: r.time ? normalizeTimeToHint(r.time, '') || r.time : '',
-    supportingType: r.supportingType,
-    label: r.label,
-    structuredDate: r.structuredDate,
-    structuredTime: r.structuredTime,
-  }))
+  const rankedSupporting: AdditionalStep[] = restDeduped.map((r) => {
+    const th = r.time ? normalizeTimeToHint(r.time, '') || r.time : ''
+    const rowStructured = r.actionStructured
+      ? {
+          ...r.actionStructured,
+          date: r.date,
+          time: th,
+        }
+      : undefined
+    const actionLine = rowStructured
+      ? r.source === 'primary'
+        ? buildPrimaryBaseTitle(rowStructured, noteLanguage)
+        : buildSupportingBaseTitle(rowStructured, noteLanguage)
+      : r.action
+    return {
+      action: actionLine,
+      contact: '',
+      company: '',
+      resolvedDate: r.date,
+      timeHint: th,
+      supportingType: r.supportingType,
+      label: r.label,
+      structuredDate: r.structuredDate,
+      structuredTime: r.structuredTime,
+      ...(rowStructured ? { actionStructured: rowStructured } : {}),
+    }
+  })
   return {
     ...result,
-    nextStep: primary.action,
-    nextStepTitle: primary.title || result.nextStepTitle,
+    nextStep: primaryLine,
+    nextStepTitle: primaryLine,
     nextStepDate,
     nextStepTimeHint,
+    primaryActionStructured: winnerStructured,
     /** Cleared so `applyServerCalendarResolution` cannot apply a pre-rank time reference to the ranked winner. */
     nextStepTimeReference: '',
     additionalSteps: enrichAdditionalStepsList(
@@ -692,6 +733,7 @@ function normalizeNoFollowUpStructure(result: StructureBody): StructureBody {
     nextStepTimeHint: '',
     additionalSteps: [],
     nextStepConfidence: 'low',
+    primaryActionStructured: undefined,
   }
 }
 
@@ -754,7 +796,7 @@ function applyStructureResponsePostProcessing(
   rawNote: string,
 ): StructureBody {
   let r = normalizeNoFollowUpStructure(result)
-  r = applyRankedNextStepSelection(r, timeZone, userNow, rawNote)
+  r = applyRankedNextStepSelection(r, timeZone, userNow, rawNote, noteLanguage)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   const titleRaw = formatNextStepTitleEmDash(removeDuplicateWords(r.nextStepTitle))
   r = {
@@ -766,6 +808,7 @@ function applyStructureResponsePostProcessing(
       contactCompany: r.contactCompany,
       customer: r.customer,
       nextStep: r.nextStep,
+      primaryActionStructured: r.primaryActionStructured,
     }),
   }
   return r
@@ -896,6 +939,9 @@ export async function POST(request: Request) {
       nextStepTimeReference: (result.nextStepTimeReference || '').trim(),
       nextStepTimeHint: result.nextStepTimeHint.trim(),
       nextStepConfidence: result.nextStepConfidence,
+      ...(result.primaryActionStructured
+        ? { primaryActionStructured: result.primaryActionStructured }
+        : {}),
       ambiguityFlags: result.ambiguityFlags,
       mentionedEntities: result.mentionedEntities.map((e) => ({
         name: dedupeConsecutiveRepeatedWords(titleCaseWords(e.name)),
@@ -918,6 +964,7 @@ export async function POST(request: Request) {
         ...(s.label?.trim() ? { label: s.label.trim() } : {}),
         ...(s.structuredDate?.trim() ? { structuredDate: s.structuredDate.trim() } : {}),
         ...(s.structuredTime?.trim() ? { structuredTime: s.structuredTime.trim() } : {}),
+        ...(s.actionStructured ? { actionStructured: s.actionStructured } : {}),
       })),
     }
 

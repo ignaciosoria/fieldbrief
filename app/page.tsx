@@ -15,6 +15,7 @@ import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 import { cleanCalendarTitle } from '../lib/calendarTitle'
 import { detectNoteLanguage } from '../lib/detectNoteLanguage'
 import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
+import type { ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
 import {
@@ -58,7 +59,7 @@ import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
-type SupportingStructuredType = 'send' | 'email' | 'other'
+type SupportingStructuredType = 'send' | 'email' | 'call' | 'other'
 
 type AdditionalStep = {
   action: string
@@ -70,6 +71,7 @@ type AdditionalStep = {
   label?: string
   structuredDate?: string
   structuredTime?: string
+  actionStructured?: ActionStructuredFields
 }
 
 /** Backend-built list (Phase 1); primary/supporting decided server-side. */
@@ -118,6 +120,7 @@ type StructureResult = {
   additionalSteps: AdditionalStep[]
   /** Ordered actions with backend-assigned primary; mirrors API `actions`. */
   actions: NormalizedAction[]
+  primaryActionStructured?: ActionStructuredFields
 }
 
 const emptyResult: StructureResult = {
@@ -235,10 +238,26 @@ function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
             : ''
       const stRaw = typeof o.supportingType === 'string' ? o.supportingType.trim().toLowerCase() : ''
       const supportingType: SupportingStructuredType | undefined =
-        stRaw === 'send' || stRaw === 'email' || stRaw === 'other' ? stRaw : undefined
+        stRaw === 'send' || stRaw === 'email' || stRaw === 'call' || stRaw === 'other'
+          ? stRaw
+          : undefined
       const label = typeof o.label === 'string' ? o.label.trim() : ''
       const structuredDate = typeof o.structuredDate === 'string' ? o.structuredDate.trim() : ''
       const structuredTime = typeof o.structuredTime === 'string' ? o.structuredTime.trim() : ''
+      const asRaw = o.actionStructured
+      let actionStructured: ActionStructuredFields | undefined
+      if (asRaw && typeof asRaw === 'object') {
+        const a = asRaw as Record<string, unknown>
+        actionStructured = {
+          type: typeof a.type === 'string' ? a.type : '',
+          verb: typeof a.verb === 'string' ? a.verb : '',
+          object: typeof a.object === 'string' ? a.object : '',
+          contact: typeof a.contact === 'string' ? a.contact : '',
+          company: typeof a.company === 'string' ? a.company : '',
+          date: typeof a.date === 'string' ? a.date : '',
+          time: typeof a.time === 'string' ? a.time : '',
+        }
+      }
       out.push({
         action,
         contact: typeof o.contact === 'string' ? o.contact.trim() : '',
@@ -249,6 +268,7 @@ function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
         ...(label ? { label } : {}),
         ...(structuredDate ? { structuredDate } : {}),
         ...(structuredTime ? { structuredTime } : {}),
+        ...(actionStructured ? { actionStructured } : {}),
       })
     }
   }
@@ -310,64 +330,6 @@ function getClientNowIso(): string {
   return new Date().toISOString()
 }
 
-function stripDiacritics(s: string): string {
-  return s.normalize('NFD').replace(/\p{M}/gu, '')
-}
-
-function parseWeekdayNameToJsDay(raw: string): number | null {
-  const t = stripDiacritics(raw.trim().toLowerCase())
-  if (!t) return null
-  const map: Record<string, number> = {
-    sunday: 0,
-    sun: 0,
-    domingo: 0,
-    monday: 1,
-    mon: 1,
-    lunes: 1,
-    lun: 1,
-    tuesday: 2,
-    tue: 2,
-    tues: 2,
-    martes: 2,
-    mar: 2,
-    wednesday: 3,
-    wed: 3,
-    miercoles: 3,
-    thursday: 4,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    jueves: 4,
-    friday: 5,
-    fri: 5,
-    viernes: 5,
-    vie: 5,
-    saturday: 6,
-    sat: 6,
-    sabado: 6,
-    sab: 6,
-  }
-  if (map[t] !== undefined) return map[t]
-  for (const w of t.split(/\s+/)) {
-    if (w && map[w] !== undefined) return map[w]
-  }
-  return null
-}
-
-/** MM/DD/YYYY, ISO date, or weekday name → MM/DD/YYYY (weekday → next occurrence, not today). */
-function resolveNextStepDateToMmdd(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ''
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
-    const [y, m, day] = t.slice(0, 10).split('-')
-    return `${m}/${day}/${y}`
-  }
-  const wd = parseWeekdayNameToJsDay(t)
-  if (wd === null) return raw
-  return formatLocalMmDdYyyy(getNextDayOfWeek(new Date(), wd))
-}
-
 function normalizeStructureResult(m: StructureResult): StructureResult {
   const { dealer: _legacyDealer, ...mRest } = m as StructureResult & { dealer?: string }
   const base = {
@@ -416,7 +378,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
       ),
     ),
     nextStepTimeReference: (base.nextStepTimeReference || '').trim(),
-    nextStepDate: resolveNextStepDateToMmdd((base.nextStepDate || '').trim()),
+    nextStepDate: (base.nextStepDate || '').trim(),
     actions: normalizeActions(base.actions),
   }
 }
@@ -885,7 +847,13 @@ function buildCalendarOpenOptsForSupportingStep(
   let title: string
   if (step.supportingType && step.label?.trim()) {
     const base = stripEmojisForCalendar(
-      supportingStructuredActionLine(step.supportingType, step.label.trim(), langEs),
+      supportingStructuredActionLine(
+        step.supportingType,
+        step.label.trim(),
+        langEs,
+        step.actionStructured?.contact,
+        step.actionStructured?.object,
+      ),
     )
     title = supportingCalendarEventTitleWithContext(base, step, r)
   } else {

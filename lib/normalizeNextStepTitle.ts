@@ -1,3 +1,4 @@
+import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitleContract'
 import { isNoClearFollowUpLine } from './noFollowUp'
 
 const EM_DASH = '\u2014'
@@ -236,6 +237,8 @@ export type NormalizeNextStepTitleContext = {
   contactCompany: string
   customer: string
   nextStep: string
+  /** When set, title is built only from structured fields (no contact inference from prose). */
+  primaryActionStructured?: ActionStructuredFields
 }
 
 /**
@@ -246,6 +249,11 @@ export function normalizeNextStepTitleStrict(
   title: string,
   ctx: NormalizeNextStepTitleContext,
 ): string {
+  if (ctx.primaryActionStructured) {
+    const base = buildPrimaryBaseTitle(ctx.primaryActionStructured, ctx.noteLanguage)
+    return normalizeEmDashSeparators(base).trim()
+  }
+
   const raw = String(title ?? '').trim()
   if (!raw || isNoClearFollowUpLine(raw)) return raw
 

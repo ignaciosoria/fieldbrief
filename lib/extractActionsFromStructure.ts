@@ -95,6 +95,7 @@ export function enrichStructureWithExtractedActions<
     crmFull: string[]
     calendarDescription: string
     additionalSteps: AdditionalStep[]
+    primaryActionStructured?: unknown
   },
 >(result: T): T {
   const line = (result.nextStepTitle || result.nextStep || '').trim()
@@ -162,6 +163,7 @@ export function enrichStructureWithExtractedActions<
     ...result,
     nextStep,
     nextStepTitle,
+    primaryActionStructured: undefined,
     additionalSteps: [...(result.additionalSteps || []), ...extracted],
   }
 }

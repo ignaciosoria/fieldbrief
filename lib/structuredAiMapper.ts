@@ -1,14 +1,23 @@
 import type { AdditionalStep } from './additionalStepEnrichment'
+import {
+  buildPrimaryBaseTitle,
+  buildSupportingBaseTitle,
+  normalizePrimarySendObjectField,
+  verbForSupportingStructuredType,
+  type ActionStructuredFields,
+} from './actionTitleContract'
 import { filterInsightsToContextOnly } from './filterInsightLines'
-import { inferActionKind } from './nextStepActionKind'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
-export type StructuredSupportingType = 'send' | 'email' | 'other'
+export type StructuredSupportingType = 'send' | 'email' | 'call' | 'other'
 
 export type StructuredPrimary = {
   type: StructuredPrimaryType
+  /** Person (rep’s counterparty); never used as the send “object” in titles. */
   contact: string
+  /** What to send/share for type send (e.g. “updated program”); "" for call/meeting. */
+  object: string
   company: string
   /** MM/DD/YYYY or "" */
   date: string
@@ -18,8 +27,12 @@ export type StructuredPrimary = {
 
 export type StructuredSupporting = {
   type: StructuredSupportingType
-  /** Max 4–5 words; action label only */
+  /** Short object (send/email) or contact name (call) when object/contact omitted. */
   label: string
+  /** Explicit object for send/email (preferred over label). */
+  object: string
+  /** Explicit contact for type other / calls (preferred over label). */
+  contact: string
   date: string
   time: string
 }
@@ -44,6 +57,7 @@ function normSupportingType(raw: string): StructuredSupportingType | null {
   const t = raw.trim().toLowerCase()
   if (t === 'send') return 'send'
   if (t === 'email' || t === 'e-mail') return 'email'
+  if (t === 'call' || t === 'phone' || t === 'follow_up' || t === 'follow-up') return 'call'
   if (t === 'other') return 'other'
   return null
 }
@@ -76,10 +90,14 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     const st = normSupportingType(str(s.type))
     if (!st) continue
     const label = truncateWords(str(s.label), 5)
-    if (!label) continue
+    const object = truncateWords(str(s.object), 5)
+    const contact = str(s.contact).trim()
+    if (!label && !object && !contact) continue
     supporting.push({
       type: st,
       label,
+      object,
+      contact,
       date: str(s.date),
       time: str(s.time),
     })
@@ -96,6 +114,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     primary: {
       type: pType,
       contact: str(pr.contact),
+      object: truncateWords(str(pr.object), 8),
       company: str(pr.company),
       date: str(pr.date),
       time: str(pr.time),
@@ -107,7 +126,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
 
 /**
  * When the transcript orders send/email before call, the model sometimes marks primary as call/follow_up.
- * Correct primary.type so buildNextStepLine does not emit "Call" for a same-day send.
+ * Correct primary.type so the title builder does not emit "Call" for a same-day send.
  */
 export function alignStructuredPayloadWithNote(
   note: string,
@@ -127,6 +146,11 @@ export function alignStructuredPayloadWithNote(
   if (idxSend !== -1 && idxCall !== -1 && idxSend < idxCall) {
     if (primary.type === 'call' || primary.type === 'follow_up') {
       primary.type = 'send'
+    }
+    /** Second action is a call — prefer explicit supporting type `call` over `other`. */
+    const first = supporting[0]
+    if (first && first.type === 'other') {
+      supporting[0] = { ...first, type: 'call' }
     }
   }
 
@@ -183,49 +207,32 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean): string {
   }
 }
 
-function buildNextStepLine(
-  type: StructuredPrimaryType,
-  contact: string,
-  company: string,
-  langEs: boolean,
-): string {
-  const v = verbForPrimary(type, langEs)
-  const c = contact.trim()
-  const co = company.trim()
-  const em = '\u2014'
-  if (c && co) return `${v} ${c} ${em} ${co}`
-  if (co) return `${v} ${em} ${co}`
-  if (c) return `${v} ${c}`
-  return v
-}
-
-function supportingToAction(s: StructuredSupporting, langEs: boolean): string {
-  const label = truncateWords(s.label, 5)
-  const kind = inferActionKind(`${s.type} ${label}`)
-
-  if (langEs) {
-    if (s.type === 'email') return `Email ${label}`
-    if (s.type === 'send') return `Enviar ${label}`
-    if (kind === 'call' || kind === 'follow_up') return `Llamar ${label}`
-    if (kind === 'meeting') return `Reunirse ${label}`
-    if (kind === 'send') return `Enviar ${label}`
-    return `Enviar ${label}`
-  }
-  if (s.type === 'email') return `Email ${label}`
-  if (s.type === 'send') return `Send ${label}`
-  if (kind === 'call' || kind === 'follow_up') return `Call ${label}`
-  if (kind === 'meeting') return `Meet ${label}`
-  if (kind === 'send') return `Send ${label}`
-  return `Send ${label}`
-}
-
-/** Calendar title line from structured supporting type + label only (no primary contact/company). */
+/** Calendar title line from structured supporting fields only (no suffix; app may add contact/company). */
 export function supportingStructuredActionLine(
   type: StructuredSupportingType,
   label: string,
   langEs: boolean,
+  contact?: string,
+  object?: string,
 ): string {
-  return supportingToAction({ type, label: truncateWords(label, 5), date: '', time: '' }, langEs)
+  const verb = verbForSupportingStructuredType(type, langEs)
+  const noteLanguage = langEs ? 'spanish' : 'english'
+  const lab = truncateWords(label, 5)
+  const obj =
+    type === 'call'
+      ? (object || '').trim()
+      : (object || '').trim() || (type === 'send' || type === 'email' ? lab : '')
+  const con = (contact || '').trim() || (type === 'call' || type === 'other' ? lab : '')
+  const fields: ActionStructuredFields = {
+    type,
+    verb,
+    object: obj,
+    contact: con,
+    company: '',
+    date: '',
+    time: '',
+  }
+  return buildSupportingBaseTitle(fields, noteLanguage)
 }
 
 export type StructureBodyLike = {
@@ -252,6 +259,7 @@ export type StructureBodyLike = {
   crmFull: string[]
   calendarDescription: string
   additionalSteps: AdditionalStep[]
+  primaryActionStructured?: ActionStructuredFields
 }
 
 /**
@@ -270,31 +278,72 @@ export function structuredPayloadToStructureBody(
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()
-  const nextStep = buildNextStepLine(primary.type, contact, company, langEs)
-  const nextStepTitle = nextStep
+  const objectRaw = primary.object.trim()
   const verb = verbForPrimary(primary.type, langEs)
-  const nextStepAction = verb
-  const nextStepTarget = contact
   const nextStepDate = normalizeDateMmdd(primary.date)
   const nextStepTimeHint = normalizeTimeHint(primary.time)
 
+  const object =
+    primary.type === 'send'
+      ? normalizePrimarySendObjectField(objectRaw, contact, verb, noteLanguage)
+      : objectRaw
+
+  const primaryStructured: ActionStructuredFields = {
+    type: primary.type,
+    verb,
+    object,
+    contact,
+    company,
+    date: nextStepDate,
+    time: nextStepTimeHint,
+  }
+  const nextStep = buildPrimaryBaseTitle(primaryStructured, noteLanguage)
+  const nextStepTitle = nextStep
+  const nextStepAction = verb
+  const nextStepTarget = contact
   const ambiguityFlags: string[] = []
-  if (!contact) ambiguityFlags.push('unclear_contact')
+  if (primary.type === 'send' && !object) ambiguityFlags.push('unclear_object')
+  if (
+    (primary.type === 'call' ||
+      primary.type === 'follow_up' ||
+      primary.type === 'meeting') &&
+    !contact
+  ) {
+    ambiguityFlags.push('unclear_contact')
+  }
   if (!nextStepDate) ambiguityFlags.push('unclear_date')
 
   const additionalSteps: AdditionalStep[] = supporting.map((s) => {
     const sd = normalizeDateMmdd(s.date)
     const st = normalizeTimeHint(s.time)
+    const lab = truncateWords(s.label, 5)
+    const objectPart =
+      s.type === 'call'
+        ? ''
+        : truncateWords(s.object, 5) || (s.type === 'send' || s.type === 'email' ? lab : '')
+    const contactPart =
+      s.contact.trim() || (s.type === 'call' || s.type === 'other' ? lab : '')
+    const sv = verbForSupportingStructuredType(s.type, langEs)
+    const actionStructured: ActionStructuredFields = {
+      type: s.type,
+      verb: sv,
+      object: objectPart,
+      contact: contactPart,
+      company,
+      date: sd,
+      time: st,
+    }
     return {
-      action: supportingToAction(s, langEs),
+      action: buildSupportingBaseTitle(actionStructured, noteLanguage),
       contact: contact || '',
       company: company || '',
       resolvedDate: sd,
       timeHint: st,
       supportingType: s.type,
-      label: truncateWords(s.label, 5),
+      label: lab || objectPart || contactPart,
       structuredDate: sd,
       structuredTime: st,
+      actionStructured,
     }
   })
 
@@ -326,5 +375,6 @@ export function structuredPayloadToStructureBody(
     crmFull,
     calendarDescription: '',
     additionalSteps,
+    primaryActionStructured: primaryStructured,
   }
 }
