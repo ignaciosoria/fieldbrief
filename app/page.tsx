@@ -1589,7 +1589,10 @@ export default function Home() {
   const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
+  const [primaryAdded, setPrimaryAdded] = useState(false)
+  const [primaryPending, setPrimaryPending] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const primaryCalendarResultKeyRef = useRef<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -1605,6 +1608,44 @@ export default function Home() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    const flushPrimaryPending = () => {
+      setPrimaryPending((pending) => {
+        if (pending) {
+          setPrimaryAdded(true)
+          return false
+        }
+        return pending
+      })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') flushPrimaryPending()
+    }
+    const onFocus = () => flushPrimaryPending()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!result) {
+      setPrimaryAdded(false)
+      setPrimaryPending(false)
+      primaryCalendarResultKeyRef.current = null
+      return
+    }
+    const key = `${result.nextStep || ''}|${result.nextStepDate || ''}|${result.contact || ''}`
+    const prev = primaryCalendarResultKeyRef.current
+    if (prev !== null && prev !== key) {
+      setPrimaryAdded(false)
+      setPrimaryPending(false)
+    }
+    primaryCalendarResultKeyRef.current = key
+  }, [result])
 
   useEffect(() => {
     if (!sessionEmail) {
@@ -2368,25 +2409,30 @@ export default function Home() {
     setSelectedNote(null)
     setShowEditArea(false)
     setShowCalendarToast(false)
+    setPrimaryAdded(false)
+    setPrimaryPending(false)
   }
 
   /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
-  const addResultToCalendar = (r: StructureResult) => {
+  const addResultToCalendar = (r: StructureResult, flowOpts?: { trackPrimaryFlow?: boolean }) => {
     if (isNoClearFollowUpResult(r)) return
     if (navigator.vibrate) navigator.vibrate(10)
-    const opts = buildCalendarOpenOptsFromResult(r)
-    const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+    const calendarOpts = buildCalendarOpenOptsFromResult(r)
+    const range = buildGoogleCalendarDateRangeParts(calendarOpts.dateMmddyyyy, calendarOpts.time)
     if (!range) {
       setError('Could not build the event. Check date and time in the note.')
       return
     }
+    const trackPrimary = flowOpts?.trackPrimaryFlow === true
     if (session?.user) {
-      openGoogleCalendarWindow(opts)
+      openGoogleCalendarWindow(calendarOpts)
+      if (trackPrimary) setPrimaryPending(true)
       setShowCalendarToast(true)
       return
     }
-    const ok = openAppleCalendarFromOpts(opts)
+    const ok = openAppleCalendarFromOpts(calendarOpts)
     if (ok) {
+      if (trackPrimary) setPrimaryPending(true)
       setShowCalendarToast(true)
     } else {
       setError('Could not create the calendar file.')
@@ -3258,15 +3304,26 @@ export default function Home() {
 
                       {!isNoClearFollowUpResult(result) ? (
                         <button
-                          onClick={() => addResultToCalendar(result)}
+                          onClick={() => addResultToCalendar(result, { trackPrimaryFlow: true })}
                           type="button"
-                          className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
-                          style={{ backgroundColor: '#4F46E5' }}
+                          disabled={primaryAdded}
+                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased transition-[transform,box-shadow,filter] duration-200 ease-out ${
+                            primaryAdded
+                              ? 'cursor-default bg-emerald-600 shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
+                              : 'shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]'
+                          }`}
+                          style={primaryAdded ? undefined : { backgroundColor: '#4F46E5' }}
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                          </svg>
-                          <span className="tracking-tight">Add to calendar</span>
+                          {primaryAdded ? (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                          )}
+                          <span className="tracking-tight">{primaryAdded ? 'Added' : 'Add to calendar'}</span>
                         </button>
                       ) : null}
 
