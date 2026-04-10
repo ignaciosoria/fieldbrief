@@ -15,13 +15,18 @@ function isDocumentLikeDeliverableSegment(segment: string): boolean {
   const t = segment.trim().toLowerCase().replace(/\s+/g, ' ')
   if (!t) return false
   if (t === 'roi analysis template' || t.includes('roi analysis template')) return true
+  if (/\bmarket\s+analysis\b/.test(t)) return true
+  if (/\b(competitive|competitor|industry|feasibility|technical)\s+analysis\b/.test(t)) return true
   if (/\bprice\s+comparison\b/.test(t)) return true
   if (/\b(brochure|brochures|sell\s*sheet|sell\s*sheets|one[- ]pager|one\s+pager)\b/.test(t)) return true
-  if (/\b(monthly|weekly|quarterly)\s+report\b/.test(t)) return true
+  if (/\b(monthly|weekly|quarterly|annual|sales|market|status|progress)\s+report\b/.test(t))
+    return true
   if (/\b(white\s*paper|whitepaper)\b/.test(t)) return true
+  if (/\b(slide\s*deck|pitch\s*deck)\b/.test(t)) return true
   if (/\btemplate\b/.test(t) && /\b(analysis|roi|report|budget|proposal|deck|slide|excel)\b/.test(t))
     return true
-  if (/\b(analysis|analyses)\b/.test(t) && /\b(roi|template|deck|pdf)\b/.test(t)) return true
+  if (/\b(analysis|analyses)\b/.test(t) && /\b(roi|template|deck|pdf|market|competitive)\b/.test(t))
+    return true
   if (t === 'template' || t === 'templates' || t === 'report' || t === 'analysis' || t === 'brochure')
     return true
   return false

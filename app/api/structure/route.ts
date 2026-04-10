@@ -154,7 +154,7 @@ DECISION POLICY — DEAL ADVANCEMENT (NOT SUMMARY, NOT FIRST TASK IN THE NOTE):
 - Do **not** pick the **first** action mentioned in the dictation order; do **not** merge multiple actions into one line; do **not** default to generic "send info" when a stronger engagement step exists.
 - **Reliability beats polish:** **nextStep** / **nextStepAction** must be **factually aligned** with the note. For **contact**, **nextStepDate**, and **nextStepTarget**, follow the **RELIABILITY MANDATE** above (empty + **ambiguityFlags** instead of guessing).
 
-INTERNAL (reason only — do not output): List candidate forward actions, classify each by tier (below), identify who each action targets (must be **direct contact** unless org-only), then pick **one** primary. Secondary actions → **additionalSteps** in chronological order when dated.
+INTERNAL (reason only — do not output): List candidate forward actions with resolved **calendar day** for each (from note + context). If days differ, **earliest day wins** primary (before tier). If same day, classify by tier (below), identify who each action targets (must be **direct contact** unless org-only), then pick **one** primary. Secondary actions → **additionalSteps** in chronological order when dated.
 
 CONFIDENCE + URGENCY MAPPING (use existing confidence / nextStepConfidence only):
 - confirmed + clear action/timing + concrete request/agreement → confidence **high** (urgency high/normal based on wording).
@@ -170,11 +170,17 @@ NEXT STEP — PRIORITY (WHEN MULTIPLE FORWARD ACTIONS EXIST):
 **Tier 2:** Meetings, visits, demos, site walkthroughs, scheduled appointments (or **scheduling** one if that is the clear next commercial move).
 **Tier 3 — Lowest:** Sending information only — email, deck, brochure, quote, samples, materials — use as **primary** only when **no** Tier 1 or Tier 2 action is appropriate **or** the note makes a **time-bound send** the explicit gate (e.g. proposal/RFP due **before** a decision meeting — then that send can be primary **for that date**).
 
+**CHRONOLOGY FIRST (MANDATORY — APPLIES BEFORE TIER):**
+- When two or more forward actions are anchored to **different calendar days** (using **today** / **tomorrow** / weekday / explicit date from the note + calendar context), the action on the **earliest** calendar day is **always** the **primary** next step, and later-day actions go to **additionalSteps** — **even if** the earlier-day action is Tier 3 (send) and the later-day action is Tier 1 (call).
+- **Today always beats tomorrow** (and any later day). Example: "Send market analysis today before 5pm" and "Call tomorrow at 10am" → **primary = send market analysis today** (with **nextStepDate** = today and time hint as needed); **additionalSteps** = call tomorrow at 10am.
+- Only when candidates fall on the **same calendar day** does **tier** decide among them (Tier 1 > Tier 2 > Tier 3), then buyer preference, then earlier clock time that day.
+
 Rules:
-- **Prefer the tier**, not dictation order. Example: "I'll send samples this week and call her Thursday" → **primary = call Thursday** (Tier 1); samples → **additionalSteps** with this week's date if known.
-- **Do not** choose a weak Tier 3 send as primary when the note commits to a **call or meeting** that advances the deal.
+- **Prefer chronology across days**, then **tier within the same day**, not dictation order. Example: "I'll send samples this week and call her Thursday" → if **send** is earlier in the week than **Thursday call**, primary = whichever day is **earlier**; if both land on the same day, **primary = call** (Tier 1 over Tier 3).
+- Example: "I'll send samples this week and call her Thursday" when send is Tuesday and call is Thursday → **primary = send Tuesday** (earlier day); call Thursday → **additionalSteps**.
+- **Do not** choose a weak Tier 3 send as primary over a Tier 1 call **when both are on the same day** — tier still wins **same day**.
 - **Exception:** If the only explicit forward commitments are sends (no call/meeting to book), Tier 3 wins by default — still pick the **single** send that best advances the deal (often the earliest deadline).
-- **Among actions in the same tier:** prefer (1) what the buyer **explicitly asked for or confirmed**, then (2) **earlier** date/time when both are comparable, then (3) the action that unlocks the next decision.
+- **Among actions on the same calendar day and same tier:** prefer (1) what the buyer **explicitly asked for or confirmed**, then (2) **earlier** clock time, then (3) the action that unlocks the next decision.
 - **Past** actions (already done this visit) are **not** the next step — the **next forward** action is.
 - If timing is not explicit, do **not** invent an exact date/time in JSON fields.
 - If the note signals low urgency ("busy", "not the right moment", "later", neutral interest), keep urgency low and avoid aggressive immediate timing.
@@ -206,18 +212,19 @@ REFERENCE CASES (English phrasing — mirror in the note's language):
 - **Past** check-in is not the primary next step. The **forward** commitment wins: **Call [direct contact's name] Monday** — use the actual **contact** name from the note, not the literal text "[contact]".
 - **nextStepDate** = upcoming Monday from calendar context; same wording in **nextStep** and **nextStepTitle** (with ** — COMPANY** when org is known per usual rules).
 
-**CASE 5 — Call + send both mentioned (tier beats order):**
-- Note: "Hoy le mando precios y la llamo mañana" / "Sending prices today, call her tomorrow."
-- **Primary = call tomorrow** (Tier 1 over Tier 3); **send prices today** → **additionalSteps** with today's date if stated.
-- If the note says the **decision** depends on **receiving** the quote **today** before any call, the send can be primary — rare; use **confidence** + **ambiguityFlags** if ambiguous.
+**CASE 5 — Send today + call tomorrow (chronology beats tier):**
+- Note: "Hoy le mando precios y la llamo mañana" / "Sending prices today, call her tomorrow" / "Send market analysis today before 5pm, call tomorrow at 10am."
+- **Primary = today's send** (earlier calendar day); **call tomorrow** → **additionalSteps** with tomorrow's date/time. Do **not** pick tomorrow's call as primary just because calls are Tier 1.
+- **Same-day** exception: "Send prices this morning and call her this afternoon" (both today) → **primary = call** (Tier 1 over Tier 3 on the **same** day).
 
 **CASE 6 — Two dated send actions (same tier — use deadline order):**
 - Note: "Discussed two products. Wants prices Friday, sample next week."
 - Both Tier 3 → primary = **earlier** deadline (**Friday** pricing); sample → **additionalSteps** for next week.
 
-**CASE 7 — Samples this week vs call Thursday (chronology vs tier):**
+**CASE 7 — Samples this week vs call Thursday:**
 - Note: "Le mando muestras esta semana y la llamo el jueves."
-- **Primary = call Thursday** (Tier 1); samples → **additionalSteps** (with "this week" date if resolvable). Do **not** pick send only because it was said first.
+- If **send** resolves to a **specific calendar day before Thursday**, **primary = send that day** (earlier day wins); **call Thursday** → **additionalSteps**.
+- If send has **no day more specific than "this week"** but call is **Thursday**, **primary = call Thursday** (Tier 1); samples → **additionalSteps** when dated.
 
 ---
 
@@ -320,7 +327,7 @@ STRICT — what belongs in **product**:
 - NEVER include **competitor products**, "what they use today" from another vendor, or substitutes sold by rivals — always **⚔️** in **crmFull** instead.
 
 **Documents / deliverables are NEVER products (MANDATORY):**
-- **documents**, **templates**, **analyses**, **reports**, **brochures**, **sell sheets**, **one-pagers**, **decks**, **PDFs/spreadsheets** (as deliverables), **comparison sheets**, **marketing collateral** — these are **not** JSON **product** entries under any name (including "ROI Analysis Template", "QBR deck", "pricing comparison", "product brochure").
+- **documents**, **templates**, **analyses**, **reports**, **brochures**, **sell sheets**, **one-pagers**, **decks**, **PDFs/spreadsheets** (as deliverables), **comparison sheets**, **marketing collateral** — these are **not** JSON **product** entries under any name (including "ROI Analysis Template", "Market Analysis", "competitive analysis", "QBR deck", "pricing comparison", "product brochure").
 - If the **only** offerings mentioned in the note are deliverables of this kind — **nothing** that is a real sold SKU or subscription/service — set **product** to **""** (empty string). Do **not** output a pill for a document.
 - Describe sends (e.g. "email the ROI template") in **nextStep**, **crmText**, and **crmFull** (if relevant) only — **never** duplicate that document name into **product**.
 
@@ -643,6 +650,142 @@ function parseAdditionalSteps(value: unknown): AdditionalStep[] {
   return out
 }
 
+/** Sort key: MM/DD/YYYY, ISO date, or missing (missing = last). */
+function parseStepDateMs(dateStr: string): number {
+  const t = (dateStr || '').trim()
+  if (!t) return Number.POSITIVE_INFINITY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) {
+    const [mm, dd, yyyy] = t.split('/').map((x) => parseInt(x, 10))
+    if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return Number.POSITIVE_INFINITY
+    return new Date(yyyy, mm - 1, dd).getTime()
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const d = new Date(t.slice(0, 10) + 'T12:00:00')
+    return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
+  }
+  const d = new Date(t)
+  return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
+}
+
+type ChronologicalRow = {
+  idx: number
+  source: 'primary' | 'additional'
+  action: string
+  title: string
+  date: string
+  time: string
+}
+
+/** Earliest dated action becomes primary next step; rest become additionalSteps. */
+function applyChronologicalNextStepValidation(result: StructureBody): StructureBody {
+  const rows: ChronologicalRow[] = []
+  let idx = 0
+  const primaryAction = (result.nextStep || '').trim()
+  if (primaryAction) {
+    rows.push({
+      idx: idx++,
+      source: 'primary',
+      action: result.nextStep.trim(),
+      title: (result.nextStepTitle || result.nextStep).trim(),
+      date: (result.nextStepDate || '').trim(),
+      time: (result.nextStepTimeHint || '').trim(),
+    })
+  }
+  for (const s of result.additionalSteps || []) {
+    const a = (s.action || '').trim()
+    if (!a) continue
+    rows.push({
+      idx: idx++,
+      source: 'additional',
+      action: s.action.trim(),
+      title: s.action.trim(),
+      date: (s.date || '').trim(),
+      time: (s.time || '').trim(),
+    })
+  }
+  if (rows.length === 0) return result
+
+  rows.sort((a, b) => {
+    const da = parseStepDateMs(a.date)
+    const db = parseStepDateMs(b.date)
+    if (da !== db) return da - db
+    return a.idx - b.idx
+  })
+
+  const [first, ...rest] = rows
+  const tRaw = first.time.trim()
+  const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
+  return {
+    ...result,
+    nextStep: first.action,
+    nextStepTitle: first.title || result.nextStepTitle,
+    nextStepDate: first.date,
+    nextStepTimeHint: hint,
+    additionalSteps: rest.map((r) => ({
+      action: r.action,
+      date: r.date,
+      time: r.time ? normalizeTimeToHint(r.time, '') || r.time : '',
+    })),
+  }
+}
+
+const DOCUMENT_KEYWORDS_FOR_PRODUCT = [
+  'report',
+  'analysis',
+  'template',
+  'proposal',
+  'presentation',
+  'brochure',
+  'document',
+  'study',
+  'comparison',
+  'plantilla',
+  'informe',
+  'análisis',
+  'estudio',
+]
+
+function filterProductDocumentKeywords(product: string): string {
+  if (!product?.trim()) return ''
+  const products = product.split(',').map((p) => p.trim()).filter(Boolean)
+  const filtered = products.filter(
+    (p) =>
+      !DOCUMENT_KEYWORDS_FOR_PRODUCT.some((keyword) => p.toLowerCase().includes(keyword.toLowerCase())),
+  )
+  return normalizeProductField(filtered.join(', '))
+}
+
+function removeDuplicateWords(str: string): string {
+  let s = String(str ?? '').trim()
+  let prev = ''
+  while (s !== prev) {
+    prev = s
+    s = s.replace(/\b(\w+)\s+\1\b/gi, '$1').trim()
+  }
+  return s
+}
+
+/** Em dash (U+2014) before company; capitalize first character. */
+function formatNextStepTitleEmDash(title: string): string {
+  let t = String(title ?? '').trim()
+  if (!t) return ''
+  t = t.replace(/\(([^)]+)\)/g, ' — $1')
+  t = t.replace(/^./, (c) => c.toUpperCase())
+  return t
+}
+
+/** Post-parse fixes before title-case / merge (chronology, product, duplicates, title shape). */
+function applyStructureResponsePostProcessing(result: StructureBody): StructureBody {
+  let r = applyChronologicalNextStepValidation(result)
+  r = { ...r, product: filterProductDocumentKeywords(r.product) }
+  r = {
+    ...r,
+    contact: removeDuplicateWords(r.contact),
+    nextStepTitle: formatNextStepTitleEmDash(removeDuplicateWords(r.nextStepTitle)),
+  }
+  return r
+}
+
 function parseStructureJson(text: string): StructureBody {
   const clean = extractJson(text)
   const parsed = JSON.parse(clean) as Record<string, unknown>
@@ -728,6 +871,8 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+
+    result = applyStructureResponsePostProcessing(result)
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 

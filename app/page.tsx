@@ -151,6 +151,90 @@ function capitalizeNextStepTitleFirst(s: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+function formatLocalMmDdYyyy(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}/${dd}/${d.getFullYear()}`
+}
+
+/**
+ * Days to add to `from` (local) to reach the nearest `targetJsWeekday` (Sun=0 … Sat=6).
+ * 0 = same calendar day when today is already that weekday — not +7.
+ */
+function getDaysUntilNearestWeekday(from: Date, targetJsWeekday: number): number {
+  const today = from.getDay()
+  return (targetJsWeekday - today + 7) % 7
+}
+
+function addDaysLocal(base: Date, days: number): Date {
+  const d = new Date(base)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+/** Nearest upcoming calendar date on `targetJsWeekday` (today counts if it matches). */
+function getNextDayOfWeek(from: Date, targetJsWeekday: number): Date {
+  return addDaysLocal(from, getDaysUntilNearestWeekday(from, targetJsWeekday))
+}
+
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/\p{M}/gu, '')
+}
+
+function parseWeekdayNameToJsDay(raw: string): number | null {
+  const t = stripDiacritics(raw.trim().toLowerCase())
+  if (!t) return null
+  const map: Record<string, number> = {
+    sunday: 0,
+    sun: 0,
+    domingo: 0,
+    monday: 1,
+    mon: 1,
+    lunes: 1,
+    lun: 1,
+    tuesday: 2,
+    tue: 2,
+    tues: 2,
+    martes: 2,
+    mar: 2,
+    wednesday: 3,
+    wed: 3,
+    miercoles: 3,
+    thursday: 4,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    jueves: 4,
+    friday: 5,
+    fri: 5,
+    viernes: 5,
+    vie: 5,
+    saturday: 6,
+    sat: 6,
+    sabado: 6,
+    sab: 6,
+  }
+  if (map[t] !== undefined) return map[t]
+  for (const w of t.split(/\s+/)) {
+    if (w && map[w] !== undefined) return map[w]
+  }
+  return null
+}
+
+/** MM/DD/YYYY, ISO date, or weekday name → MM/DD/YYYY for the nearest upcoming day. */
+function resolveNextStepDateToMmdd(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ''
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const [y, m, day] = t.slice(0, 10).split('-')
+    return `${m}/${day}/${y}`
+  }
+  const wd = parseWeekdayNameToJsDay(t)
+  if (wd === null) return raw
+  return formatLocalMmDdYyyy(getNextDayOfWeek(new Date(), wd))
+}
+
 function normalizeStructureResult(m: StructureResult): StructureResult {
   const { dealer: _legacyDealer, ...mRest } = m as StructureResult & { dealer?: string }
   const base = {
@@ -192,6 +276,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
         base.contactCompany || '',
       ),
     ),
+    nextStepDate: resolveNextStepDateToMmdd((base.nextStepDate || '').trim()),
   }
 }
 
@@ -236,8 +321,8 @@ function pad2(n: number) {
 }
 
 /**
- * If the resolved local date+time is already past (e.g. "Tuesday morning" when it is
- * Tuesday afternoon), shift forward by 7 days so the event is never in the past.
+ * If the resolved local date+time is already past, advance by whole weeks until it is
+ * in the future (handles stale anchor dates, not only “+7 once”).
  */
 function ensureCalendarDateTimeNotPast(
   dateMmddyyyy: string,
@@ -254,10 +339,11 @@ function ensureCalendarDateTimeNotPast(
   }
   const event = new Date(yyyy, mm - 1, dd, hour, minute, 0, 0)
   const now = new Date()
-  if (event.getTime() >= now.getTime()) {
-    return { dateMmddyyyy: ds, hour, minute }
+  let guard = 0
+  while (event.getTime() < now.getTime() && guard < 104) {
+    event.setDate(event.getDate() + 7)
+    guard++
   }
-  event.setDate(event.getDate() + 7)
   return {
     dateMmddyyyy: `${pad2(event.getMonth() + 1)}/${pad2(event.getDate())}/${event.getFullYear()}`,
     hour: event.getHours(),
@@ -503,9 +589,9 @@ function needsTargetPicker(r: StructureResult): boolean {
   )
 }
 
+/** Only when no date was extracted; never re-prompt because of unclear_date if a date string exists. */
 function needsNextStepDatePick(r: StructureResult): boolean {
-  if (!(r.nextStepDate || '').trim()) return true
-  return hasReliabilityFlag(r, 'unclear_date')
+  return !(r.nextStepDate || '').trim()
 }
 
 /** Only prompt when no contact after processing; never block on unclear_contact if a name is present. */
@@ -639,12 +725,6 @@ function applyCustomNextStepClarify(
   return merged
 }
 
-function formatLocalMmDdYyyy(d: Date): string {
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${mm}/${dd}/${d.getFullYear()}`
-}
-
 function dateOptionToday(): string {
   return formatLocalMmDdYyyy(new Date())
 }
@@ -655,13 +735,9 @@ function dateOptionTomorrow(): string {
   return formatLocalMmDdYyyy(d)
 }
 
-/** Friday of the current calendar week (next Friday if already past this week’s Friday). */
+/** Nearest upcoming Friday (today if Friday). */
 function dateOptionThisWeekFriday(): string {
-  const d = new Date()
-  const day = d.getDay()
-  const diff = (5 - day + 7) % 7
-  d.setDate(d.getDate() + diff)
-  return formatLocalMmDdYyyy(d)
+  return formatLocalMmDdYyyy(getNextDayOfWeek(new Date(), 5))
 }
 
 /** Monday that starts the calendar week after the current one (weeks start Monday). */
@@ -689,15 +765,6 @@ function openGoogleCalendarWindow(opts: CalendarOpenOpts) {
   const details = encodeURIComponent(opts.details)
   const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${range.start}/${range.end}&details=${details}`
   window.open(url, '_blank')
-}
-
-/** iPhone, iPod, iPad, or iPadOS (desktop UA). */
-function isIOSDevice(): boolean {
-  if (typeof navigator === 'undefined') return false
-  const ua = navigator.userAgent
-  if (/iPad|iPhone|iPod/i.test(ua)) return true
-  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true
-  return false
 }
 
 /** RFC 5545 TEXT escaping for SUMMARY / DESCRIPTION. */
@@ -1233,7 +1300,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
   const [calendarConfirm, setCalendarConfirm] = useState<CalendarConfirmState | null>(null)
-  const [iosCalendarPick, setIosCalendarPick] = useState<CalendarOpenOpts | null>(null)
+  /** After "Add to Calendar", user picks Google (web URL) or Apple (.ics). */
+  const [addToCalendarChoice, setAddToCalendarChoice] = useState<CalendarOpenOpts | null>(null)
   const [pendingDatePick, setPendingDatePick] = useState<{
     result: StructureResult
     transcript: string
@@ -1260,8 +1328,6 @@ export default function Home() {
   const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
-  const [resultCrmRecordExpanded, setResultCrmRecordExpanded] = useState(false)
-  const [historyCrmRecordExpanded, setHistoryCrmRecordExpanded] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1396,12 +1462,10 @@ export default function Home() {
 
   useEffect(() => {
     setResultInsightsExpanded(false)
-    setResultCrmRecordExpanded(false)
   }, [result])
 
   useEffect(() => {
     setHistoryInsightsExpanded(false)
-    setHistoryCrmRecordExpanded(false)
   }, [selectedNote?.id])
 
   useEffect(() => {
@@ -1488,6 +1552,9 @@ export default function Home() {
       merged = stripAmbiguityFlagsAfterDateConfirm(merged)
       setResult(merged)
       saveNote(merged, p.transcript)
+      if (needsCalendarConfirmation(merged)) {
+        openCalendarFromStructuredResult(merged)
+      }
       return null
     })
   }
@@ -1505,7 +1572,7 @@ export default function Home() {
     }
   }
 
-  /** After next-step clarify (or if skipped / not needed): fecha → resultado. */
+  /** After next-step clarify (or if skipped / not needed): optional date sheet → resultado; calendar confirm when review needed. */
   const advanceAfterNextStepClarifyResolved = (
     merged: StructureResult,
     transcript: string,
@@ -1515,6 +1582,9 @@ export default function Home() {
     } else {
       setResult(merged)
       saveNote(merged, transcript)
+      if (needsCalendarConfirmation(merged)) {
+        openCalendarFromStructuredResult(merged)
+      }
     }
   }
 
@@ -1960,6 +2030,9 @@ export default function Home() {
       } else {
         setResult(final)
         saveNote(final, tx)
+        if (needsCalendarConfirmation(final)) {
+          openCalendarFromStructuredResult(final)
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -2006,6 +2079,9 @@ export default function Home() {
       } else {
         setResult(final)
         saveNote(final, input)
+        if (needsCalendarConfirmation(final)) {
+          openCalendarFromStructuredResult(final)
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -2040,7 +2116,7 @@ export default function Home() {
     setShowEditArea(false)
     setShowCalendarToast(false)
     setCalendarConfirm(null)
-    setIosCalendarPick(null)
+    setAddToCalendarChoice(null)
   }
 
   const openCalendarFromStructuredResult = (r: StructureResult) => {
@@ -2082,12 +2158,7 @@ export default function Home() {
       details: buildCalendarDescription(r),
       time: { kind: 'hint', hint: r.nextStepTimeHint || '' },
     }
-    if (isIOSDevice()) {
-      setIosCalendarPick(opts)
-      return
-    }
-    openGoogleCalendarWindow(opts)
-    setShowCalendarToast(true)
+    setAddToCalendarChoice(opts)
   }
 
   if (!mounted) return null
@@ -2871,12 +2942,7 @@ export default function Home() {
                     time: { kind: 'clock', hour, minute },
                   }
                   setCalendarConfirm(null)
-                  if (isIOSDevice()) {
-                    setIosCalendarPick(opts)
-                    return
-                  }
-                  openGoogleCalendarWindow(opts)
-                  setShowCalendarToast(true)
+                  setAddToCalendarChoice(opts)
                 }}
                 className="flex-[1.15] rounded-xl py-3 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
                 style={{ backgroundColor: '#10b981' }}
@@ -2888,41 +2954,41 @@ export default function Home() {
         </div>
       )}
 
-      {/* iOS — choose Google Calendar (web) or Apple Calendar (.ics) */}
-      {iosCalendarPick && (
+      {/* Google Calendar (URL) vs Apple Calendar (.ics) — all platforms */}
+      {addToCalendarChoice && (
         <div
           className="fixed inset-0 z-[103] flex flex-col justify-end bg-black/45 px-0 pt-8 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="ios-calendar-pick-title"
+          aria-labelledby="add-calendar-choice-title"
         >
           <button
             type="button"
             className="absolute inset-0 cursor-default"
             aria-label="Close"
-            onClick={() => setIosCalendarPick(null)}
+            onClick={() => setAddToCalendarChoice(null)}
           />
           <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_8px_28px_rgba(0,0,0,0.05)]">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
             <h2
-              id="ios-calendar-pick-title"
+              id="add-calendar-choice-title"
               className="mb-1 text-center text-[15px] font-bold tracking-tight text-[#111111]"
             >
               Add to calendar
             </h2>
             <p className="mb-4 text-center text-[13px] font-medium leading-snug text-[#6b7280]">
-              Choose where to add this event
+              Open in Google Calendar on the web, or use an .ics file for Apple Calendar (opens in Calendar on iPhone; downloads on desktop).
             </p>
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  const o = iosCalendarPick
+                  const o = addToCalendarChoice
                   openGoogleCalendarWindow(o)
-                  setIosCalendarPick(null)
+                  setAddToCalendarChoice(null)
                   setShowCalendarToast(true)
                 }}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#e5e7eb] bg-white py-3.5 pl-4 pr-4 text-[14px] font-bold text-[#111111] shadow-sm transition-[transform,filter] active:scale-[0.99]"
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#4F46E5] py-3.5 pl-4 pr-4 text-[14px] font-bold text-white shadow-md transition-[transform,filter] active:scale-[0.99]"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
                   <path
@@ -2947,38 +3013,29 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => {
-                  const o = iosCalendarPick
+                  const o = addToCalendarChoice
                   const ok = openAppleCalendarFromOpts(o)
-                  setIosCalendarPick(null)
+                  setAddToCalendarChoice(null)
                   if (ok) {
                     setShowCalendarToast(true)
                   } else {
                     setError('Could not create the calendar file. Check the date and time.')
                   }
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#111111] py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#e5e7eb] bg-white py-3.5 text-[14px] font-bold text-[#111111] shadow-sm transition-[transform,filter] active:scale-[0.99]"
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="shrink-0 opacity-95"
-                  aria-hidden
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
+                <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0 text-[#111111]" aria-hidden>
+                  <path
+                    fill="currentColor"
+                    d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.55-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.3 4.63-3.74 4.25z"
+                  />
                 </svg>
                 Apple Calendar
               </button>
             </div>
             <button
               type="button"
-              onClick={() => setIosCalendarPick(null)}
+              onClick={() => setAddToCalendarChoice(null)}
               className="mt-3 w-full rounded-xl py-2.5 text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#111111]"
             >
               Cancel
@@ -3267,32 +3324,6 @@ export default function Home() {
                     </div>
                   ) : null}
 
-                  {(result.crmText || '').trim() ? (
-                    <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                      <button
-                        type="button"
-                        onClick={() => setResultCrmRecordExpanded((e) => !e)}
-                        className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
-                      >
-                        {resultCrmRecordExpanded ? 'Hide CRM record' : 'View CRM record'}
-                      </button>
-                      <div
-                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${resultCrmRecordExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-                      >
-                        <div className="min-h-0 overflow-hidden">
-                          <div
-                            className={`origin-top pt-3 transition-all duration-300 ease-out ${resultCrmRecordExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
-                            style={{ pointerEvents: resultCrmRecordExpanded ? 'auto' : 'none' }}
-                          >
-                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
-                              {(result.crmText || '').trim()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
                   {/* Copy / Share / Correct — inline, directly under content */}
                   <div className="flex items-center gap-2 border-t border-[#e5e7eb]/70/90 pt-2 pb-0">
                     <button
@@ -3448,32 +3479,6 @@ export default function Home() {
                       <p className="whitespace-pre-line text-[15px] font-medium leading-snug tracking-tight text-[#111111]">
                         {(selectedNote.result.calendarDescription || '').trim()}
                       </p>
-                    </div>
-                  ) : null}
-
-                  {(selectedNote.result.crmText || '').trim() ? (
-                    <div className="rounded-xl border border-[#e5e7eb] bg-zinc-50 px-3.5 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                      <button
-                        type="button"
-                        onClick={() => setHistoryCrmRecordExpanded((e) => !e)}
-                        className="text-[12px] font-medium text-[#6b7280]/90 transition-colors hover:text-[#111111]"
-                      >
-                        {historyCrmRecordExpanded ? 'Hide CRM record' : 'View CRM record'}
-                      </button>
-                      <div
-                        className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${historyCrmRecordExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-                      >
-                        <div className="min-h-0 overflow-hidden">
-                          <div
-                            className={`origin-top pt-3 transition-all duration-300 ease-out ${historyCrmRecordExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'}`}
-                            style={{ pointerEvents: historyCrmRecordExpanded ? 'auto' : 'none' }}
-                          >
-                            <p className="whitespace-pre-line text-[12px] font-normal leading-relaxed text-[#6b7280]/85">
-                              {(selectedNote.result.crmText || '').trim()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   ) : null}
 
