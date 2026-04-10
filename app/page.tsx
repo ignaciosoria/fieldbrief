@@ -573,29 +573,78 @@ function truncateSupportingCalendarTitle(s: string): string {
   return `${t.slice(0, SUPPORTING_CALENDAR_TITLE_MAX - 1).trim()}…`
 }
 
+const SUPPORTING_CAL_TITLE_EM = '\u2014'
+
+function stripWrappingParensCalendar(s: string): string {
+  const t = s.trim()
+  const m = t.match(/^\(([^)]+)\)$/)
+  return m ? m[1].trim() : t
+}
+
+/**
+ * Supporting calendar SUMMARY only: `{Verb} {contact|object} — {Company}` (no parens; never repeat contact).
+ */
 function supportingCalendarEventTitleWithContext(
   baseActionTitle: string,
   step: AdditionalStep,
   r: StructureResult,
 ): string {
-  const base = cleanCalendarTitle(stripEmojisForCalendar(baseActionTitle.trim())) || 'Follow-up'
-  let contact = stripEmojisForCalendar((step.contact || '').trim())
-  let company = stripEmojisForCalendar((step.company || '').trim())
-  if (!contact) contact = stripEmojisForCalendar((r.contact || '').trim())
-  if (!company) company = stripEmojisForCalendar((r.contactCompany || r.customer || '').trim())
-  const cLo = contact.toLowerCase()
-  const coLo = company.toLowerCase()
-  let suffix = ''
-  if (contact && company && cLo !== coLo) {
-    suffix = `${contact} (${company})`
-  } else if (company) {
-    suffix = company
-  } else if (contact) {
-    suffix = contact
+  const companyRaw = stripEmojisForCalendar(
+    (step.company || r.contactCompany || r.customer || '').trim(),
+  )
+  const company = companyRaw
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const fallbackBase =
+    cleanCalendarTitle(stripEmojisForCalendar(baseActionTitle.trim())) || 'Follow-up'
+
+  const as = step.actionStructured
+  const st = `${step.supportingType || as?.type || ''}`.toLowerCase()
+
+  let verb = (as?.verb || '').trim()
+  let middle = ''
+
+  if (st === 'send' || st === 'email') {
+    middle = stripWrappingParensCalendar((as?.object || '').trim())
+    if (!middle) middle = stripWrappingParensCalendar((step.label || '').trim())
+  } else {
+    middle = stripWrappingParensCalendar((as?.contact || '').trim())
+    if (!middle) {
+      middle = stripWrappingParensCalendar(
+        stripEmojisForCalendar((step.contact || r.contact || '').trim()),
+      )
+    }
   }
-  if (!suffix) return truncateSupportingCalendarTitle(base)
-  const full = `${base} — ${suffix}`
-  return truncateSupportingCalendarTitle(cleanCalendarTitle(full))
+
+  if (!verb) {
+    const vm = fallbackBase.match(
+      /^(Call|Send|Email|Llamar|Enviar|Follow up|Meet|Reuni[oó]n|Dar seguimiento)\b/i,
+    )
+    if (vm) verb = vm[1]
+  }
+
+  if (verb && middle) {
+    const left = `${verb} ${middle}`.replace(/\s+/g, ' ').trim()
+    if (company) {
+      const full = `${left} ${SUPPORTING_CAL_TITLE_EM} ${company}`
+      return truncateSupportingCalendarTitle(cleanCalendarTitle(full))
+    }
+    return truncateSupportingCalendarTitle(cleanCalendarTitle(left))
+  }
+
+  if (company) {
+    const coLo = company.toLowerCase()
+    const segs = fallbackBase.split(/\s*[\u2014\-]\s*/).map((s) => s.trim().toLowerCase())
+    if (segs[segs.length - 1] === coLo) {
+      return truncateSupportingCalendarTitle(fallbackBase)
+    }
+    const full = `${fallbackBase} ${SUPPORTING_CAL_TITLE_EM} ${company}`
+    return truncateSupportingCalendarTitle(cleanCalendarTitle(full))
+  }
+
+  return truncateSupportingCalendarTitle(fallbackBase)
 }
 
 function supportingStepCalendarTitle(step: AdditionalStep, r: StructureResult): string {
@@ -2098,6 +2147,15 @@ export default function Home() {
   const formatDate = (iso: string) => {
     const d = new Date(iso)
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  /** History list: total actionable items (prefers normalized `actions[]` when present). */
+  const historyActionCount = (r: StructureResult) => {
+    const fromNormalized = Array.isArray(r.actions) ? r.actions.length : 0
+    if (fromNormalized > 0) return fromNormalized
+    const n =
+      (isNoClearFollowUpResult(r) ? 0 : 1) + (r.additionalSteps?.length ?? 0)
+    return Math.max(0, n)
   }
 
   const getInitials = (name: string) => {
@@ -3657,21 +3715,21 @@ export default function Home() {
                     className="w-full rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 pl-9 pr-4 text-[14px] text-[#111111] outline-none shadow-sm placeholder:text-[#6b7280]"
                   />
                 </div>
-                <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
                   {savedNotes.length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
                 </p>
                 {savedNotes.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center pt-16 text-center">
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#f8f8f8] ring-1 ring-zinc-200">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.5" opacity="0.65">
+                  <div className="flex flex-col items-center justify-center pt-12 text-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f8f8f8] ring-1 ring-zinc-200">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.5" opacity="0.65">
                         <path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/>
                       </svg>
                     </div>
-                    <p className="text-[14px] text-[#6b7280]">No notes yet</p>
-                    <p className="mt-1 text-[12px] text-[#111111]">Record your first visit to get started</p>
+                    <p className="text-[13px] text-[#6b7280]">No notes yet</p>
+                    <p className="mt-1 text-[11px] text-[#111111]">Record your first visit to get started</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <ul className="space-y-1.5">
                     {savedNotes.filter((note) => {
                       if (!searchQuery.trim()) return true
                       const q = searchQuery.toLowerCase()
@@ -3688,39 +3746,43 @@ export default function Home() {
                         note.result.crmText?.toLowerCase().includes(q) ||
                         note.result.calendarDescription?.toLowerCase().includes(q)
                       )
-                    }).map((note) => (
-                      <button
-                        key={note.id}
-                        onClick={() => setSelectedNote(note)}
-                        className="w-full rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-3.5 text-left shadow-sm transition-all hover:border-[#e5e7eb] active:scale-[0.99]"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200/70 text-[11px] font-bold text-[#111111]">
-                              {note.result.contact ? getInitials(note.result.contact) : 'NA'}
+                    }).map((note) => {
+                      const ac = historyActionCount(note.result)
+                      const contactLine =
+                        note.result.contact || note.result.customer || '—'
+                      const stepLine =
+                        note.result.nextStep || note.result.nextStepTitle
+                          ? buildPrimaryDisplayTitle(note.result)
+                          : '—'
+                      return (
+                        <li key={note.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedNote(note)}
+                            className="w-full rounded-xl border border-zinc-200/80 bg-white px-3 py-2.5 text-left transition-colors hover:bg-[#fafafa] active:scale-[0.995]"
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-[11px] tabular-nums text-[#6b7280]">
+                                {formatDate(note.date)}
+                              </span>
+                              <span className="shrink-0 text-[10px] font-medium tabular-nums text-[#6b7280]">
+                                {ac} {ac === 1 ? 'action' : 'actions'}
+                              </span>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-[14px] font-semibold text-[#111111] truncate">
-                                {note.result.contact || note.result.customer || 'Unnamed'}
-                              </p>
-                              {note.result.contact &&
-                                (note.result.contactCompany || note.result.customer) && (
-                                <p className="text-[12px] text-[#6b7280] truncate">
-                                  {note.result.contactCompany || note.result.customer}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <p className="shrink-0 text-[11px] text-[#6b7280] mt-0.5">{formatDate(note.date)}</p>
-                        </div>
-                        {(note.result.nextStep || note.result.nextStepTitle) && (
-                          <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#4F46E5'}}>
-                            → {buildPrimaryDisplayTitle(note.result)}
-                          </p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                            <p className="mt-1 truncate text-[13px] font-semibold leading-tight text-[#111111]">
+                              {contactLine}
+                            </p>
+                            <p
+                              className="mt-0.5 truncate text-[12px] leading-snug text-[#4F46E5]"
+                              title={stepLine}
+                            >
+                              {stepLine}
+                            </p>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
                 )}
               </div>
             )}
