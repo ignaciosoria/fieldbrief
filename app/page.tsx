@@ -16,6 +16,7 @@ import { cleanCalendarTitle } from '../lib/calendarTitle'
 import { detectNoteLanguage } from '../lib/detectNoteLanguage'
 import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
+import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
 import {
   filterInsightsToContextOnly,
   insightLineContainsActionLanguage,
@@ -746,7 +747,7 @@ function buildCalendarDescription(data: StructureResult): string {
   return lines.slice(0, 3).join('\n').trim()
 }
 
-/** Calendar event SUMMARY only — timing stripped; UI uses raw `nextStepTitle`. */
+/** Primary calendarTitle (event SUMMARY) — no date/time in string; timing is in event fields. */
 function calendarEventTitle(r: StructureResult): string {
   const t = (r.nextStepTitle || '').trim()
   if (t) return cleanCalendarTitle(t)
@@ -3360,7 +3361,7 @@ export default function Home() {
                           {isNoClearFollowUpResult(result) ? 'Follow-up' : 'Primary'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
-                          {result.nextStepTitle || result.nextStep}
+                          {buildPrimaryDisplayTitle(result)}
                         </p>
                       </div>
 
@@ -3405,7 +3406,7 @@ export default function Home() {
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
-                                    {formatSupportingStepLine(s)}
+                                    {buildSupportingDisplayTitle(s)}
                                   </span>
                                   <button
                                     type="button"
@@ -3643,7 +3644,7 @@ export default function Home() {
                           </p>
                         </div>
                         <p className="text-[19px] font-bold leading-snug text-[#111111]">
-                          {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
+                          {buildPrimaryDisplayTitle(selectedNote.result)}
                         </p>
                       </div>
 
@@ -3688,7 +3689,7 @@ export default function Home() {
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
-                                    {formatSupportingStepLine(s)}
+                                    {buildSupportingDisplayTitle(s)}
                                   </span>
                                   <button
                                     type="button"
@@ -3854,7 +3855,7 @@ export default function Home() {
                         </div>
                         {(note.result.nextStep || note.result.nextStepTitle) && (
                           <p className="mt-2 text-[12px] truncate pl-12" style={{color: '#4F46E5'}}>
-                            → {note.result.nextStepTitle || note.result.nextStep}
+                            → {buildPrimaryDisplayTitle(note.result)}
                           </p>
                         )}
                       </button>
