@@ -25,6 +25,7 @@ import { isNoClearFollowUpLine } from '../../../lib/noFollowUp'
 import { enrichStructureWithExtractedActions } from '../../../lib/extractActionsFromStructure'
 import {
   enrichAdditionalStepsList,
+  extractRoughTimeHint,
   type AdditionalStep,
   type SupportingStructuredType,
 } from '../../../lib/additionalStepEnrichment'
@@ -335,10 +336,13 @@ function rowEventInstantMsForPrimarySort(
     row.title,
     row.action,
   )
+  const rough = extractRoughTimeHint(`${row.action} ${row.title}`)
+  const hintMerged = hint.trim() || rough.trim()
+  const hintForClock = hintMerged || (row._timeRaw || row.time || '').trim()
   const [mm, dd, yyyy] = mmdd.split('/').map((x) => parseInt(x, 10))
   let hour = 9
   let minute = 0
-  const hm = hint.trim().match(/^(\d{1,2}):(\d{2})$/)
+  const hm = hintForClock.trim().match(/^(\d{1,2}):(\d{2})$/)
   if (hm) {
     hour = Math.min(23, Math.max(0, parseInt(hm[1], 10)))
     minute = Math.min(59, Math.max(0, parseInt(hm[2], 10)))
@@ -369,6 +373,53 @@ type ScoredRow = ChronologicalRow & {
 }
 
 /**
+ * Resolve MM/DD/YYYY for ranking. Previously only `date || time` was passed to
+ * `resolveRelativePhraseToMmdd` — a bare time ("17:00") does not parse as a date, so a same-day send
+ * with "today" only in the action line stayed in band 4 and lost to a future call (band 3).
+ * Tries: date field, date+time, full action+title prose, time-only; then note-assisted today for send/email.
+ */
+function resolveMmddForPrimaryRanking(
+  r: ChronologicalRow,
+  anchor: DateTime,
+  timeZone: string,
+  noteText: string,
+  nt: NormalizedActionType,
+): string {
+  const weekdayOpts = r.source === 'primary' ? { weekdaySkipAnchorDay: true } : undefined
+  const tryP = (phrase: string): string | null => {
+    const p = phrase.replace(/\s+/g, ' ').trim()
+    if (!p) return null
+    return resolveRelativePhraseToMmdd(p, timeZone, anchor, weekdayOpts)
+  }
+
+  const dateTrim = r.date.trim()
+  const timeTrim = r.time.trim()
+  const prose = `${r.action} ${r.title}`.replace(/\s+/g, ' ').trim()
+
+  for (const candidate of [dateTrim, `${dateTrim} ${timeTrim}`.trim(), prose, timeTrim]) {
+    const m = tryP(candidate)
+    if (m) return m
+  }
+
+  if (
+    isSendOrEmailTier(nt) &&
+    noteText.trim() &&
+    (/\btoday\b/i.test(noteText) || /\bhoy\b/i.test(noteText))
+  ) {
+    const lower = prose.toLowerCase()
+    if (
+      /\b(send|enviar|email|mail|forward)\b/.test(lower) ||
+      /\b(before|antes)\s*\d/.test(lower) ||
+      /\bprogram|contract|proposal|pdf|deck|quote|updated\b/.test(lower)
+    ) {
+      return anchor.setZone(timeZone).toFormat('MM/dd/yyyy')
+    }
+  }
+
+  return dateTrim
+}
+
+/**
  * Phase 2 — deterministic primary/supporting:
  * - Primary is chosen by **urgency**, not call-vs-send tier: send/email **today** outrank calls/meetings
  *   on later days; **earlier wall-clock instant** breaks ties within the same urgency band.
@@ -380,6 +431,7 @@ function applyRankedNextStepSelection(
   result: StructureBody,
   timeZone: string,
   userNow: Date,
+  rawNote: string,
 ): StructureBody {
   const anchor = toUserAnchorDateTime(userNow, timeZone)
   const rows: ChronologicalRow[] = []
@@ -403,8 +455,8 @@ function applyRankedNextStepSelection(
       source: 'additional',
       action: s.action.trim(),
       title: s.action.trim(),
-      date: (s.resolvedDate || '').trim(),
-      time: (s.timeHint || '').trim(),
+      date: (s.resolvedDate || s.structuredDate || '').trim(),
+      time: (s.timeHint || s.structuredTime || '').trim(),
       supportingType: s.supportingType,
       label: s.label,
       structuredDate: s.structuredDate,
@@ -424,18 +476,10 @@ function applyRankedNextStepSelection(
   )
 
   const resolved: ScoredRow[] = rows.map((r) => {
-    const dateTrim = r.date.trim()
-    const timeTrim = r.time.trim()
-    const rawForResolve = dateTrim || timeTrim
-    const mmdd = resolveRelativePhraseToMmdd(
-      rawForResolve,
-      timeZone,
-      anchor,
-      r.source === 'primary' ? { weekdaySkipAnchorDay: true } : undefined,
-    )
-    const dateForSort = mmdd ?? dateTrim
-
     const nt = normalizedTypeForRow(r.action, r.title)
+    const mmdd = resolveMmddForPrimaryRanking(r, anchor, timeZone, rawNote, nt)
+    const dateForSort = (mmdd || r.date.trim()).trim()
+
     const tier = primaryBusinessTier(nt)
     const kindScore = kindScoreForPrimarySelection(r.action, r.title)
 
@@ -497,29 +541,16 @@ function applyRankedNextStepSelection(
     })
   }
 
-  /**
-   * Primary calendar event date/time must come only from the structured primary slot — never from a
-   * supporting row. If ranking picks a supporting action as `nextStep`, `nextStepDate` / `nextStepTimeHint`
-   * still use the `source === 'primary'` row (resolved primary.date / primary.time), not the winner's.
-   */
-  const primarySlot = resolved.find((r) => r.source === 'primary')
-
-  let nextStepDate: string
-  let nextStepTimeHint: string
-
-  if (primary.source === 'primary') {
-    const tRaw = primary.time.trim()
-    nextStepDate = primary.date
-    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
-  } else if (primarySlot) {
-    const tRaw = primarySlot._timeRaw.trim()
-    nextStepDate = primarySlot.date
-    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') || tRaw : ''
-  } else {
-    const tRaw = (result.nextStepTimeHint || '').trim()
-    nextStepDate = (result.nextStepDate || '').trim()
-    nextStepTimeHint = tRaw ? normalizeTimeToHint(tRaw, '') || tRaw : ''
+  /** Winning row drives `nextStep` calendar fields so e.g. a promoted send-today keeps today + deadline time. */
+  let nextStepDate = primary.date
+  let hintRaw = primary._timeRaw.trim()
+  if (!hintRaw) {
+    hintRaw = extractRoughTimeHint(`${primary.action} ${primary.title}`)
   }
+  if (!hintRaw) {
+    hintRaw = (primary.time || '').trim()
+  }
+  const nextStepTimeHint = hintRaw ? normalizeTimeToHint(hintRaw, '') || hintRaw : ''
 
   const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
     action: r.action,
@@ -655,9 +686,10 @@ function applyStructureResponsePostProcessing(
   timeZone: string,
   userNow: Date,
   noteLanguage: string,
+  rawNote: string,
 ): StructureBody {
   let r = normalizeNoFollowUpStructure(result)
-  r = applyRankedNextStepSelection(r, timeZone, userNow)
+  r = applyRankedNextStepSelection(r, timeZone, userNow, rawNote)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   const titleRaw = formatNextStepTitleEmDash(removeDuplicateWords(r.nextStepTitle))
   r = {
@@ -749,7 +781,13 @@ export async function POST(request: Request) {
     result = enrichStructureWithExtractedActions(result)
     logStructurePipelineStage('06_after_enrichStructureWithExtractedActions', result)
 
-    result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow, detectedLanguage)
+    result = applyStructureResponsePostProcessing(
+      result,
+      timeZone,
+      userLocalNow,
+      detectedLanguage,
+      typeof note === 'string' ? note : '',
+    )
     logStructurePipelineStage('07_after_applyStructureResponsePostProcessing', result)
 
     result = applyServerCalendarResolution(result, timeZone, userLocalNow)
