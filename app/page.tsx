@@ -1538,7 +1538,7 @@ Contact: ${result.contact || ''}
 
 const CALENDAR_ADDED_LS_KEY = 'folup-calendar-added-v1'
 
-type CalendarAddedBlob = Record<string, { p?: boolean; s?: number[] }>
+type CalendarAddedBlob = Record<string, { p?: boolean; s?: string[] }>
 
 function calendarResultFingerprint(r: StructureResult): string {
   const steps = (r.additionalSteps || [])
@@ -1573,13 +1573,23 @@ function persistPrimaryToCalendarAdded(key: string, added: boolean) {
   } catch {}
 }
 
-function persistSupportingToCalendarAdded(key: string, index: number, added: boolean) {
+/** Stable id for a supporting row within a note (list order index). */
+function supportingCalendarStepId(index: number): string {
+  return String(index)
+}
+
+function persistSupportingToCalendarAdded(key: string, stepId: string, added: boolean) {
   const all = loadCalendarAddedBlob()
   const prev = all[key] || {}
-  const set = new Set(prev.s || [])
-  if (added) set.add(index)
-  else set.delete(index)
-  all[key] = { ...prev, p: prev.p, s: [...set].sort((a, b) => a - b) }
+  const raw = prev.s || []
+  const set = new Set(raw.map((x) => String(x)))
+  if (added) set.add(stepId)
+  else set.delete(stepId)
+  all[key] = {
+    ...prev,
+    p: prev.p,
+    s: [...set].sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b)),
+  }
   try {
     localStorage.setItem(CALENDAR_ADDED_LS_KEY, JSON.stringify(all))
   } catch {}
@@ -1639,7 +1649,7 @@ export default function Home() {
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [primaryAdded, setPrimaryAdded] = useState(false)
-  const [supportingAdded, setSupportingAdded] = useState<Record<number, boolean>>({})
+  const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1675,8 +1685,8 @@ export default function Home() {
     }
     const blob = loadCalendarAddedBlob()[calendarStorageKey]
     setPrimaryAdded(!!blob?.p)
-    const next: Record<number, boolean> = {}
-    for (const i of blob?.s || []) next[i] = true
+    const next: Record<string, boolean> = {}
+    for (const id of blob?.s || []) next[String(id)] = true
     setSupportingAdded(next)
   }, [calendarStorageKey])
 
@@ -2490,8 +2500,9 @@ export default function Home() {
       return
     }
     const key = getCalendarStorageKey(r, opts?.noteId ?? null)
-    setSupportingAdded((prev) => ({ ...prev, [index]: true }))
-    persistSupportingToCalendarAdded(key, index, true)
+    const stepId = supportingCalendarStepId(index)
+    setSupportingAdded((prev) => ({ ...prev, [stepId]: true }))
+    persistSupportingToCalendarAdded(key, stepId, true)
 
     if (session?.user) {
       openGoogleCalendarWindow(calendarOpts)
@@ -2504,10 +2515,10 @@ export default function Home() {
     } else {
       setSupportingAdded((prev) => {
         const next = { ...prev }
-        delete next[index]
+        delete next[stepId]
         return next
       })
-      persistSupportingToCalendarAdded(key, index, false)
+      persistSupportingToCalendarAdded(key, stepId, false)
       setError('Could not create the calendar file.')
     }
   }
@@ -3385,9 +3396,11 @@ export default function Home() {
                               Supporting
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
-                              {(result.additionalSteps || []).map((s, i) => (
+                              {(result.additionalSteps || []).map((s, i) => {
+                                const sid = supportingCalendarStepId(i)
+                                return (
                                 <li
-                                  key={i}
+                                  key={sid}
                                   className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
@@ -3397,14 +3410,14 @@ export default function Home() {
                                   <button
                                     type="button"
                                     onClick={() => addSupportingStepToCalendar(result, s, i)}
-                                    disabled={!!supportingAdded[i]}
+                                    disabled={!!supportingAdded[sid]}
                                     className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
-                                      supportingAdded[i]
+                                      supportingAdded[sid]
                                         ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
                                         : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
                                     }`}
                                   >
-                                    {supportingAdded[i] ? (
+                                    {supportingAdded[sid] ? (
                                       <span className="inline-flex items-center gap-1">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                                           <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -3416,7 +3429,8 @@ export default function Home() {
                                     )}
                                   </button>
                                 </li>
-                              ))}
+                                )
+                              })}
                             </ul>
                           </div>
                         )}
@@ -3665,9 +3679,11 @@ export default function Home() {
                               Supporting
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
-                              {(selectedNote.result.additionalSteps || []).map((s, i) => (
+                              {(selectedNote.result.additionalSteps || []).map((s, i) => {
+                                const sid = supportingCalendarStepId(i)
+                                return (
                                 <li
-                                  key={i}
+                                  key={sid}
                                   className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
@@ -3681,14 +3697,14 @@ export default function Home() {
                                         noteId: selectedNote.id,
                                       })
                                     }
-                                    disabled={!!supportingAdded[i]}
+                                    disabled={!!supportingAdded[sid]}
                                     className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
-                                      supportingAdded[i]
+                                      supportingAdded[sid]
                                         ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
                                         : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
                                     }`}
                                   >
-                                    {supportingAdded[i] ? (
+                                    {supportingAdded[sid] ? (
                                       <span className="inline-flex items-center gap-1">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                                           <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -3700,7 +3716,8 @@ export default function Home() {
                                     )}
                                   </button>
                                 </li>
-                              ))}
+                                )
+                              })}
                             </ul>
                           </div>
                         )}
