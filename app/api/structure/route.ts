@@ -293,9 +293,10 @@ JSON key **summary**:
 THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence across zones):
 
 **1) KEY INSIGHTS — JSON array **crmFull****
-- **Maximum 4** lines. No filler. Each line must directly help **execute the next step** or answer **what you must know before doing it** (objection, risk, competitor, deadline that affects the follow-up, quantity/deal size if it changes the pitch, rep offering interest if it drives the ask).
+- **Maximum 4** lines. No filler. Each line must directly help **execute the next step** or answer **what you must know before doing it** (objection, risk, competitor, quantity/deal size if it changes the pitch, rep offering interest if it drives the ask).
+- Do **not** use **📅** here — dates, deadlines, and follow-up timing belong in **calendarDescription** and **nextStep** fields, not in Key Insights (the app hides **📅** lines from this list).
 - Short lines with emojis when helpful (same emoji discipline as before):
-  - **📦** = rep's own offering only · **📊** = volume/scale · **💰** = pricing/terms · **📅** = dates/deadlines that matter for the follow-up · **⚠️** = risk/blocker · **⚔️** = competitor/incumbent product (never in **product** JSON) · **🆕** = direct contact interest in **your** offering (ties to **product** field) · **🏪** channel when relevant.
+  - **📦** = rep's own offering only · **📊** = volume/scale · **💰** = pricing/terms · **⚠️** = risk/blocker · **⚔️** = competitor/incumbent product (never in **product** JSON) · **🆕** = direct contact interest in **your** offering (ties to **product** field) · **🏪** channel when relevant.
 - If more than four facts compete, keep the four that most affect **how** the rep will run the next call, visit, or send.
 - Ruthlessly omit repetition of the next step line and generic pleasantries.
 
@@ -306,9 +307,9 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 - **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
-- **3 to 5** lines only. Plain text. Each line must start with **→** then a space (example: **→ Client concerned about pricing**).
+- **At most 3** lines. Plain text. Each line must start with **→** then a space (example: **→ Client concerned about pricing**).
 - Purpose: what to **remember in 5 seconds** before the follow-up **call or visit** — concerns, comparisons, deadlines, decision timing. No emojis in this field. Same language as the note.
-- Scannable; no long sentences. Not a duplicate of **crmText** — extract the **highest-signal** reminders only.
+- Scannable; no long sentences. Not a duplicate of **crmText** — extract the **highest-signal** reminders only. Put only the **three** most execution-critical reminders (omit lower-priority context).
 
 ---
 
@@ -667,6 +668,120 @@ function parseStepDateMs(dateStr: string): number {
   return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
 }
 
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/\p{M}/gu, '')
+}
+
+function formatLocalMmDdYyyy(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}/${dd}/${d.getFullYear()}`
+}
+
+function addDaysLocal(base: Date, days: number): Date {
+  const d = new Date(base.getTime())
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+/** Days to add to `from` (local) to reach the nearest `targetJsWeekday` (Sun=0 … Sat=6). 0 = same day when today matches. */
+function getDaysUntilNearestWeekday(from: Date, targetJsWeekday: number): number {
+  const today = from.getDay()
+  return (targetJsWeekday - today + 7) % 7
+}
+
+function getNextDayOfWeek(from: Date, targetJsWeekday: number): Date {
+  return addDaysLocal(from, getDaysUntilNearestWeekday(from, targetJsWeekday))
+}
+
+/** Remove time-of-day phrases so "mañana por la mañana" → "mañana", "el viernes por la tarde" → "el viernes". */
+function stripTimeOfDayFromDatePhrase(s: string): string {
+  return s
+    .replace(/\bpor\s+la\s+mañana\b/gi, ' ')
+    .replace(/\bpor\s+la\s+tarde\b/gi, ' ')
+    .replace(/\bpor\s+la\s+noche\b/gi, ' ')
+    .replace(/\bal\s+mediod[ií]a\b/gi, ' ')
+    .replace(/\bin\s+the\s+morning\b/gi, ' ')
+    .replace(/\bin\s+the\s+afternoon\b/gi, ' ')
+    .replace(/\bin\s+the\s+evening\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * English + Spanish weekday names → JS getDay() (Sun=0 … Sat=6).
+ * Matches "el viernes", "Friday", "viernes", etc.
+ */
+function parseWeekdayNameToJsDay(raw: string): number | null {
+  const t = stripDiacritics(raw.trim().toLowerCase())
+  if (!t) return null
+  const map: Record<string, number> = {
+    sunday: 0,
+    sun: 0,
+    domingo: 0,
+    monday: 1,
+    mon: 1,
+    lunes: 1,
+    lun: 1,
+    tuesday: 2,
+    tue: 2,
+    tues: 2,
+    martes: 2,
+    mar: 2,
+    wednesday: 3,
+    wed: 3,
+    miercoles: 3,
+    thursday: 4,
+    thu: 4,
+    thurs: 4,
+    jueves: 4,
+    friday: 5,
+    fri: 5,
+    viernes: 5,
+    vie: 5,
+    saturday: 6,
+    sat: 6,
+    sabado: 6,
+  }
+  if (map[t] !== undefined) return map[t]
+  for (const w of t.split(/\s+/)) {
+    if (w && map[w] !== undefined) return map[w]
+  }
+  return null
+}
+
+/**
+ * Convert model date strings (often Spanish relative phrases) to MM/DD/YYYY using the
+ * same "today" anchor as `buildStructureUserDateContext`. Returns null if no rule matches.
+ */
+function resolveRelativeDateStringToMmdd(raw: string, anchor: Date): string | null {
+  const t = (raw || '').trim()
+  if (!t) return null
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return normalizeNextStepDate(t)
+
+  let s = stripTimeOfDayFromDatePhrase(t)
+  s = s.replace(/^el\s+/i, '').replace(/^la\s+/i, '').trim()
+  const lower = s.toLowerCase()
+
+  if (/\bpasado\s+mañana\b/.test(lower) || /\bday\s+after\s+tomorrow\b/.test(lower)) {
+    return formatLocalMmDdYyyy(addDaysLocal(anchor, 2))
+  }
+  if (/\bhoy\b/.test(lower) || /\btoday\b/.test(lower)) {
+    return formatLocalMmDdYyyy(anchor)
+  }
+  if (/\bmañana\b/.test(lower) || /\btomorrow\b/.test(lower)) {
+    return formatLocalMmDdYyyy(addDaysLocal(anchor, 1))
+  }
+
+  const wd = parseWeekdayNameToJsDay(s)
+  if (wd !== null) {
+    return formatLocalMmDdYyyy(getNextDayOfWeek(anchor, wd))
+  }
+
+  return null
+}
+
 type ChronologicalRow = {
   idx: number
   source: 'primary' | 'additional'
@@ -677,7 +792,10 @@ type ChronologicalRow = {
 }
 
 /** Earliest dated action becomes primary next step; rest become additionalSteps. */
-function applyChronologicalNextStepValidation(result: StructureBody): StructureBody {
+function applyChronologicalNextStepValidation(
+  result: StructureBody,
+  anchor: Date,
+): StructureBody {
   const rows: ChronologicalRow[] = []
   let idx = 0
   const primaryAction = (result.nextStep || '').trim()
@@ -705,14 +823,57 @@ function applyChronologicalNextStepValidation(result: StructureBody): StructureB
   }
   if (rows.length === 0) return result
 
-  rows.sort((a, b) => {
+  console.log(
+    '[structure] chronology: actions BEFORE resolve+sort (raw model dates)',
+    rows.map((r) => ({
+      source: r.source,
+      action: r.action.slice(0, 120),
+      dateRaw: r.date,
+      timeRaw: r.time,
+    })),
+  )
+
+  const resolved = rows.map((r) => {
+    const dateTrim = r.date.trim()
+    const timeTrim = r.time.trim()
+    const rawForResolve = dateTrim || timeTrim
+    const mmdd = resolveRelativeDateStringToMmdd(rawForResolve, anchor)
+    const dateForSort = mmdd ?? dateTrim
+    return { ...r, date: dateForSort, _dateRaw: r.date, _timeRaw: r.time }
+  })
+
+  console.log(
+    '[structure] chronology: actions AFTER resolve (dates used for sorting)',
+    resolved.map((r) => ({
+      source: r.source,
+      action: r.action.slice(0, 120),
+      dateRaw: r._dateRaw,
+      timeRaw: r._timeRaw,
+      dateResolved: r.date,
+      time: r.time,
+    })),
+  )
+
+  resolved.sort((a, b) => {
     const da = parseStepDateMs(a.date)
     const db = parseStepDateMs(b.date)
     if (da !== db) return da - db
     return a.idx - b.idx
   })
 
-  const [first, ...rest] = rows
+  console.log(
+    '[structure] chronology: actions AFTER sort (order)',
+    resolved.map((r) => ({
+      source: r.source,
+      action: r.action.slice(0, 120),
+      dateRaw: r._dateRaw,
+      timeRaw: r._timeRaw,
+      dateResolved: r.date,
+      time: r.time,
+    })),
+  )
+
+  const [first, ...rest] = resolved
   const tRaw = first.time.trim()
   const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
   return {
@@ -775,8 +936,11 @@ function formatNextStepTitleEmDash(title: string): string {
 }
 
 /** Post-parse fixes before title-case / merge (chronology, product, duplicates, title shape). */
-function applyStructureResponsePostProcessing(result: StructureBody): StructureBody {
-  let r = applyChronologicalNextStepValidation(result)
+function applyStructureResponsePostProcessing(
+  result: StructureBody,
+  anchor: Date,
+): StructureBody {
+  let r = applyChronologicalNextStepValidation(result, anchor)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   r = {
     ...r,
@@ -872,7 +1036,7 @@ export async function POST(request: Request) {
       )
     }
 
-    result = applyStructureResponsePostProcessing(result)
+    result = applyStructureResponsePostProcessing(result, now)
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 

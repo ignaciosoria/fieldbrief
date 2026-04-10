@@ -28,6 +28,22 @@ function normalizeLegacyInsightLine(line: string): string {
     .replace(/^(\s*)🌱/u, '$1📦')
     .replace(/^(\s*)🌾/u, '$1📊')
 }
+
+/** Result screen: hide date/schedule insight lines — those belong in Before follow-up / next step. */
+function filterKeyInsightsForDisplay(lines: string[]): string[] {
+  return lines
+    .map(normalizeLegacyInsightLine)
+    .filter((line) => !line.trimStart().startsWith('📅'))
+}
+
+/** Before follow-up: at most `max` lines (highest-signal context only). */
+function topCalendarContextLines(raw: string, max: number): string {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return lines.slice(0, max).join('\n')
+}
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
@@ -1782,21 +1798,17 @@ export default function Home() {
     if (pills.length) lines.push(pills.join('  '))
     const stepLine = (r.nextStepTitle || r.nextStep).trim()
     if (stepLine) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(stepLine) }
-    if (r.crmFull.length > 0) {
+    const insightLines = filterKeyInsightsForDisplay(r.crmFull)
+    if (insightLines.length > 0) {
       lines.push('')
       lines.push('KEY INSIGHTS')
-      lines.push(...r.crmFull)
+      lines.push(...insightLines)
     }
-    const cal = (r.calendarDescription || '').trim()
+    const cal = topCalendarContextLines((r.calendarDescription || '').trim(), 3)
     if (cal) {
       lines.push('')
       lines.push('BEFORE FOLLOW-UP')
       lines.push(cal)
-    }
-    if (r.crmText) {
-      lines.push('')
-      lines.push('CRM RECORD')
-      lines.push(r.crmText)
     }
     return lines.join('\n')
   }
@@ -1879,16 +1891,12 @@ export default function Home() {
     const r = activeResult
     if (!r) return ''
     const parts: string[] = []
-    if (r.crmFull.length > 0) parts.push(...r.crmFull)
-    const cal = (r.calendarDescription || '').trim()
+    const insights = filterKeyInsightsForDisplay(r.crmFull)
+    if (insights.length > 0) parts.push(...insights)
+    const cal = topCalendarContextLines((r.calendarDescription || '').trim(), 3)
     if (cal) {
       if (parts.length) parts.push('')
       parts.push(cal)
-    }
-    const narrative = r.crmText?.trim()
-    if (narrative) {
-      if (parts.length) parts.push('')
-      parts.push(narrative)
     }
     return parts.join('\n')
   }, [activeResult])
@@ -3245,10 +3253,10 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 2 — Contact & company → 3 — Insights → 4 — Summary → actions */}
-                <div className="mt-3 flex flex-col gap-1.5">
+                {/* 2 — Contact & company → 3 — Insights → 4 — Before follow-up → actions */}
+                <div className="mt-4 flex flex-col gap-6">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
-                    <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-3 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+                    <div className="rounded-2xl border border-zinc-200/90 bg-[#fafafa] px-4 py-3.5">
                       {result.contact ? (
                         <p className="text-[16px] font-bold leading-snug tracking-tight text-[#111111]">
                           {result.contact}
@@ -3266,66 +3274,55 @@ export default function Home() {
                         </p>
                       ) : null}
                       {(result.location || productDisplayItems(result.crop, result.product).length > 0) && (
-                        <div className="mt-2 space-y-1.5">
+                        <div className="mt-3 flex flex-wrap gap-1.5">
                           {result.location ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              <span className="inline-flex max-w-full items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
-                                📍 {result.location}
-                              </span>
-                            </div>
+                            <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]">
+                              📍 {result.location}
+                            </span>
                           ) : null}
-                          {productDisplayItems(result.crop, result.product).length > 0 ? (
-                            <div>
-                              <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]/90">
-                                Product
-                              </p>
-                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                {productDisplayItems(result.crop, result.product).map((p, i) => (
-                                  <span
-                                    key={`${p}-${i}`}
-                                    className="inline-flex max-w-full min-w-0 items-center rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]"
-                                  >
-                                    📦 {p}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
+                          {productDisplayItems(result.crop, result.product).map((p, i) => (
+                            <span
+                              key={`${p}-${i}`}
+                              className="inline-flex max-w-full min-w-0 items-center rounded-full border border-zinc-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]"
+                            >
+                              📦 {p}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-[#f8f8f8] px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                  {filterKeyInsightsForDisplay(result.crmFull).length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-3.5">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
                         Key insights
                       </p>
                       <KeyInsightsList
-                        lines={result.crmFull.map(normalizeLegacyInsightLine)}
-                        gapClass="gap-1.5"
+                        lines={filterKeyInsightsForDisplay(result.crmFull)}
+                        gapClass="gap-2"
                         lineClassName="rounded-lg px-2 py-1.5 text-[12px] font-medium leading-[1.5] tracking-tight"
                         expanded={resultInsightsExpanded}
                         onToggle={() => setResultInsightsExpanded((e) => !e)}
-                        buttonMarginClass="mt-2"
+                        buttonMarginClass="mt-3"
                         buttonTextClass="text-[11px]"
                       />
                     </div>
                   )}
 
                   {(result.calendarDescription || '').trim() ? (
-                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-zinc-200/60">
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-4 py-3.5">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
                         Before follow-up
                       </p>
                       <p className="whitespace-pre-line text-[13px] font-medium leading-snug tracking-tight text-[#111111]">
-                        {(result.calendarDescription || '').trim()}
+                        {topCalendarContextLines((result.calendarDescription || '').trim(), 3)}
                       </p>
                     </div>
                   ) : null}
 
                   {/* Copy / Share / Correct — inline, directly under content */}
-                  <div className="flex items-center gap-2 border-t border-[#e5e7eb]/70/90 pt-2 pb-0">
+                  <div className="flex items-center gap-2 border-t border-zinc-200/60 pt-4 pb-0">
                     <button
                       type="button"
                       onClick={() => {
@@ -3407,10 +3404,10 @@ export default function Home() {
                   Back to history
                 </button>
 
-                <div className="space-y-5">
+                <div className="space-y-7">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">{formatDate(selectedNote.date)}</p>
 
-                  <div className="rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-4 shadow-sm">
+                  <div className="rounded-2xl border border-zinc-200/90 bg-[#fafafa] px-4 py-4">
                     <div className="flex items-center gap-3.5">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-200/70 text-[13px] font-bold text-[#111111]">
                         {selectedNote.result.contact ? getInitials(selectedNote.result.contact) : 'NA'}
@@ -3426,41 +3423,30 @@ export default function Home() {
 
                   {(selectedNote.result.location ||
                     productDisplayItems(selectedNote.result.crop, selectedNote.result.product).length > 0) && (
-                    <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedNote.result.location ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          <span className="flex items-center gap-1.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm">
-                            📍 {selectedNote.result.location}
-                          </span>
-                        </div>
+                        <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/90 bg-[#fafafa] px-3 py-1.5 text-[11px] text-[#6b7280]">
+                          📍 {selectedNote.result.location}
+                        </span>
                       ) : null}
-                      {productDisplayItems(selectedNote.result.crop, selectedNote.result.product).length > 0 ? (
-                        <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]/90">
-                            Product
-                          </p>
-                          <div className="mt-1 flex flex-wrap gap-1.5">
-                            {productDisplayItems(selectedNote.result.crop, selectedNote.result.product).map((p, i) => (
-                              <span
-                                key={`${p}-${i}`}
-                                className="rounded-full border border-[#e5e7eb] bg-[#f8f8f8] px-3 py-1.5 text-[11px] text-[#6b7280] shadow-sm"
-                              >
-                                📦 {p}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+                      {productDisplayItems(selectedNote.result.crop, selectedNote.result.product).map((p, i) => (
+                        <span
+                          key={`${p}-${i}`}
+                          className="inline-flex max-w-full min-w-0 items-center rounded-full border border-zinc-200/90 bg-[#fafafa] px-3 py-1.5 text-[11px] text-[#6b7280]"
+                        >
+                          📦 {p}
+                        </span>
+                      ))}
                     </div>
                   )}
 
-                  {selectedNote.result.crmFull.length > 0 && (
-                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-[#f8f8f8] px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02),0_1px_8px_rgba(0,0,0,0.02)]">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                  {filterKeyInsightsForDisplay(selectedNote.result.crmFull).length > 0 && (
+                    <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-4">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
                         Key insights
                       </p>
                       <KeyInsightsList
-                        lines={selectedNote.result.crmFull.map(normalizeLegacyInsightLine)}
+                        lines={filterKeyInsightsForDisplay(selectedNote.result.crmFull)}
                         gapClass="gap-4"
                         lineClassName="rounded-lg px-3 py-2.5 text-[15px] font-medium leading-[1.65] tracking-tight"
                         expanded={historyInsightsExpanded}
@@ -3472,12 +3458,12 @@ export default function Home() {
                   )}
 
                   {(selectedNote.result.calendarDescription || '').trim() ? (
-                    <div className="rounded-2xl border border-[#e5e7eb]/40 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-zinc-200/60">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]/90">
+                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-4 py-4">
+                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
                         Before follow-up
                       </p>
                       <p className="whitespace-pre-line text-[15px] font-medium leading-snug tracking-tight text-[#111111]">
-                        {(selectedNote.result.calendarDescription || '').trim()}
+                        {topCalendarContextLines((selectedNote.result.calendarDescription || '').trim(), 3)}
                       </p>
                     </div>
                   ) : null}
