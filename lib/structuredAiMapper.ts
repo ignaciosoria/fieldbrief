@@ -1,4 +1,5 @@
 import type { AdditionalStep } from './additionalStepEnrichment'
+import { filterInsightsToContextOnly } from './filterInsightLines'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -239,7 +240,9 @@ export function structuredPayloadToStructureBody(
     timeHint: normalizeTimeHint(s.time),
   }))
 
-  const crmFull = insights.map((line) => line.replace(/^[.!?]+\s*$/, '').trim()).filter(Boolean)
+  const crmFull = filterInsightsToContextOnly(
+    insights.map((line) => line.replace(/^[.!?]+\s*$/, '').trim()).filter(Boolean),
+  ).slice(0, 4)
 
   return {
     customer: company,

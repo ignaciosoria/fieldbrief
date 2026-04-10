@@ -43,7 +43,7 @@ STRICT RULES:
 6. date / time = only when explicitly anchored in the note; otherwise "".
 7. supporting: at most **2** objects. **label** = max 4–5 words — a short action name or object only (e.g. "product sheet", "proposal PDF"), never a sentence.
 8. supporting.type: send | email | other only.
-9. insights: max **4** strings. Short factual bullets (interest, risk, competitor, volume). **Do not** put tasks or next-step actions inside insights — insights are context only, not actions.
+9. insights: max **4** strings. **Context only:** interest, risks, opportunities, competitor/incumbent facts, volume — never tasks. **Forbidden inside insights** (if a line would contain these, omit it): **send**, **call**, **follow up**, **meeting**, or Spanish equivalents (**enviar**, **llamar**, **seguimiento**, **reunión**). Insights must **never** describe actions.
 10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies.
 
 Return ONLY valid JSON.`

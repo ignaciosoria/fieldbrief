@@ -16,6 +16,10 @@ import { cleanCalendarTitle } from '../lib/calendarTitle'
 import { detectNoteLanguage } from '../lib/detectNoteLanguage'
 import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
 import {
+  filterInsightsToContextOnly,
+  insightLineContainsActionLanguage,
+} from '../lib/filterInsightLines'
+import {
   isWakeLockHeld,
   releaseWakeLock,
   requestWakeLock,
@@ -370,7 +374,9 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     nextStepTarget,
     product: productMerged,
     crop: '',
-    crmFull: stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
+    crmFull: filterInsightsToContextOnly(
+      stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
+    ).slice(0, 4),
     crmText: stripDealerClosingFromCrmText(base.crmText),
     calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
@@ -625,9 +631,9 @@ function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): bo
 }
 
 /**
- * One telegraphic blocker/dependency from Key Insights (⚠️ only) — no full sentences, no crmText fallback.
+ * One telegraphic key insight from crmFull (context-only, non-action) — no full sentences, no crmText fallback.
  */
-function buildCalendarDescriptionKeyDependency(
+function buildCalendarDescriptionKeyInsight(
   data: StructureResult,
   exclude: Set<string>,
   eventTitle: string,
@@ -635,7 +641,10 @@ function buildCalendarDescriptionKeyDependency(
   const primaryNs = stripEmojisForCalendar((data.nextStep || '').trim())
 
   const tryLine = (raw: string): string | null => {
-    let s = telegraphicInsightFragment(compactInsightForCalendar(raw))
+    const compact = compactInsightForCalendar(raw)
+    if (!compact.trim()) return null
+    if (insightLineContainsActionLanguage(compact)) return null
+    let s = telegraphicInsightFragment(compact)
     s = s.replace(/\s+/g, ' ').trim()
     if (s.length < 6) return null
     if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
@@ -645,7 +654,6 @@ function buildCalendarDescriptionKeyDependency(
 
   for (const line of data.crmFull || []) {
     if (!line.trim() || line.trimStart().startsWith('📅')) continue
-    if (!line.includes('⚠️')) continue
     const out = tryLine(line)
     if (out) return out
   }
@@ -653,9 +661,31 @@ function buildCalendarDescriptionKeyDependency(
   return ''
 }
 
+/** Same date+time as the primary calendar event (`buildCalendarOpenOptsFromResult`). */
+function calendarPrimaryEventInstant(data: StructureResult): Date {
+  const mmddRaw = (data.nextStepDate || '').trim()
+  const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
+    ? mmddRaw
+    : isoDateToMmddyyyy(todayIsoDate())
+  const resolved = resolveTimeFromHint(data.nextStepTimeHint || '')
+  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  const [mm, dd, yyyy] = adj.dateMmddyyyy.split('/').map((x) => parseInt(x, 10))
+  return new Date(yyyy, mm - 1, dd, adj.hour, adj.minute, 0, 0)
+}
+
+/** Local instant for a supporting step when `resolvedDate` is MM/DD/YYYY; otherwise unknown. */
+function supportingStepScheduledInstant(step: AdditionalStep): Date | null {
+  const ds = (step.resolvedDate || '').trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) return null
+  const [mm, dd, yyyy] = ds.split('/').map((x) => parseInt(x, 10))
+  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return null
+  const t = resolveTimeFromHint(step.timeHint || '')
+  return new Date(yyyy, mm - 1, dd, t.hour, t.minute, 0, 0)
+}
+
 /**
  * Calendar export body: structured data only (max 3 lines).
- * Line 1: company (plain) · Line 2: `- ` + first supporting action (if any) · Line 3: `- ` + ⚠️ dependency (if any).
+ * Line 1: company (plain) · After company, max 2 lines: `- ` supporting (if any), then `- ` key insight (if any).
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
@@ -671,9 +701,13 @@ function buildCalendarDescription(data: StructureResult): string {
   const line1 = buildCalendarDescriptionLine1Company(data)
   if (line1) addEx(line1)
 
+  const primaryInstant = calendarPrimaryEventInstant(data)
+
   let supportingPlain = ''
   for (const step of data.additionalSteps || []) {
     if (supportingStepDuplicatesPrimary(step, ns)) continue
+    const supInstant = supportingStepScheduledInstant(step)
+    if (supInstant !== null && supInstant.getTime() < primaryInstant.getTime()) continue
     const formatted = formatSupportingStepLine(step)
     if (!formatted.trim()) continue
     let s = stripEmojisForCalendar(formatted.trim())
@@ -684,13 +718,13 @@ function buildCalendarDescription(data: StructureResult): string {
     break
   }
 
-  const depRaw = buildCalendarDescriptionKeyDependency(data, exclude, eventTitle)
-  const depPlain = depRaw.replace(/^\s*-\s*/, '').trim()
+  const insightRaw = buildCalendarDescriptionKeyInsight(data, exclude, eventTitle)
+  const insightPlain = insightRaw.replace(/^\s*-\s*/, '').trim()
 
   const lines: string[] = []
   if (line1) lines.push(line1)
   if (supportingPlain) lines.push(`- ${supportingPlain}`)
-  if (depPlain) lines.push(`- ${depPlain}`)
+  if (insightPlain) lines.push(`- ${insightPlain}`)
 
   return lines.slice(0, 3).join('\n').trim()
 }
