@@ -1565,15 +1565,6 @@ function loadCalendarAddedBlob(): CalendarAddedBlob {
   }
 }
 
-function persistPrimaryToCalendarAdded(key: string, added: boolean) {
-  const all = loadCalendarAddedBlob()
-  const prev = all[key] || {}
-  all[key] = { ...prev, p: added }
-  try {
-    localStorage.setItem(CALENDAR_ADDED_LS_KEY, JSON.stringify(all))
-  } catch {}
-}
-
 /** Stable id for a supporting row within a note (list order index). */
 function supportingCalendarStepId(index: number): string {
   return String(index)
@@ -1685,7 +1676,7 @@ export default function Home() {
       return
     }
     const blob = loadCalendarAddedBlob()[calendarStorageKey]
-    setPrimaryAdded(!!blob?.p)
+    setPrimaryAdded(false)
     const next: Record<string, boolean> = {}
     for (const id of blob?.s || []) next[String(id)] = true
     setSupportingAdded(next)
@@ -2467,9 +2458,7 @@ export default function Home() {
       setError('Could not build the event. Check date and time in the note.')
       return
     }
-    const key = getCalendarStorageKey(r, opts?.noteId ?? null)
     setPrimaryAdded(true)
-    persistPrimaryToCalendarAdded(key, true)
 
     if (session?.user) {
       openGoogleCalendarWindow(calendarOpts)
@@ -2481,7 +2470,6 @@ export default function Home() {
       setShowCalendarToast(true)
     } else {
       setPrimaryAdded(false)
-      persistPrimaryToCalendarAdded(key, false)
       setError('Could not create the calendar file.')
     }
   }
