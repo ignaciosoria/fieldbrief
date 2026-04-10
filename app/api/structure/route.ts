@@ -8,11 +8,12 @@ import {
   toUserAnchorDateTime,
 } from '../../../lib/calendarResolveDate'
 import {
-  ACTION_KIND_SCORE,
-  inferActionKind,
-  isHigherValueKindThanSend,
-  type ActionKind,
-} from '../../../lib/nextStepActionKind'
+  isHighValuePrimaryCandidate,
+  isSendOrEmailTier,
+  kindScoreForPrimarySelection,
+  normalizedTypeForRow,
+  primaryBusinessTier,
+} from '../../../lib/actionPrimarySelection'
 import { resolveContactCompany } from '../../../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
 import {
@@ -22,6 +23,11 @@ import {
 import { normalizeProductField, productFieldToList } from '../../../lib/productField'
 import { detectNoteLanguage } from '../../../lib/detectNoteLanguage'
 import { isNoClearFollowUpLine } from '../../../lib/noFollowUp'
+import { enrichStructureWithExtractedActions } from '../../../lib/extractActionsFromStructure'
+import {
+  buildNormalizedActionsFromResult,
+  type NormalizedActionType,
+} from '../../../lib/normalizedActions'
 
 type MentionedEntity = { name: string; type: string }
 
@@ -712,18 +718,17 @@ type ChronologicalRow = {
 type ScoredRow = ChronologicalRow & {
   _dateRaw: string
   _timeRaw: string
-  _kind: ActionKind
-  _base: number
+  _normalizedType: NormalizedActionType
+  _tier: 0 | 1 | 2
+  _kindScore: number
 }
 
 /**
- * Pick primary next step by **action kind only** (meeting > call > follow_up > send > other).
- * **Earlier dates or clearer timing never outrank a higher-importance action** — e.g. "Send tomorrow"
- * stays secondary when "Call Friday" exists. **Date/time breaks ties** between rows of the **same**
- * kind (earlier calendar date wins), then stable order.
- *
- * **Send safety net:** If the top row after sorting is still **send** but another row is
- * meeting/call/follow_up, promote the best non-send (same tie-break rules).
+ * Phase 2 — deterministic primary/supporting:
+ * - **Tier 0** (meeting, call, follow_up) always beats **tier 1** (send, email) and **tier 2** (other).
+ * - send/email cannot be primary if any tier-0 action exists (sort + safety net).
+ * - Within tier: meeting > call > follow_up > … by kind score, then **earlier date** breaks ties,
+ *   then stable idx. **All non-primary rows are preserved** as supporting steps.
  */
 function applyRankedNextStepSelection(
   result: StructureBody,
@@ -775,32 +780,36 @@ function applyRankedNextStepSelection(
     const mmdd = resolveRelativePhraseToMmdd(rawForResolve, timeZone, anchor)
     const dateForSort = mmdd ?? dateTrim
 
-    const kind = inferActionKind(`${r.action} ${r.title}`)
-    const base = ACTION_KIND_SCORE[kind]
+    const nt = normalizedTypeForRow(r.action, r.title)
+    const tier = primaryBusinessTier(nt)
+    const kindScore = kindScoreForPrimarySelection(r.action, r.title)
 
     return {
       ...r,
       date: dateForSort,
       _dateRaw: r.date,
       _timeRaw: r.time,
-      _kind: kind,
-      _base: base,
+      _normalizedType: nt,
+      _tier: tier,
+      _kindScore: kindScore,
     }
   })
 
   console.log(
-    '[structure] rank: kind scores (date used only as tie-breaker within same kind)',
+    '[structure] rank: tiers (0=call/meeting/follow_up, 1=send/email, 2=other)',
     resolved.map((r) => ({
       source: r.source,
-      kind: r._kind,
-      base: r._base,
+      type: r._normalizedType,
+      tier: r._tier,
+      kindScore: r._kindScore,
       action: r.action.slice(0, 100),
       dateResolved: r.date,
     })),
   )
 
   resolved.sort((a, b) => {
-    if (b._base !== a._base) return b._base - a._base
+    if (a._tier !== b._tier) return a._tier - b._tier
+    if (b._kindScore !== a._kindScore) return b._kindScore - a._kindScore
     const da = parseStepDateMs(a.date)
     const db = parseStepDateMs(b.date)
     if (da !== db) return da - db
@@ -808,28 +817,24 @@ function applyRankedNextStepSelection(
   })
 
   console.log(
-    '[structure] rank: order after sort (kind desc, then earliest date, then stable idx)',
+    '[structure] rank: order (tier asc, kindScore desc, date asc, idx)',
     resolved.map((r) => ({
       source: r.source,
-      kind: r._kind,
-      base: r._base,
+      type: r._normalizedType,
+      tier: r._tier,
       action: r.action.slice(0, 120),
       dateResolved: r.date,
     })),
   )
 
-  const hasHigherValueAction = resolved.some((r) => isHigherValueKindThanSend(r._kind))
-
   let primary = resolved[0]
-  if (hasHigherValueAction && primary._kind === 'send') {
-    const nonSend = resolved.filter((r) => r._kind !== 'send')
-    const alt = nonSend[0]
+  const anyHighTier = resolved.some((r) => isHighValuePrimaryCandidate(r._normalizedType))
+  if (anyHighTier && isSendOrEmailTier(primary._normalizedType)) {
+    const alt = resolved.find((r) => isHighValuePrimaryCandidate(r._normalizedType))
     if (alt) {
-      console.log('[structure] rank: send blocked as primary — higher-value kind exists', {
-        skippedSend: primary.action.slice(0, 100),
-        skippedBase: primary._base,
+      console.log('[structure] rank: send/email blocked as primary — tier-0 action exists', {
+        skipped: primary.action.slice(0, 100),
         chosenPrimary: alt.action.slice(0, 100),
-        chosenBase: alt._base,
       })
       primary = alt
     }
@@ -1059,6 +1064,7 @@ export async function POST(request: Request) {
       )
     }
 
+    result = enrichStructureWithExtractedActions(result)
     result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow)
     result = applyServerCalendarResolution(result, timeZone, userLocalNow)
 
@@ -1134,6 +1140,8 @@ export async function POST(request: Request) {
         4,
       ),
       crmText: stripDealerClosingFromCrmText(afterProduct.crmText),
+      /** Backend-derived ordered actions (primary/supporting); ranking + extraction, not model order. */
+      actions: buildNormalizedActionsFromResult(afterProduct),
     }
 
     return NextResponse.json(enriched)

@@ -45,6 +45,23 @@ type MentionedEntity = { name: string; type: string }
 
 type AdditionalStep = { action: string; date: string; time: string }
 
+/** Backend-built list (Phase 1); primary/supporting decided server-side. */
+type NormalizedActionType =
+  | 'call'
+  | 'follow_up'
+  | 'meeting'
+  | 'send'
+  | 'email'
+  | 'other'
+
+type NormalizedAction = {
+  action: string
+  type: NormalizedActionType
+  date: string
+  time: string
+  primary: boolean
+}
+
 type StructureResult = {
   customer: string
   contact: string
@@ -72,6 +89,8 @@ type StructureResult = {
   /** API field; used when building calendar event body (not shown as its own screen section). */
   calendarDescription: string
   additionalSteps: AdditionalStep[]
+  /** Ordered actions with backend-assigned primary; mirrors API `actions`. */
+  actions: NormalizedAction[]
 }
 
 const emptyResult: StructureResult = {
@@ -98,6 +117,7 @@ const emptyResult: StructureResult = {
   crmFull: [],
   calendarDescription: '',
   additionalSteps: [],
+  actions: [],
 }
 
 function normalizeCrmFull(raw: unknown): string[] {
@@ -131,6 +151,39 @@ function normalizeMentionedEntities(raw: unknown): MentionedEntity[] {
 function normalizeAmbiguityFlags(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean)
+}
+
+const VALID_NORMALIZED_ACTION_TYPES = new Set<NormalizedActionType>([
+  'call',
+  'follow_up',
+  'meeting',
+  'send',
+  'email',
+  'other',
+])
+
+function normalizeActions(raw: unknown): NormalizedAction[] {
+  if (!Array.isArray(raw)) return []
+  const out: NormalizedAction[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const action = typeof o.action === 'string' ? o.action.trim() : ''
+    if (!action) continue
+    const t = o.type
+    const type =
+      typeof t === 'string' && VALID_NORMALIZED_ACTION_TYPES.has(t as NormalizedActionType)
+        ? (t as NormalizedActionType)
+        : 'other'
+    out.push({
+      action,
+      type,
+      date: typeof o.date === 'string' ? o.date.trim() : '',
+      time: typeof o.time === 'string' ? o.time.trim() : '',
+      primary: o.primary === true,
+    })
+  }
+  return out
 }
 
 function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
@@ -305,6 +358,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     ),
     nextStepTimeReference: (base.nextStepTimeReference || '').trim(),
     nextStepDate: resolveNextStepDateToMmdd((base.nextStepDate || '').trim()),
+    actions: normalizeActions(base.actions),
   }
 }
 
