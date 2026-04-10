@@ -27,6 +27,7 @@ import { enrichStructureWithExtractedActions } from '../../../lib/extractActions
 import {
   enrichAdditionalStepsList,
   type AdditionalStep,
+  type SupportingStructuredType,
 } from '../../../lib/additionalStepEnrichment'
 import {
   buildNormalizedActionsFromResult,
@@ -318,6 +319,10 @@ type ChronologicalRow = {
   title: string
   date: string
   time: string
+  supportingType?: SupportingStructuredType
+  label?: string
+  structuredDate?: string
+  structuredTime?: string
 }
 
 type ScoredRow = ChronologicalRow & {
@@ -365,6 +370,10 @@ function applyRankedNextStepSelection(
       title: s.action.trim(),
       date: (s.resolvedDate || '').trim(),
       time: (s.timeHint || '').trim(),
+      supportingType: s.supportingType,
+      label: s.label,
+      structuredDate: s.structuredDate,
+      structuredTime: s.structuredTime,
     })
   }
   if (rows.length === 0) return result
@@ -488,6 +497,10 @@ function applyRankedNextStepSelection(
     company: '',
     resolvedDate: r.date,
     timeHint: r.time ? normalizeTimeToHint(r.time, '') || r.time : '',
+    supportingType: r.supportingType,
+    label: r.label,
+    structuredDate: r.structuredDate,
+    structuredTime: r.structuredTime,
   }))
   return {
     ...result,
@@ -766,6 +779,10 @@ export async function POST(request: Request) {
         company: dedupeConsecutiveRepeatedWords(titleCaseWords(s.company.trim())),
         resolvedDate: s.resolvedDate.trim(),
         timeHint: s.timeHint.trim(),
+        ...(s.supportingType ? { supportingType: s.supportingType } : {}),
+        ...(s.label?.trim() ? { label: s.label.trim() } : {}),
+        ...(s.structuredDate?.trim() ? { structuredDate: s.structuredDate.trim() } : {}),
+        ...(s.structuredTime?.trim() ? { structuredTime: s.structuredTime.trim() } : {}),
       })),
     }
 

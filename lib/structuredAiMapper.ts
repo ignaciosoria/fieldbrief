@@ -182,6 +182,15 @@ function supportingToAction(s: StructuredSupporting, langEs: boolean): string {
   return `Send ${label}`
 }
 
+/** Calendar title line from structured supporting type + label only (no primary contact/company). */
+export function supportingStructuredActionLine(
+  type: StructuredSupportingType,
+  label: string,
+  langEs: boolean,
+): string {
+  return supportingToAction({ type, label: truncateWords(label, 5), date: '', time: '' }, langEs)
+}
+
 export type StructureBodyLike = {
   customer: string
   contact: string
@@ -232,13 +241,21 @@ export function structuredPayloadToStructureBody(
   if (!contact) ambiguityFlags.push('unclear_contact')
   if (!nextStepDate) ambiguityFlags.push('unclear_date')
 
-  const additionalSteps: AdditionalStep[] = supporting.map((s) => ({
-    action: supportingToAction(s, langEs),
-    contact: contact || '',
-    company: company || '',
-    resolvedDate: normalizeDateMmdd(s.date),
-    timeHint: normalizeTimeHint(s.time),
-  }))
+  const additionalSteps: AdditionalStep[] = supporting.map((s) => {
+    const sd = normalizeDateMmdd(s.date)
+    const st = normalizeTimeHint(s.time)
+    return {
+      action: supportingToAction(s, langEs),
+      contact: contact || '',
+      company: company || '',
+      resolvedDate: sd,
+      timeHint: st,
+      supportingType: s.type,
+      label: truncateWords(s.label, 5),
+      structuredDate: sd,
+      structuredTime: st,
+    }
+  })
 
   const crmFull = filterInsightsToContextOnly(
     insights.map((line) => line.replace(/^[.!?]+\s*$/, '').trim()).filter(Boolean),

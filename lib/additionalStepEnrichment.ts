@@ -1,5 +1,8 @@
 import { resolveCalendarTimeHint, resolveRelativePhraseToMmdd, toUserAnchorDateTime } from './calendarResolveDate'
 
+/** From model `supporting[].type` — supporting-only calendar uses these with `label` / structured date/time. */
+export type SupportingStructuredType = 'send' | 'email' | 'other'
+
 /** Supporting calendar rows — always include contact/company; timing when known or extractable from text. */
 export type AdditionalStep = {
   action: string
@@ -7,6 +10,14 @@ export type AdditionalStep = {
   company: string
   resolvedDate: string
   timeHint: string
+  /** Model supporting type; preserved for calendar export without primary fields. */
+  supportingType?: SupportingStructuredType
+  /** Model supporting.label (short). */
+  label?: string
+  /** Copy of structured date from model (normalized); not backfilled from action prose. */
+  structuredDate?: string
+  /** Copy of structured time from model (normalized); not backfilled from action prose. */
+  structuredTime?: string
 }
 
 function pad2(n: number) {
@@ -108,13 +119,22 @@ export function enrichAdditionalStepsList(
       const structuredTime = (raw.timeHint || legacyTime || '').trim()
       const timeHint = mergeTimeHints(structuredTime, action)
 
-      return {
+      const out: AdditionalStep = {
         action,
         contact: (raw.contact || '').trim() || defaultContact,
         company: (raw.company || '').trim() || defaultCompany,
         resolvedDate,
         timeHint,
       }
+      const st = (raw as AdditionalStep).supportingType
+      if (st === 'send' || st === 'email' || st === 'other') out.supportingType = st
+      const lbl = (raw as AdditionalStep).label?.trim()
+      if (lbl) out.label = lbl
+      const sd = (raw as AdditionalStep).structuredDate?.trim()
+      if (sd) out.structuredDate = sd
+      const stt = (raw as AdditionalStep).structuredTime?.trim()
+      if (stt) out.structuredTime = stt
+      return out
     })
     .filter((s): s is AdditionalStep => s !== null)
 }

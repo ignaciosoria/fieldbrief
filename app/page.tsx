@@ -15,6 +15,7 @@ import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 import { cleanCalendarTitle } from '../lib/calendarTitle'
 import { detectNoteLanguage } from '../lib/detectNoteLanguage'
 import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
+import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import {
   filterInsightsToContextOnly,
   insightLineContainsActionLanguage,
@@ -55,12 +56,18 @@ import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
+type SupportingStructuredType = 'send' | 'email' | 'other'
+
 type AdditionalStep = {
   action: string
   contact: string
   company: string
   resolvedDate: string
   timeHint: string
+  supportingType?: SupportingStructuredType
+  label?: string
+  structuredDate?: string
+  structuredTime?: string
 }
 
 /** Backend-built list (Phase 1); primary/supporting decided server-side. */
@@ -224,12 +231,22 @@ function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
           : typeof o.time === 'string'
             ? o.time.trim()
             : ''
+      const stRaw = typeof o.supportingType === 'string' ? o.supportingType.trim().toLowerCase() : ''
+      const supportingType: SupportingStructuredType | undefined =
+        stRaw === 'send' || stRaw === 'email' || stRaw === 'other' ? stRaw : undefined
+      const label = typeof o.label === 'string' ? o.label.trim() : ''
+      const structuredDate = typeof o.structuredDate === 'string' ? o.structuredDate.trim() : ''
+      const structuredTime = typeof o.structuredTime === 'string' ? o.structuredTime.trim() : ''
       out.push({
         action,
         contact: typeof o.contact === 'string' ? o.contact.trim() : '',
         company: typeof o.company === 'string' ? o.company.trim() : '',
         resolvedDate: rd,
         timeHint: th,
+        ...(supportingType ? { supportingType } : {}),
+        ...(label ? { label } : {}),
+        ...(structuredDate ? { structuredDate } : {}),
+        ...(structuredTime ? { structuredTime } : {}),
       })
     }
   }
@@ -753,6 +770,55 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
     details,
     time: { kind: 'clock', hour: adj.hour, minute: adj.minute },
     ...(loc ? { location: loc } : {}),
+  }
+}
+
+function supportingStepCalendarTitle(step: AdditionalStep): string {
+  const raw = stripEmojisForCalendar((step.action || '').trim())
+  return cleanCalendarTitle(raw || 'Follow-up')
+}
+
+/** Event description: only structured supporting fields (type, label, date, time). */
+function buildSupportingStructuredCalendarDescription(step: AdditionalStep): string {
+  const lines: string[] = []
+  if (step.supportingType) lines.push(step.supportingType)
+  if (step.label?.trim()) lines.push(step.label.trim())
+  const d = (step.structuredDate || '').trim()
+  const t = (step.structuredTime || '').trim()
+  if (d) lines.push(d)
+  if (t) lines.push(t)
+  return lines.join('\n').trim()
+}
+
+/** One calendar event for exactly one supporting step — structured type/label/date/time only (no primary fields). */
+function buildCalendarOpenOptsForSupportingStep(
+  r: StructureResult,
+  step: AdditionalStep,
+): CalendarOpenOpts {
+  const langEs = detectNoteLanguage(`${r.nextStep || ''} ${step.action || ''}`) === 'spanish'
+  let title: string
+  if (step.supportingType && step.label?.trim()) {
+    title = cleanCalendarTitle(
+      stripEmojisForCalendar(
+        supportingStructuredActionLine(step.supportingType, step.label.trim(), langEs),
+      ),
+    )
+  } else {
+    title = supportingStepCalendarTitle(step)
+  }
+
+  const mmddRaw = ((step.structuredDate || step.resolvedDate) || '').trim()
+  const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
+    ? mmddRaw
+    : isoDateToMmddyyyy(todayIsoDate())
+  const resolved = resolveTimeFromHint((step.structuredTime || step.timeHint || '').trim())
+  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  const details = buildSupportingStructuredCalendarDescription(step)
+  return {
+    title,
+    dateMmddyyyy: adj.dateMmddyyyy,
+    details,
+    time: { kind: 'clock', hour: adj.hour, minute: adj.minute },
   }
 }
 
@@ -2327,6 +2393,28 @@ export default function Home() {
     }
   }
 
+  const addSupportingStepToCalendar = (r: StructureResult, step: AdditionalStep) => {
+    if (isNoClearFollowUpResult(r)) return
+    if (navigator.vibrate) navigator.vibrate(10)
+    const opts = buildCalendarOpenOptsForSupportingStep(r, step)
+    const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+    if (!range) {
+      setError('Could not build the event. Check date and time for this action.')
+      return
+    }
+    if (session?.user) {
+      openGoogleCalendarWindow(opts)
+      setShowCalendarToast(true)
+      return
+    }
+    const ok = openAppleCalendarFromOpts(opts)
+    if (ok) {
+      setShowCalendarToast(true)
+    } else {
+      setError('Could not create the calendar file.')
+    }
+  }
+
   if (!mounted) return null
 
   if (status === 'loading') {
@@ -3161,30 +3249,11 @@ export default function Home() {
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
                         <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
-                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'Next step'}
+                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'Primary'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {result.nextStepTitle || result.nextStep}
                         </p>
-                        {!isNoClearFollowUpResult(result) &&
-                          (result.additionalSteps || []).length > 0 && (
-                            <div className="mt-3 border-t border-zinc-200/90 pt-3 text-left">
-                              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
-                                Supporting
-                              </p>
-                              <ul className="list-none space-y-1.5 pl-0">
-                                {(result.additionalSteps || []).map((s, i) => (
-                                  <li
-                                    key={i}
-                                    className="text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]"
-                                  >
-                                    <span className="select-none text-[#6b7280]">- </span>
-                                    {formatSupportingStepLine(s)}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
                       </div>
 
                       {!isNoClearFollowUpResult(result) ? (
@@ -3200,6 +3269,35 @@ export default function Home() {
                           <span className="tracking-tight">Add to calendar</span>
                         </button>
                       ) : null}
+
+                      {!isNoClearFollowUpResult(result) &&
+                        (result.additionalSteps || []).length > 0 && (
+                          <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 text-left ring-1 ring-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+                            <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
+                              Supporting
+                            </p>
+                            <ul className="list-none space-y-2.5 pl-0">
+                              {(result.additionalSteps || []).map((s, i) => (
+                                <li
+                                  key={i}
+                                  className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
+                                >
+                                  <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
+                                    <span className="select-none text-[#6b7280]">- </span>
+                                    {formatSupportingStepLine(s)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addSupportingStepToCalendar(result, s)}
+                                    className="shrink-0 rounded-lg border border-indigo-200/90 bg-white px-2.5 py-1 text-[11px] font-semibold leading-none text-[#4F46E5] shadow-sm transition-[transform,background-color] hover:bg-indigo-50 active:scale-[0.97]"
+                                  >
+                                    + Add
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                     </>
                   )}
                 </div>
@@ -3398,38 +3496,64 @@ export default function Home() {
                   )}
 
                   {(selectedNote.result.nextStep || selectedNote.result.nextStepTitle) && (
-                    <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-4 ring-1 ring-indigo-500/20">
-                      <div className="mb-2 flex items-center gap-2">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#818cf8">
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                        </svg>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">
-                          {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'Next step'}
+                    <>
+                      <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-4 ring-1 ring-indigo-500/20">
+                        <div className="mb-2 flex items-center gap-2">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="#818cf8">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                          </svg>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4F46E5]">
+                            {isNoClearFollowUpResult(selectedNote.result) ? 'Follow-up' : 'Primary'}
+                          </p>
+                        </div>
+                        <p className="text-[19px] font-bold leading-snug text-[#111111]">
+                          {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
                         </p>
                       </div>
-                      <p className="text-[19px] font-bold leading-snug text-[#111111]">
-                        {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
-                      </p>
+
+                      {!isNoClearFollowUpResult(selectedNote.result) ? (
+                        <button
+                          type="button"
+                          onClick={() => addResultToCalendar(selectedNote.result)}
+                          className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:brightness-[0.95]"
+                          style={{ backgroundColor: '#4F46E5' }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          <span className="tracking-tight">Add to calendar</span>
+                        </button>
+                      ) : null}
+
                       {!isNoClearFollowUpResult(selectedNote.result) &&
                         (selectedNote.result.additionalSteps || []).length > 0 && (
-                          <div className="mt-3 border-t border-zinc-200/90 pt-3">
-                            <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
+                          <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 ring-1 ring-zinc-200/80">
+                            <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
                               Supporting
                             </p>
-                            <ul className="list-none space-y-1.5 pl-0">
+                            <ul className="list-none space-y-2.5 pl-0">
                               {(selectedNote.result.additionalSteps || []).map((s, i) => (
                                 <li
                                   key={i}
-                                  className="text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]"
+                                  className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
                                 >
-                                  <span className="select-none text-[#6b7280]">- </span>
-                                  {formatSupportingStepLine(s)}
+                                  <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
+                                    <span className="select-none text-[#6b7280]">- </span>
+                                    {formatSupportingStepLine(s)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addSupportingStepToCalendar(selectedNote.result, s)}
+                                    className="shrink-0 rounded-lg border border-indigo-200/90 bg-white px-2.5 py-1 text-[11px] font-semibold leading-none text-[#4F46E5] shadow-sm transition-[transform,background-color] hover:bg-indigo-50 active:scale-[0.97]"
+                                  >
+                                    + Add
+                                  </button>
                                 </li>
                               ))}
                             </ul>
                           </div>
                         )}
-                    </div>
+                    </>
                   )}
 
                   <div className="flex gap-2 pt-1">
