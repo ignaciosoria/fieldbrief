@@ -513,11 +513,11 @@ function needsContactPick(r: StructureResult): boolean {
   return !(r.contact || '').trim()
 }
 
-/** Confirm follow-up targets the direct contact only (after contact is known). */
+/**
+ * Follow-up target sheet: only when **contact** and **nextStepTarget** disagree after processing.
+ * Do not use ambiguity flags or entity count alone — those fire on most real notes (org + person + context).
+ */
 function needsNextStepTargetPick(r: StructureResult): boolean {
-  if (!(r.contact || '').trim()) return false
-  if (hasReliabilityFlag(r, 'unclear_target')) return true
-  if (needsTargetPicker(r)) return true
   return contactTargetMismatch(r)
 }
 
