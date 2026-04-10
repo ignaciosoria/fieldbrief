@@ -1,5 +1,18 @@
 import OpenAI from 'openai'
+import { DateTime } from 'luxon'
 import { NextResponse } from 'next/server'
+import {
+  resolveRelativeDate,
+  resolveRelativePhraseToMmdd,
+  resolveCalendarTimeHint,
+  toUserAnchorDateTime,
+} from '../../../lib/calendarResolveDate'
+import {
+  ACTION_KIND_SCORE,
+  inferActionKind,
+  isHigherValueKindThanSend,
+  type ActionKind,
+} from '../../../lib/nextStepActionKind'
 import { resolveContactCompany } from '../../../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
 import {
@@ -24,6 +37,8 @@ type StructureBody = {
   nextStepAction: string
   nextStepTarget: string
   nextStepDate: string
+  /** Relative time phrase only (tomorrow, next Friday, next week). Server resolves to MM/DD/YYYY. */
+  nextStepTimeReference: string
   nextStepTimeHint: string
   nextStepConfidence: 'high' | 'medium' | 'low'
   ambiguityFlags: string[]
@@ -69,10 +84,12 @@ These JSON fields must be **100% grounded in explicit note wording** or left **e
    - Fill **only** when the note **explicitly names or clearly identifies** the person the rep spoke with (spoken full name, first name + unmistakable context, or "the buyer at X" only if that person is named elsewhere in the same note).
    - If the note does **not** clearly name the direct contact → **contact = ""** and add **"unclear_contact"** to **ambiguityFlags**.
 
-2. **nextStepDate** (and derive **nextStepTime** / hints only when the note anchors time)
-   - Fill **nextStepDate** (MM/DD/YYYY) **only** when the note states an explicit calendar anchor: a **weekday** ("Thursday", "el jueves"), **relative day** ("tomorrow", "mañana", "next Friday"), a **numeric date** ("April 9", "3/15"), or **"this week" / "next week"** only if paired with a **specific day or date** in the same note.
-   - **Never** infer a date from tone alone ("soon", "follow up", "I'll call her", no time stated) or from **voicemail / no-answer** patterns unless the note literally says **tomorrow** / a day / a date.
-   - If no explicit day or date for the follow-up → **nextStepDate = ""**, **nextStepTime = ""** as appropriate, and add **"unclear_date"** to **ambiguityFlags**.
+2. **nextStepTimeReference** and **nextStepDate** (derive **nextStepTime** / hints only when the note anchors time)
+   - **nextStepTimeReference** = natural-language timing from the note only — e.g. **tomorrow**, **next Friday**, **next week**, **Thursday**, **mañana**, **el jueves**, **próxima semana**. **Never** put MM/DD/YYYY here. **Do not** compute calendar dates yourself for relative phrases; the **backend** resolves this field to **nextStepDate** using the user's timezone.
+   - When timing is relative or weekday-based, **prefer** filling **nextStepTimeReference** and set **nextStepDate** to **""** (the server fills the exact date).
+   - Fill **nextStepDate** (MM/DD/YYYY) in the model output **only** for unambiguous explicit numeric anchors (e.g. **3/15**, **April 9**) when you are not using **nextStepTimeReference** for that same timing — otherwise leave **nextStepDate** empty and let the server resolve from **nextStepTimeReference**.
+   - **Never** infer a date from tone alone ("soon", "follow up", "I'll call her", no time stated) or from **voicemail / no-answer** patterns unless the note literally says **tomorrow** / a day / a date (or equivalent phrase for **nextStepTimeReference**).
+   - If no explicit day or date for the follow-up → **nextStepTimeReference** = **""**, **nextStepDate** = **""**, **nextStepTime** = **""** as appropriate, and add **"unclear_date"** to **ambiguityFlags**.
 
 3. **nextStepTarget**
    - Must be the **same person** as the **direct contact** when a person is the object of the next step. **Never** put a third party, dealer's customer, or mentioned-but-not-present person here.
@@ -143,12 +160,12 @@ You are **deciding what to do next**, not summarizing the note.
 2. **Extract:** If yes, list every forward action (internally).
 3. **Rank:** Apply **ACTION PRIORITY** below. When actions fall on **different calendar days**, **earliest day wins** for the **primary** next step (later days → **additionalSteps**) — see **CHRONOLOGY FIRST** below.
 4. **One primary:** Output **exactly ONE** action in **nextStep** / **nextStepTitle** — never a list, never multiple verbs in one line.
-5. **Timing:** Put dates/times in JSON **only** per the **RELIABILITY MANDATE** (explicit or stated relative day in the note). Resolve "tomorrow", weekday names, etc. using the user date context. **Never** fabricate a calendar date from tone alone.
+5. **Timing:** Per the **RELIABILITY MANDATE**: put relative/phrase timing in **nextStepTimeReference**; **do not** output MM/DD/YYYY for those — the **server** resolves exact **nextStepDate** in the user's timezone. **Never** fabricate a calendar date from tone alone.
 6. **Person:** **nextStepTarget** = the person who should receive or be part of **that** action (direct-contact rules; **""** when not applicable).
 
 **If there is no clear intent, commitment, or next step** (e.g. pure social chat, internal admin-only, facts with no forward motion, vague pleasantries with no commercial next step) — set **exactly**:
 - **nextStep** and **nextStepTitle** to the same string: English → **No follow-up needed** | Spanish → **No se requiere seguimiento**
-- **nextStepAction** = "", **nextStepTarget** = "", **nextStepDate** = "", **nextStepTime** = "", **nextStepTimeHint** = ""
+- **nextStepAction** = "", **nextStepTarget** = "", **nextStepDate** = "", **nextStepTimeReference** = "", **nextStepTime** = "", **nextStepTimeHint** = ""
 - **additionalSteps** = [] (empty array)
 - **nextStepConfidence** = "low"
 - **crmText** / **crmFull** may still describe what was said; **calendarDescription** = "" unless a brief non-actionable context line is needed (no implied meeting).
@@ -300,15 +317,13 @@ WRONG: "Llamar a Luis — …" when Luis was only mentioned, not spoken to — u
 
 ---
 
-DATE/TIME RULES (for JSON **nextStepDate** / **nextStepTime** only — RELIABILITY MANDATE applies):
+DATE/TIME RULES (for **nextStepTimeReference**, **nextStepDate**, **nextStepTime** — RELIABILITY MANDATE applies):
 
-- Map **explicit** phrases in the note to wall-clock times; **nextStepDate** must follow the mandate above (no inferred dates).
-- "mañana por la mañana" → tomorrow 9:00am (only when **mañana** / tomorrow is explicitly in the note for that action)
-- "por la tarde" → 3:00pm
-- "al mediodía" → 12:00pm
-- "por la mañana" → 9:00am
-- When an explicit weekday or relative day is stated, calculate **nextStepDate** from today's date provided in the user message.
-- If **no** explicit day/date for the follow-up appears in the note → **nextStepDate = ""** and **unclear_date** in **ambiguityFlags**
+- Map **explicit** phrases in the note to **nextStepTimeReference** (phrases) and to **nextStepTime** / **nextStepTimeHint** (wall-clock or period words). **Do not** output MM/DD/YYYY for relative timing — the server resolves **nextStepTimeReference** → **nextStepDate** in the user's timezone.
+- "mañana por la mañana" → **nextStepTimeReference** includes **mañana** / **tomorrow**; **nextStepTimeHint** can reflect morning (only when stated for that action)
+- "por la tarde" → 3:00pm hint; "al mediodía" → noon; "por la mañana" → 9:00am hint
+- When a weekday or relative day is stated, put that wording in **nextStepTimeReference** and leave **nextStepDate** empty unless you also have a separate numeric date anchor.
+- If **no** explicit day/date for the follow-up appears in the note → **nextStepTimeReference** = **""**, **nextStepDate** = **""**, and **unclear_date** in **ambiguityFlags**
 
 ---
 
@@ -377,6 +392,7 @@ summary,
 nextStep,
 nextStepTitle,
 nextStepDate,
+nextStepTimeReference,
 nextStepTime,
 additionalSteps,
 crmText,
@@ -392,6 +408,10 @@ nextStepTimeHint,
 nextStepConfidence,
 mentionedEntities,
 notes
+
+**nextStepTimeReference (timing extraction — server resolves dates):**
+- Put **only** natural-language timing from the note (e.g. "tomorrow", "next Friday", "next week", "mañana", "el jueves"). **Never** put MM/DD/YYYY here.
+- Prefer **nextStepTimeReference** for any relative timing; set **nextStepDate** to **""** when the reference carries the date — the **backend** fills **nextStepDate** in the user's timezone. Do not invent calendar dates.
 
 Rules for the extra keys:
 - crop = always "" (empty string). Deprecated key — put **only the rep's** offering labels in **product**; competitor products → **crmFull** with **⚔️** only.
@@ -409,61 +429,45 @@ additionalSteps = JSON array of objects: { "action", "date", "time" } for every 
 
 Return ONLY valid JSON. No backticks. No explanation.`
 
+/** Client instant for "now" (ISO or ms); falls back to server time only if missing/invalid. */
+function parseUserLocalInstant(body: Record<string, unknown>): Date {
+  const raw = body.clientNow ?? body.userLocalTimestamp ?? body.userLocalNow
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const d = new Date(raw)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const d = new Date(raw)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return new Date()
+}
+
 /**
  * Rich calendar anchors (EN + ES) so the model can resolve "jueves", "próxima semana", etc.
- * Weekday offsets: **nearest** calendar occurrence of that weekday (0–6 days ahead).
- * If today is already that weekday, use **today** (0), not +7 — e.g. Wednesday note saying
- * "Thursday" → tomorrow; if the server date is already Thursday, "Thursday" → this Thursday.
+ * Uses the **user's** request-time instant in their IANA zone (not server local clock).
+ * Weekday offsets: **nearest** calendar occurrence of that weekday (0–6 days ahead), with
+ * late-night / "next weekday" rules applied in post-processing, not here.
  */
-function buildStructureUserDateContext(now: Date): string {
-  const todayEN = now.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-  const todayES = now.toLocaleDateString('es-ES', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
-  const fmtPair = (d: Date) => {
-    const en = d.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    })
-    const es = d.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
+function buildStructureUserDateContext(timeZone: string, userNow: Date): string {
+  const z = timeZone.trim() || 'America/Los_Angeles'
+  const now = toUserAnchorDateTime(userNow, z)
+  const fmtPair = (dt: DateTime) => {
+    const en = dt.setLocale('en').toFormat('EEEE, MMMM d, yyyy')
+    const es = dt.setLocale('es').toFormat("EEEE, d 'de' MMMM 'de' yyyy")
     return `${en} / ${es}`
   }
-
-  const addDays = (base: Date, days: number) => {
-    const d = new Date(base)
-    d.setDate(base.getDate() + days)
-    return d
-  }
-
-  /** Days from `now` to the nearest `targetDay` (getDay(): Sun=0 … Sat=6). 0 = same day. */
-  const daysUntilNearestWeekday = (targetDay: number) => {
-    const today = now.getDay()
-    return (targetDay - today + 7) % 7
-  }
-
-  const tomorrow = addDays(now, 1)
-  const nextThursday = addDays(now, daysUntilNearestWeekday(4))
-  const nextFriday = addDays(now, daysUntilNearestWeekday(5))
-  const nextMonday = addDays(now, daysUntilNearestWeekday(1))
-  const nextWeekMonday = addDays(now, daysUntilNearestWeekday(1) + 7)
+  const todayEN = now.setLocale('en').toFormat('EEEE, MMMM d, yyyy')
+  const todayES = now.setLocale('es').toFormat("EEEE, d 'de' MMMM 'de' yyyy")
+  const tomorrow = now.plus({ days: 1 })
+  const nextThursday = now.plus({ days: (4 - now.weekday + 7) % 7 })
+  const nextFriday = now.plus({ days: (5 - now.weekday + 7) % 7 })
+  const nextMonday = now.plus({ days: (1 - now.weekday + 7) % 7 })
+  const upcomingMonday = now.plus({ days: (1 - now.weekday + 7) % 7 })
+  const nextWeekMonday = upcomingMonday.plus({ days: 7 })
 
   return [
+    `User calendar timezone for this request: ${z}. The user's local "now" for this note is anchored to their device clock at send time — all relative dates ("today", "tomorrow", weekdays) use that instant in this timezone (not server time or UTC date alone).`,
     'Calendar context (use for relative dates in the note):',
     `Today: ${todayEN} / ${todayES}`,
     `Tomorrow: ${fmtPair(tomorrow)}`,
@@ -696,120 +700,6 @@ function parseStepDateMs(dateStr: string): number {
   return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
 }
 
-function stripDiacritics(s: string): string {
-  return s.normalize('NFD').replace(/\p{M}/gu, '')
-}
-
-function formatLocalMmDdYyyy(d: Date): string {
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${mm}/${dd}/${d.getFullYear()}`
-}
-
-function addDaysLocal(base: Date, days: number): Date {
-  const d = new Date(base.getTime())
-  d.setDate(d.getDate() + days)
-  return d
-}
-
-/** Days to add to `from` (local) to reach the nearest `targetJsWeekday` (Sun=0 … Sat=6). 0 = same day when today matches. */
-function getDaysUntilNearestWeekday(from: Date, targetJsWeekday: number): number {
-  const today = from.getDay()
-  return (targetJsWeekday - today + 7) % 7
-}
-
-function getNextDayOfWeek(from: Date, targetJsWeekday: number): Date {
-  return addDaysLocal(from, getDaysUntilNearestWeekday(from, targetJsWeekday))
-}
-
-/** Remove time-of-day phrases so "mañana por la mañana" → "mañana", "el viernes por la tarde" → "el viernes". */
-function stripTimeOfDayFromDatePhrase(s: string): string {
-  return s
-    .replace(/\bpor\s+la\s+mañana\b/gi, ' ')
-    .replace(/\bpor\s+la\s+tarde\b/gi, ' ')
-    .replace(/\bpor\s+la\s+noche\b/gi, ' ')
-    .replace(/\bal\s+mediod[ií]a\b/gi, ' ')
-    .replace(/\bin\s+the\s+morning\b/gi, ' ')
-    .replace(/\bin\s+the\s+afternoon\b/gi, ' ')
-    .replace(/\bin\s+the\s+evening\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/**
- * English + Spanish weekday names → JS getDay() (Sun=0 … Sat=6).
- * Matches "el viernes", "Friday", "viernes", etc.
- */
-function parseWeekdayNameToJsDay(raw: string): number | null {
-  const t = stripDiacritics(raw.trim().toLowerCase())
-  if (!t) return null
-  const map: Record<string, number> = {
-    sunday: 0,
-    sun: 0,
-    domingo: 0,
-    monday: 1,
-    mon: 1,
-    lunes: 1,
-    lun: 1,
-    tuesday: 2,
-    tue: 2,
-    tues: 2,
-    martes: 2,
-    mar: 2,
-    wednesday: 3,
-    wed: 3,
-    miercoles: 3,
-    thursday: 4,
-    thu: 4,
-    thurs: 4,
-    jueves: 4,
-    friday: 5,
-    fri: 5,
-    viernes: 5,
-    vie: 5,
-    saturday: 6,
-    sat: 6,
-    sabado: 6,
-  }
-  if (map[t] !== undefined) return map[t]
-  for (const w of t.split(/\s+/)) {
-    if (w && map[w] !== undefined) return map[w]
-  }
-  return null
-}
-
-/**
- * Convert model date strings (often Spanish relative phrases) to MM/DD/YYYY using the
- * same "today" anchor as `buildStructureUserDateContext`. Returns null if no rule matches.
- */
-function resolveRelativeDateStringToMmdd(raw: string, anchor: Date): string | null {
-  const t = (raw || '').trim()
-  if (!t) return null
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return normalizeNextStepDate(t)
-
-  let s = stripTimeOfDayFromDatePhrase(t)
-  s = s.replace(/^el\s+/i, '').replace(/^la\s+/i, '').trim()
-  const lower = s.toLowerCase()
-
-  if (/\bpasado\s+mañana\b/.test(lower) || /\bday\s+after\s+tomorrow\b/.test(lower)) {
-    return formatLocalMmDdYyyy(addDaysLocal(anchor, 2))
-  }
-  if (/\bhoy\b/.test(lower) || /\btoday\b/.test(lower)) {
-    return formatLocalMmDdYyyy(anchor)
-  }
-  if (/\bmañana\b/.test(lower) || /\btomorrow\b/.test(lower)) {
-    return formatLocalMmDdYyyy(addDaysLocal(anchor, 1))
-  }
-
-  const wd = parseWeekdayNameToJsDay(s)
-  if (wd !== null) {
-    return formatLocalMmDdYyyy(getNextDayOfWeek(anchor, wd))
-  }
-
-  return null
-}
-
 type ChronologicalRow = {
   idx: number
   source: 'primary' | 'additional'
@@ -817,57 +707,6 @@ type ChronologicalRow = {
   title: string
   date: string
   time: string
-}
-
-/** Base score by inferred action kind (higher = more likely to be the business-primary step). */
-const ACTION_KIND_SCORE = {
-  meeting: 100,
-  call: 90,
-  follow_up: 85,
-  send: 60,
-  other: 30,
-} as const
-
-type ActionKind = keyof typeof ACTION_KIND_SCORE
-
-/** Kinds that must never lose primary to a "send" when any of them exist in the candidate set. */
-function isHigherValueKindThanSend(k: ActionKind): boolean {
-  return k === 'meeting' || k === 'call' || k === 'follow_up'
-}
-
-/**
- * Infer kind from action text (EN/ES). Order: meeting → call → follow_up → send → other.
- * Tuned so "send … tomorrow" does not outrank "call … next week" on date alone — handled in ranking.
- */
-function inferActionKind(action: string): ActionKind {
-  const a = action.toLowerCase()
-  if (
-    /\b(meeting|reuni[oó]n|reunion|demo|demostraci[oó]n|site\s+visit|visita\b|visit\b(?!\s+note)|appointment|cita\b|presentaci[oó]n|pitch|workshop|webinar|entrevista)\b/i.test(
-      a,
-    )
-  ) {
-    return 'meeting'
-  }
-  if (
-    /\b(call|llamar|llama|llamada|phone|tel[ée]fono|callback|devolver\s+la\s+llamada|marcar|ring\b)\b/i.test(
-      a,
-    )
-  ) {
-    return 'call'
-  }
-  if (
-    /\b(follow[-\s]?up|seguimiento|check[-\s]?in|touch\s*base|recheck)\b/i.test(a)
-  ) {
-    return 'follow_up'
-  }
-  if (
-    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?)\b/i.test(
-      a,
-    )
-  ) {
-    return 'send'
-  }
-  return 'other'
 }
 
 /** Extra weight when the model anchored time (resolved calendar date scores highest). */
@@ -908,7 +747,12 @@ type ScoredRow = ChronologicalRow & {
  * primary — even with a clearer/earlier date or higher total score. Primary becomes the best-ranked
  * **non-send** (same sort order).
  */
-function applyRankedNextStepSelection(result: StructureBody, anchor: Date): StructureBody {
+function applyRankedNextStepSelection(
+  result: StructureBody,
+  timeZone: string,
+  userNow: Date,
+): StructureBody {
+  const anchor = toUserAnchorDateTime(userNow, timeZone)
   const rows: ChronologicalRow[] = []
   let idx = 0
   const primaryAction = (result.nextStep || '').trim()
@@ -950,7 +794,7 @@ function applyRankedNextStepSelection(result: StructureBody, anchor: Date): Stru
     const dateTrim = r.date.trim()
     const timeTrim = r.time.trim()
     const rawForResolve = dateTrim || timeTrim
-    const mmdd = resolveRelativeDateStringToMmdd(rawForResolve, anchor)
+    const mmdd = resolveRelativePhraseToMmdd(rawForResolve, timeZone, anchor)
     const dateForSort = mmdd ?? dateTrim
 
     const kind = inferActionKind(`${r.action} ${r.title}`)
@@ -1094,6 +938,7 @@ function normalizeNoFollowUpStructure(result: StructureBody): StructureBody {
     nextStepAction: '',
     nextStepTarget: '',
     nextStepDate: '',
+    nextStepTimeReference: '',
     nextStepTimeHint: '',
     additionalSteps: [],
     nextStepConfidence: 'low',
@@ -1101,12 +946,47 @@ function normalizeNoFollowUpStructure(result: StructureBody): StructureBody {
 }
 
 /** Post-parse fixes before title-case / merge (chronology, product, duplicates, title shape). */
+function applyServerCalendarResolution(
+  result: StructureBody,
+  timeZone: string,
+  userNow: Date,
+): StructureBody {
+  const line = (result.nextStepTitle || result.nextStep || '').trim()
+  if (isNoClearFollowUpLine(line)) return result
+
+  const ref = (result.nextStepTimeReference || '').trim()
+  let nextDate = (result.nextStepDate || '').trim()
+
+  if (ref) {
+    const resolved = resolveRelativeDate(ref, userNow, timeZone)
+    if (resolved) nextDate = resolved
+  } else if (nextDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(nextDate)) {
+    const anchor = toUserAnchorDateTime(userNow, timeZone)
+    const resolved = resolveRelativePhraseToMmdd(nextDate, timeZone, anchor)
+    if (resolved) nextDate = resolved
+  }
+
+  const hint = resolveCalendarTimeHint(
+    result.nextStepTimeHint,
+    result.nextStep,
+    result.nextStepTitle,
+    result.nextStepAction,
+  )
+
+  return {
+    ...result,
+    nextStepDate: nextDate,
+    nextStepTimeHint: hint,
+  }
+}
+
 function applyStructureResponsePostProcessing(
   result: StructureBody,
-  anchor: Date,
+  timeZone: string,
+  userNow: Date,
 ): StructureBody {
   let r = normalizeNoFollowUpStructure(result)
-  r = applyRankedNextStepSelection(r, anchor)
+  r = applyRankedNextStepSelection(r, timeZone, userNow)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   r = {
     ...r,
@@ -1139,6 +1019,8 @@ function parseStructureJson(text: string): StructureBody {
       typeof parsed.nextStepDate === 'string'
         ? normalizeNextStepDate(parsed.nextStepDate)
         : '',
+    nextStepTimeReference:
+      typeof parsed.nextStepTimeReference === 'string' ? parsed.nextStepTimeReference : '',
     nextStepTimeHint: normalizeTimeToHint(nextStepTimeRaw, nextStepTimeHintRaw),
     nextStepConfidence: parseConfidence(parsed.confidence ?? parsed.nextStepConfidence),
     ambiguityFlags: parseAmbiguityFlags(parsed.ambiguityFlags),
@@ -1158,14 +1040,19 @@ function parseStructureJson(text: string): StructureBody {
 
 export async function POST(request: Request) {
   try {
-    const { note } = await request.json()
+    const body = (await request.json()) as Record<string, unknown>
+    const note = body?.note
+    const timeZoneRaw = typeof body?.timezone === 'string' ? body.timezone.trim() : ''
+    const tzCandidate = timeZoneRaw || 'America/Los_Angeles'
+    const timeZoneProbe = DateTime.now().setZone(tzCandidate)
+    const timeZone = timeZoneProbe.isValid ? tzCandidate : 'America/Los_Angeles'
+    const userLocalNow = parseUserLocalInstant(body)
 
     if (!note || typeof note !== 'string') {
       return NextResponse.json({ error: 'Missing note' }, { status: 400 })
     }
 
-    const now = new Date()
-    const dateContext = buildStructureUserDateContext(now)
+    const dateContext = buildStructureUserDateContext(timeZone, userLocalNow)
 
     const detectedLanguage = detectNoteLanguage(note)
     const languageEnforcement =
@@ -1202,7 +1089,8 @@ export async function POST(request: Request) {
       )
     }
 
-    result = applyStructureResponsePostProcessing(result, now)
+    result = applyStructureResponsePostProcessing(result, timeZone, userLocalNow)
+    result = applyServerCalendarResolution(result, timeZone, userLocalNow)
 
     const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
@@ -1231,6 +1119,7 @@ export async function POST(request: Request) {
       nextStepAction: result.nextStepAction.trim(),
       nextStepTarget: dedupeConsecutiveRepeatedWords(titleCaseWords(result.nextStepTarget)),
       nextStepDate: result.nextStepDate.trim(),
+      nextStepTimeReference: (result.nextStepTimeReference || '').trim(),
       nextStepTimeHint: result.nextStepTimeHint.trim(),
       nextStepConfidence: result.nextStepConfidence,
       ambiguityFlags: result.ambiguityFlags,
