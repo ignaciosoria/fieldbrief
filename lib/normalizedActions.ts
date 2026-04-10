@@ -1,3 +1,4 @@
+import type { AdditionalStep } from './additionalStepEnrichment'
 import { inferActionKind, type ActionKind } from './nextStepActionKind'
 
 /**
@@ -58,12 +59,20 @@ export function inferNormalizedActionType(text: string): NormalizedActionType {
  * Build the canonical ordered `actions[]` after enrichment + ranking + calendar resolution.
  * Primary/supporting roles come from backend fields (`nextStep` + `additionalSteps`), not raw model slots.
  */
+function stepDate(s: AdditionalStep & { date?: string; time?: string }): string {
+  return (s.resolvedDate || s.date || '').trim()
+}
+
+function stepTime(s: AdditionalStep & { date?: string; time?: string }): string {
+  return (s.timeHint || s.time || '').trim()
+}
+
 export function buildNormalizedActionsFromResult(r: {
   nextStep: string
   nextStepTitle?: string
   nextStepDate: string
   nextStepTimeHint: string
-  additionalSteps: { action: string; date: string; time: string }[]
+  additionalSteps: AdditionalStep[]
 }): NormalizedAction[] {
   const primary = (r.nextStep || '').trim()
   if (!primary) {
@@ -71,8 +80,8 @@ export function buildNormalizedActionsFromResult(r: {
     return steps.map((s, i) => ({
       action: (s.action || '').trim(),
       type: inferNormalizedActionType(s.action),
-      date: (s.date || '').trim(),
-      time: (s.time || '').trim(),
+      date: stepDate(s),
+      time: stepTime(s),
       primary: i === 0,
     }))
   }
@@ -93,8 +102,8 @@ export function buildNormalizedActionsFromResult(r: {
     out.push({
       action: a,
       type: inferNormalizedActionType(a),
-      date: (s.date || '').trim(),
-      time: (s.time || '').trim(),
+      date: stepDate(s),
+      time: stepTime(s),
       primary: false,
     })
   }

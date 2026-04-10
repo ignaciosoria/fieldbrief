@@ -16,7 +16,15 @@ export type CrmSalesNoteInput = {
   nextStep: string
   nextStepTitle: string
   notes: string
-  additionalSteps: { action: string; date: string; time: string }[]
+  additionalSteps: {
+    action: string
+    contact?: string
+    company?: string
+    resolvedDate?: string
+    timeHint?: string
+    date?: string
+    time?: string
+  }[]
 }
 
 function productDisplayItems(crop: string, productCsv: string): string[] {
@@ -129,7 +137,9 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
     for (const step of r.additionalSteps || []) {
       const a = (step.action || '').trim()
       if (!a) continue
-      const dt = [step.date, step.time].filter(Boolean).join(', ')
+      const d = (step.resolvedDate || step.date || '').trim()
+      const tm = (step.timeHint || step.time || '').trim()
+      const dt = [d, tm].filter(Boolean).join(', ')
       pushBullet(dt ? `${a} (${dt})` : a)
     }
   }

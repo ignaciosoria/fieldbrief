@@ -1,8 +1,7 @@
 import { inferActionKind } from './nextStepActionKind'
+import { extractRoughTimeHint, type AdditionalStep } from './additionalStepEnrichment'
 import { inferNormalizedActionType } from './normalizedActions'
 import { isNoClearFollowUpLine } from './noFollowUp'
-
-export type AdditionalStepInput = { action: string; date: string; time: string }
 
 /**
  * Heuristic extraction of send / call / follow-up / meeting phrases from structured fields
@@ -167,7 +166,7 @@ export function enrichStructureWithExtractedActions<
     crmText: string
     crmFull: string[]
     calendarDescription: string
-    additionalSteps: AdditionalStepInput[]
+    additionalSteps: AdditionalStep[]
   },
 >(result: T): T {
   const line = (result.nextStepTitle || result.nextStep || '').trim()
@@ -187,7 +186,7 @@ export function enrichStructureWithExtractedActions<
     if (a) seen.push(a)
   }
 
-  const extracted: AdditionalStepInput[] = []
+  const extracted: AdditionalStep[] = []
 
   const pushCandidate = (raw: string) => {
     const action = raw.replace(/\s+/g, ' ').trim()
@@ -197,8 +196,10 @@ export function enrichStructureWithExtractedActions<
     seen.push(action)
     extracted.push({
       action,
-      date: extractRoughDatePhrase(action),
-      time: '',
+      contact: '',
+      company: '',
+      resolvedDate: extractRoughDatePhrase(action),
+      timeHint: extractRoughTimeHint(action),
     })
   }
 

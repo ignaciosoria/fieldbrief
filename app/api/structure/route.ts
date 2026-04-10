@@ -25,13 +25,15 @@ import { detectNoteLanguage } from '../../../lib/detectNoteLanguage'
 import { isNoClearFollowUpLine } from '../../../lib/noFollowUp'
 import { enrichStructureWithExtractedActions } from '../../../lib/extractActionsFromStructure'
 import {
+  enrichAdditionalStepsList,
+  type AdditionalStep,
+} from '../../../lib/additionalStepEnrichment'
+import {
   buildNormalizedActionsFromResult,
   type NormalizedActionType,
 } from '../../../lib/normalizedActions'
 
 type MentionedEntity = { name: string; type: string }
-
-type AdditionalStep = { action: string; date: string; time: string }
 
 type StructureBody = {
   customer: string
@@ -356,9 +358,7 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 - **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
-- **At most 3** lines. Plain sentences only — **no** labels like "Customer:", "Next step:", or field names. No emojis. Same language as the note.
-- Each line may start with **→** then a space (optional); the app strips arrows. Line 1 = highest-signal context for the calendar body; lines 2–3 = only if distinct extra facts (deadlines, risk, comparison). Not a duplicate of **crmText**.
-- Purpose: snippets the rep can read in **under 5 seconds** in a calendar event — concerns, timing, decision context. Put only the **three** most execution-critical reminders (omit lower-priority context).
+- Set to **""** (empty). The app builds the calendar event body from **customer** / **contactCompany**, formatted **additionalSteps**, and at most one **⚠️** (blocker/dependency) line from **crmFull** — do not duplicate that content here or write full sentences for this field.
 
 ---
 
@@ -431,7 +431,7 @@ Rules for the extra keys:
 - mentionedEntities = JSON array of { "name", "type" } for every person/company named (type: contact | customer | dealer | company | other — use **dealer** for distributor/channel rep or org when relevant)
 - notes = "" or a very short string if needed
 
-additionalSteps = JSON array of objects: { "action", "date", "time" } for every other action mentioned (not the primary). Use "" for unknown date/time.
+additionalSteps = JSON array of objects: { "action", "contact", "company", "resolvedDate", "timeHint" } (legacy: "date", "time") for every other action. Use "" when unknown. Include timing when stated in the note.
 
 Return ONLY valid JSON. No backticks. No explanation.`
 
@@ -679,10 +679,24 @@ function parseAdditionalSteps(value: unknown): AdditionalStep[] {
       const o = item as Record<string, unknown>
       const action = typeof o.action === 'string' ? o.action.trim() : ''
       if (!action) continue
+      const rd =
+        typeof o.resolvedDate === 'string'
+          ? o.resolvedDate.trim()
+          : typeof o.date === 'string'
+            ? o.date.trim()
+            : ''
+      const th =
+        typeof o.timeHint === 'string'
+          ? o.timeHint.trim()
+          : typeof o.time === 'string'
+            ? o.time.trim()
+            : ''
       out.push({
         action,
-        date: typeof o.date === 'string' ? o.date.trim() : '',
-        time: typeof o.time === 'string' ? o.time.trim() : '',
+        contact: typeof o.contact === 'string' ? o.contact.trim() : '',
+        company: typeof o.company === 'string' ? o.company.trim() : '',
+        resolvedDate: rd,
+        timeHint: th,
       })
     }
   }
@@ -758,8 +772,8 @@ function applyRankedNextStepSelection(
       source: 'additional',
       action: s.action.trim(),
       title: s.action.trim(),
-      date: (s.date || '').trim(),
-      time: (s.time || '').trim(),
+      date: (s.resolvedDate || '').trim(),
+      time: (s.timeHint || '').trim(),
     })
   }
   if (rows.length === 0) return result
@@ -855,17 +869,29 @@ function applyRankedNextStepSelection(
 
   const tRaw = primary.time.trim()
   const hint = tRaw ? normalizeTimeToHint(tRaw, '') : ''
+  const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
+    action: r.action,
+    contact: '',
+    company: '',
+    resolvedDate: r.date,
+    timeHint: r.time ? normalizeTimeToHint(r.time, '') || r.time : '',
+  }))
   return {
     ...result,
     nextStep: primary.action,
     nextStepTitle: primary.title || result.nextStepTitle,
     nextStepDate: primary.date,
     nextStepTimeHint: hint,
-    additionalSteps: rest.map((r) => ({
-      action: r.action,
-      date: r.date,
-      time: r.time ? normalizeTimeToHint(r.time, '') || r.time : '',
-    })),
+    additionalSteps: enrichAdditionalStepsList(
+      {
+        contact: result.contact,
+        contactCompany: result.contactCompany,
+        customer: result.customer,
+        additionalSteps: rankedSupporting,
+      },
+      timeZone,
+      userNow,
+    ),
   }
 }
 
@@ -1123,8 +1149,10 @@ export async function POST(request: Request) {
       calendarDescription: result.calendarDescription.trim(),
       additionalSteps: result.additionalSteps.map((s) => ({
         action: capitalize(s.action.trim()),
-        date: s.date.trim(),
-        time: s.time.trim(),
+        contact: dedupeConsecutiveRepeatedWords(titleCaseWords(s.contact.trim())),
+        company: dedupeConsecutiveRepeatedWords(titleCaseWords(s.company.trim())),
+        resolvedDate: s.resolvedDate.trim(),
+        timeHint: s.timeHint.trim(),
       })),
     }
 

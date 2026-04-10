@@ -13,6 +13,12 @@ import { normalizeProductField, productFieldToList } from '../lib/productField'
 import { formatProfessionalCrmNote } from '../lib/formatCrmSalesNote'
 import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 import { cleanCalendarTitle } from '../lib/calendarTitle'
+import {
+  isWakeLockHeld,
+  releaseWakeLock,
+  requestWakeLock,
+  subscribeWakeLockReleased,
+} from '../lib/recordingWakeLock'
 
 /**
  * Merge legacy `crop` + `product` for one Product row (📦 pills).
@@ -43,7 +49,13 @@ import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
-type AdditionalStep = { action: string; date: string; time: string }
+type AdditionalStep = {
+  action: string
+  contact: string
+  company: string
+  resolvedDate: string
+  timeHint: string
+}
 
 /** Backend-built list (Phase 1); primary/supporting decided server-side. */
 type NormalizedActionType =
@@ -194,10 +206,24 @@ function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
       const o = item as Record<string, unknown>
       const action = typeof o.action === 'string' ? o.action.trim() : ''
       if (!action) continue
+      const rd =
+        typeof o.resolvedDate === 'string'
+          ? o.resolvedDate.trim()
+          : typeof o.date === 'string'
+            ? o.date.trim()
+            : ''
+      const th =
+        typeof o.timeHint === 'string'
+          ? o.timeHint.trim()
+          : typeof o.time === 'string'
+            ? o.time.trim()
+            : ''
       out.push({
         action,
-        date: typeof o.date === 'string' ? o.date.trim() : '',
-        time: typeof o.time === 'string' ? o.time.trim() : '',
+        contact: typeof o.contact === 'string' ? o.contact.trim() : '',
+        company: typeof o.company === 'string' ? o.company.trim() : '',
+        resolvedDate: rd,
+        timeHint: th,
       })
     }
   }
@@ -510,6 +536,34 @@ function telegraphicInsightFragment(raw: string): string {
   return oneClause.replace(/\.\s*$/g, '').trim()
 }
 
+/** One line for the Supporting list: `Action — today · 10:00` (uses resolved date + time hint when set). */
+function relativeDayLabelFromMmdd(mmdd: string): string {
+  const t = (mmdd || '').trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
+  const [mm, dd, y] = t.split('/').map((x) => parseInt(x, 10))
+  if ([mm, dd, y].some((n) => Number.isNaN(n))) return t
+  const d = new Date(y, mm - 1, dd)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  d.setHours(0, 0, 0, 0)
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
+  if (diff === 0) return 'today'
+  if (diff === 1) return 'tomorrow'
+  return t
+}
+
+function formatSupportingStepLine(step: AdditionalStep): string {
+  const action = (step.action || '').trim()
+  if (!action) return ''
+  const date = (step.resolvedDate || '').trim()
+  const th = (step.timeHint || '').trim()
+  const parts: string[] = []
+  if (date) parts.push(relativeDayLabelFromMmdd(date))
+  if (th) parts.push(th)
+  if (parts.length === 0) return action
+  return `${action} — ${parts.join(' · ')}`
+}
+
 /** Calendar body: max 3 telegraphic lines; event date/time live on the event — not repeated here. */
 const CALENDAR_DESC_LINE_MAX = 56
 
@@ -527,19 +581,32 @@ function buildCalendarDescriptionLine1Company(data: StructureResult): string {
   return org ? truncateCalendarLine(org, CALENDAR_DESC_LINE_MAX) : ''
 }
 
-/**
- * Line 2 — first supporting action only (no date: calendar event already has timing).
- * Drops if it duplicates the primary next step.
- */
-function buildCalendarDescriptionLine2Supporting(data: StructureResult): string {
-  const first = (data.additionalSteps || [])[0]
-  if (!first || !(first.action || '').trim()) return ''
-  const actionRaw = stripEmojisForCalendar(first.action.trim())
-  const primaryNs = stripEmojisForCalendar((data.nextStep || '').trim())
+function supportingStepDuplicatesPrimary(step: AdditionalStep, primaryNs: string): boolean {
+  const actionRaw = stripEmojisForCalendar((step.action || '').trim())
+  if (!actionRaw) return true
   const pk = normalizeCalendarDedupeKey(primaryNs)
   const ak = normalizeCalendarDedupeKey(actionRaw)
-  if (pk && ak && (pk === ak || pk.includes(ak) || ak.includes(pk))) return ''
-  return truncateCalendarLine(actionRaw, CALENDAR_DESC_LINE_MAX)
+  if (pk && ak && (pk === ak || pk.includes(ak) || ak.includes(pk))) return true
+  return false
+}
+
+/** True if this line is redundant with the exclude set or echoes the primary next step. */
+function calendarLineDuplicatesContext(
+  line: string,
+  exclude: Set<string>,
+  primaryNs: string,
+): boolean {
+  const k = normalizeCalendarDedupeKey(line)
+  if (!k) return true
+  if (exclude.has(k)) return true
+  const pk = normalizeCalendarDedupeKey(primaryNs)
+  if (pk && k && (pk === k || pk.includes(k) || k.includes(pk))) return true
+  for (const ex of exclude) {
+    if (!ex || !k) continue
+    if (k === ex) return true
+    if (k.length >= 10 && ex.length >= 10 && (ex.includes(k) || k.includes(ex))) return true
+  }
+  return false
 }
 
 function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): boolean {
@@ -552,9 +619,9 @@ function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): bo
 }
 
 /**
- * Line 3 — one constraint / insight fragment (telegraphic; no date echo; no repeat of title/primary/next lines).
+ * One telegraphic blocker/dependency from Key Insights (⚠️ only) — no full sentences, no crmText fallback.
  */
-function buildCalendarDescriptionLine3Context(
+function buildCalendarDescriptionKeyDependency(
   data: StructureResult,
   exclude: Set<string>,
   eventTitle: string,
@@ -565,47 +632,26 @@ function buildCalendarDescriptionLine3Context(
     let s = telegraphicInsightFragment(compactInsightForCalendar(raw))
     s = s.replace(/\s+/g, ' ').trim()
     if (s.length < 8) return null
-    const k = normalizeCalendarDedupeKey(s)
-    if (k && exclude.has(k)) return null
+    if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
     if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
-    const pk = normalizeCalendarDedupeKey(primaryNs)
-    if (pk && k && (pk === k || pk.includes(k) || k.includes(pk))) return null
     return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
   }
 
   for (const line of data.crmFull || []) {
     if (!line.trim() || line.trimStart().startsWith('📅')) continue
+    if (!line.includes('⚠️')) continue
     const out = tryLine(line)
-    if (out) return out
-  }
-
-  const calFirst = (data.calendarDescription || '')
-    .split(/\r?\n/)
-    .map((l) => stripEmojisForCalendar(l.replace(/^→\s*/, '').trim()))
-    .find(Boolean)
-  if (calFirst) {
-    const out = tryLine(calFirst)
-    if (out) return out
-  }
-
-  const crm = (data.crmText || '').trim()
-  if (crm) {
-    const out = tryLine(crm)
-    if (out) return out
-  }
-
-  const notes = stripEmojisForCalendar((data.notes || '').trim())
-  if (notes) {
-    const out = tryLine(notes.split(/\n/)[0] || notes)
     if (out) return out
   }
 
   return ''
 }
 
+const CALENDAR_DESC_MAX_SUPPORTING_LINES = 12
+
 /**
- * Calendar description (Google / ICS): max 3 lines — (1) company, (2) supporting action if any,
- * (3) one insight. No event date repeat; no full sentences; no primary next-step echo.
+ * Calendar body: company, then each supporting step (same format as UI), then one ⚠️ dependency if any.
+ * Telegraphic fragments only; no duplicate of primary step, title, or prior lines.
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
@@ -618,16 +664,32 @@ function buildCalendarDescription(data: StructureResult): string {
   const ns = stripEmojisForCalendar((data.nextStep || '').trim())
   if (ns) addEx(ns)
 
+  const lines: string[] = []
+
   const line1 = buildCalendarDescriptionLine1Company(data)
-  if (line1) addEx(line1)
+  if (line1) {
+    lines.push(line1)
+    addEx(line1)
+  }
 
-  const line2 = buildCalendarDescriptionLine2Supporting(data)
-  if (line2) addEx(line2)
+  let supportingCount = 0
+  for (const step of data.additionalSteps || []) {
+    if (supportingCount >= CALENDAR_DESC_MAX_SUPPORTING_LINES) break
+    if (supportingStepDuplicatesPrimary(step, ns)) continue
+    const formatted = formatSupportingStepLine(step)
+    if (!formatted.trim()) continue
+    let s = stripEmojisForCalendar(formatted.trim())
+    s = truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
+    if (calendarLineDuplicatesContext(s, exclude, ns)) continue
+    lines.push(s)
+    addEx(s)
+    supportingCount += 1
+  }
 
-  const line3 = buildCalendarDescriptionLine3Context(data, exclude, eventTitle)
+  const dep = buildCalendarDescriptionKeyDependency(data, exclude, eventTitle)
+  if (dep) lines.push(dep)
 
-  const lines = [line1, line2, line3].filter(Boolean)
-  return lines.slice(0, 3).join('\n').trim()
+  return lines.join('\n').trim()
 }
 
 /** Calendar event SUMMARY only — timing stripped; UI uses raw `nextStepTitle`. */
@@ -1387,6 +1449,7 @@ export default function Home() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [showWakeLockFallbackTip, setShowWakeLockFallbackTip] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [transcript, setTranscript] = useState('')
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
@@ -1547,6 +1610,36 @@ export default function Home() {
       if (timerRef.current) clearInterval(timerRef.current)
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [isRecording])
+
+  /** Keep screen awake during visit recording (Screen Wake Lock API; no-op if unsupported). */
+  useEffect(() => {
+    if (!isRecording) {
+      setShowWakeLockFallbackTip(false)
+      return
+    }
+    let cancelled = false
+    const syncWakeLockAndTip = async () => {
+      await requestWakeLock()
+      if (cancelled) return
+      setShowWakeLockFallbackTip(!isWakeLockHeld())
+    }
+    void syncWakeLockAndTip()
+    const unsubRelease = subscribeWakeLockReleased(() => {
+      if (cancelled) return
+      setShowWakeLockFallbackTip(!isWakeLockHeld())
+    })
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void syncWakeLockAndTip()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      unsubRelease()
+      document.removeEventListener('visibilitychange', onVisibility)
+      void releaseWakeLock()
+      setShowWakeLockFallbackTip(false)
+    }
   }, [isRecording])
 
   useEffect(() => {
@@ -2933,6 +3026,11 @@ export default function Home() {
                     {formatSeconds(recordingSeconds)}
                   </span>
                 ) : null}
+                {isRecording && showWakeLockFallbackTip ? (
+                  <p className="mt-2 max-w-[17rem] px-2 text-center text-[10px] leading-snug text-[#6b7280]/75">
+                    Tip: keep your screen on while recording for best results.
+                  </p>
+                ) : null}
               </div>
 
               {/* Waveform */}
@@ -3031,6 +3129,25 @@ export default function Home() {
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
                           {result.nextStepTitle || result.nextStep}
                         </p>
+                        {!isNoClearFollowUpResult(result) &&
+                          (result.additionalSteps || []).length > 0 && (
+                            <div className="mt-3 border-t border-zinc-200/90 pt-3 text-left">
+                              <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
+                                Supporting
+                              </p>
+                              <ul className="list-none space-y-1.5 pl-0">
+                                {(result.additionalSteps || []).map((s, i) => (
+                                  <li
+                                    key={i}
+                                    className="text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]"
+                                  >
+                                    <span className="select-none text-[#6b7280]">- </span>
+                                    {formatSupportingStepLine(s)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                       </div>
 
                       {!isNoClearFollowUpResult(result) ? (
@@ -3256,6 +3373,25 @@ export default function Home() {
                       <p className="text-[19px] font-bold leading-snug text-[#111111]">
                         {selectedNote.result.nextStepTitle || selectedNote.result.nextStep}
                       </p>
+                      {!isNoClearFollowUpResult(selectedNote.result) &&
+                        (selectedNote.result.additionalSteps || []).length > 0 && (
+                          <div className="mt-3 border-t border-zinc-200/90 pt-3">
+                            <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
+                              Supporting
+                            </p>
+                            <ul className="list-none space-y-1.5 pl-0">
+                              {(selectedNote.result.additionalSteps || []).map((s, i) => (
+                                <li
+                                  key={i}
+                                  className="text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]"
+                                >
+                                  <span className="select-none text-[#6b7280]">- </span>
+                                  {formatSupportingStepLine(s)}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                     </div>
                   )}
 
