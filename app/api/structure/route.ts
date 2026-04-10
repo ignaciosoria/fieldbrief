@@ -819,11 +819,87 @@ type ChronologicalRow = {
   time: string
 }
 
-/** Earliest dated action becomes primary next step; rest become additionalSteps. */
-function applyChronologicalNextStepValidation(
-  result: StructureBody,
-  anchor: Date,
-): StructureBody {
+/** Base score by inferred action kind (higher = more likely to be the business-primary step). */
+const ACTION_KIND_SCORE = {
+  meeting: 100,
+  call: 90,
+  follow_up: 85,
+  send: 60,
+  other: 30,
+} as const
+
+type ActionKind = keyof typeof ACTION_KIND_SCORE
+
+/**
+ * Infer kind from action text (EN/ES). Order: meeting → call → follow_up → send → other.
+ * Tuned so "send … tomorrow" does not outrank "call … next week" on date alone — handled in ranking.
+ */
+function inferActionKind(action: string): ActionKind {
+  const a = action.toLowerCase()
+  if (
+    /\b(meeting|reuni[oó]n|reunion|demo|demostraci[oó]n|site\s+visit|visita\b|visit\b(?!\s+note)|appointment|cita\b|presentaci[oó]n|pitch|workshop|webinar|entrevista)\b/i.test(
+      a,
+    )
+  ) {
+    return 'meeting'
+  }
+  if (
+    /\b(call|llamar|llama|llamada|phone|tel[ée]fono|callback|devolver\s+la\s+llamada|marcar|ring\b)\b/i.test(
+      a,
+    )
+  ) {
+    return 'call'
+  }
+  if (
+    /\b(follow[-\s]?up|seguimiento|check[-\s]?in|touch\s*base|recheck)\b/i.test(a)
+  ) {
+    return 'follow_up'
+  }
+  if (
+    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?)\b/i.test(
+      a,
+    )
+  ) {
+    return 'send'
+  }
+  return 'other'
+}
+
+/** Extra weight when the model anchored time (resolved calendar date scores highest). */
+function timeClarityBonus(dateResolved: string, dateRaw: string, timeRaw: string): number {
+  const dRes = (dateResolved || '').trim()
+  if (dRes && /^\d{2}\/\d{2}\/\d{4}$/.test(dRes)) return 12
+  if ((dateRaw || '').trim() || (timeRaw || '').trim()) return 6
+  return 0
+}
+
+/** Model confidence applies only to the row the model originally marked as primary. */
+function confidenceBonusForRow(
+  source: 'primary' | 'additional',
+  conf: StructureBody['nextStepConfidence'],
+): number {
+  if (source !== 'primary') return 0
+  if (conf === 'high') return 10
+  if (conf === 'medium') return 5
+  return 0
+}
+
+type ScoredRow = ChronologicalRow & {
+  _dateRaw: string
+  _timeRaw: string
+  _kind: ActionKind
+  _base: number
+  _timeBonus: number
+  _confBonus: number
+  _total: number
+}
+
+/**
+ * Pick primary next step by **action kind** (meeting > call > follow_up > send > other), with
+ * time-clarity and confidence bonuses. **Date is only a tie-breaker** when totals tie (earlier wins).
+ * Replaces pure chronological promotion so an earlier "send" does not displace a later "call".
+ */
+function applyRankedNextStepSelection(result: StructureBody, anchor: Date): StructureBody {
   const rows: ChronologicalRow[] = []
   let idx = 0
   const primaryAction = (result.nextStep || '').trim()
@@ -852,7 +928,7 @@ function applyChronologicalNextStepValidation(
   if (rows.length === 0) return result
 
   console.log(
-    '[structure] chronology: actions BEFORE resolve+sort (raw model dates)',
+    '[structure] rank: actions BEFORE resolve (raw model dates)',
     rows.map((r) => ({
       source: r.source,
       action: r.action.slice(0, 120),
@@ -861,28 +937,48 @@ function applyChronologicalNextStepValidation(
     })),
   )
 
-  const resolved = rows.map((r) => {
+  const resolved: ScoredRow[] = rows.map((r) => {
     const dateTrim = r.date.trim()
     const timeTrim = r.time.trim()
     const rawForResolve = dateTrim || timeTrim
     const mmdd = resolveRelativeDateStringToMmdd(rawForResolve, anchor)
     const dateForSort = mmdd ?? dateTrim
-    return { ...r, date: dateForSort, _dateRaw: r.date, _timeRaw: r.time }
+
+    const kind = inferActionKind(`${r.action} ${r.title}`)
+    const base = ACTION_KIND_SCORE[kind]
+    const tBonus = timeClarityBonus(dateForSort, r.date, r.time)
+    const cBonus = confidenceBonusForRow(r.source, result.nextStepConfidence)
+    const total = base + tBonus + cBonus
+
+    return {
+      ...r,
+      date: dateForSort,
+      _dateRaw: r.date,
+      _timeRaw: r.time,
+      _kind: kind,
+      _base: base,
+      _timeBonus: tBonus,
+      _confBonus: cBonus,
+      _total: total,
+    }
   })
 
   console.log(
-    '[structure] chronology: actions AFTER resolve (dates used for sorting)',
+    '[structure] rank: scores (kind base + time + conf → total; date tie-break only)',
     resolved.map((r) => ({
       source: r.source,
-      action: r.action.slice(0, 120),
-      dateRaw: r._dateRaw,
-      timeRaw: r._timeRaw,
+      kind: r._kind,
+      base: r._base,
+      timeBonus: r._timeBonus,
+      confBonus: r._confBonus,
+      total: r._total,
+      action: r.action.slice(0, 100),
       dateResolved: r.date,
-      time: r.time,
     })),
   )
 
   resolved.sort((a, b) => {
+    if (b._total !== a._total) return b._total - a._total
     const da = parseStepDateMs(a.date)
     const db = parseStepDateMs(b.date)
     if (da !== db) return da - db
@@ -890,14 +986,13 @@ function applyChronologicalNextStepValidation(
   })
 
   console.log(
-    '[structure] chronology: actions AFTER sort (order)',
+    '[structure] rank: order after sort (total desc, then earliest date, then stable idx)',
     resolved.map((r) => ({
       source: r.source,
+      kind: r._kind,
+      total: r._total,
       action: r.action.slice(0, 120),
-      dateRaw: r._dateRaw,
-      timeRaw: r._timeRaw,
       dateResolved: r.date,
-      time: r.time,
     })),
   )
 
@@ -985,7 +1080,7 @@ function applyStructureResponsePostProcessing(
   anchor: Date,
 ): StructureBody {
   let r = normalizeNoFollowUpStructure(result)
-  r = applyChronologicalNextStepValidation(r, anchor)
+  r = applyRankedNextStepSelection(r, anchor)
   r = { ...r, product: filterProductDocumentKeywords(r.product) }
   r = {
     ...r,
