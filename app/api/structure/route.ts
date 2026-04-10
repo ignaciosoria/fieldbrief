@@ -143,7 +143,17 @@ const STRUCTURE_PIPELINE_DEBUG =
   process.env.STRUCTURE_PIPELINE_DEBUG === '1' ||
   process.env.STRUCTURE_PIPELINE_DEBUG === 'true'
 
+/** Set STRUCTURE_PRIMARY_CAL_DEBUG=1 to trace primary action vs date/time for calendar (temporary). */
+const STRUCTURE_PRIMARY_CAL_DEBUG =
+  process.env.STRUCTURE_PRIMARY_CAL_DEBUG === '1' ||
+  process.env.STRUCTURE_PRIMARY_CAL_DEBUG === 'true'
+
 const STRUCTURE_PIPELINE_DEBUG_MAX_JSON = 150_000
+
+function logPrimaryCalendarDebug(label: string, data: Record<string, unknown>): void {
+  if (!STRUCTURE_PRIMARY_CAL_DEBUG && !STRUCTURE_PIPELINE_DEBUG) return
+  console.log(`[structure] primary_calendar ${label}`, data)
+}
 
 function logStructurePipelineStage(stage: string, data: unknown): void {
   if (!STRUCTURE_PIPELINE_DEBUG) return
@@ -552,6 +562,29 @@ function applyRankedNextStepSelection(
   }
   const nextStepTimeHint = hintRaw ? normalizeTimeToHint(hintRaw, '') || hintRaw : ''
 
+  logPrimaryCalendarDebug('ranking:after_selection', {
+    candidatesBeforeSort: rows.map((r) => ({
+      idx: r.idx,
+      source: r.source,
+      action: r.action.slice(0, 100),
+      dateRaw: r.date,
+      timeRaw: r.time,
+    })),
+    selectedPrimary: {
+      source: primary.source,
+      action: primary.action.slice(0, 160),
+      nextStepDate,
+      nextStepTimeHint,
+      timeRawUsed: hintRaw || '(empty)',
+    },
+    supportingActions: rest.map((r) => ({
+      idx: r.idx,
+      action: r.action.slice(0, 100),
+      resolvedDate: r.date,
+      timeHint: r.time,
+    })),
+  })
+
   const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
     action: r.action,
     contact: '',
@@ -569,6 +602,8 @@ function applyRankedNextStepSelection(
     nextStepTitle: primary.title || result.nextStepTitle,
     nextStepDate,
     nextStepTimeHint,
+    /** Cleared so `applyServerCalendarResolution` cannot apply a pre-rank time reference to the ranked winner. */
+    nextStepTimeReference: '',
     additionalSteps: enrichAdditionalStepsList(
       {
         contact: result.contact,
@@ -655,16 +690,20 @@ function applyServerCalendarResolution(
 
   const ref = (result.nextStepTimeReference || '').trim()
   let nextDate = (result.nextStepDate || '').trim()
+  /** Ranking already resolved the winner to MM/DD/YYYY; must not overwrite with stale model `ref`. */
+  const hasCanonicalPrimaryDate = /^\d{2}\/\d{2}\/\d{4}$/.test(nextDate)
 
   const primaryDateResolve = { weekdaySkipAnchorDay: true } as const
 
-  if (ref) {
-    const resolved = resolveRelativeDate(ref, userNow, timeZone, primaryDateResolve)
-    if (resolved) nextDate = resolved
-  } else if (nextDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(nextDate)) {
-    const anchor = toUserAnchorDateTime(userNow, timeZone)
-    const resolved = resolveRelativePhraseToMmdd(nextDate, timeZone, anchor, primaryDateResolve)
-    if (resolved) nextDate = resolved
+  if (!hasCanonicalPrimaryDate) {
+    if (ref) {
+      const resolved = resolveRelativeDate(ref, userNow, timeZone, primaryDateResolve)
+      if (resolved) nextDate = resolved
+    } else if (nextDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(nextDate)) {
+      const anchor = toUserAnchorDateTime(userNow, timeZone)
+      const resolved = resolveRelativePhraseToMmdd(nextDate, timeZone, anchor, primaryDateResolve)
+      if (resolved) nextDate = resolved
+    }
   }
 
   const hint = resolveCalendarTimeHint(
@@ -673,6 +712,16 @@ function applyServerCalendarResolution(
     result.nextStepTitle,
     result.nextStepAction,
   )
+
+  logPrimaryCalendarDebug('applyServerCalendarResolution', {
+    nextStep: result.nextStep,
+    nextStepTimeReference: ref || '(empty)',
+    skippedRefOverwrite: hasCanonicalPrimaryDate && !!ref,
+    nextStepDateIn: result.nextStepDate,
+    nextStepDateOut: nextDate,
+    nextStepTimeHintIn: result.nextStepTimeHint,
+    nextStepTimeHintOut: hint,
+  })
 
   return {
     ...result,
