@@ -20,6 +20,7 @@ import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/di
 import {
   filterInsightsToContextOnly,
   insightLineContainsActionLanguage,
+  insightLineTooVagueForCalendarDescription,
 } from '../lib/filterInsightLines'
 import {
   isWakeLockHeld,
@@ -289,9 +290,11 @@ function addDaysLocal(base: Date, days: number): Date {
   return d
 }
 
-/** Nearest upcoming calendar date on `targetJsWeekday` (today counts if it matches). */
+/** Next occurrence of `targetJsWeekday` for primary dates — never the anchor day when weekday matches. */
 function getNextDayOfWeek(from: Date, targetJsWeekday: number): Date {
-  return addDaysLocal(from, getDaysUntilNearestWeekday(from, targetJsWeekday))
+  let days = getDaysUntilNearestWeekday(from, targetJsWeekday)
+  if (days === 0) days = 7
+  return addDaysLocal(from, days)
 }
 
 function getClientTimezone(): string {
@@ -351,7 +354,7 @@ function parseWeekdayNameToJsDay(raw: string): number | null {
   return null
 }
 
-/** MM/DD/YYYY, ISO date, or weekday name → MM/DD/YYYY for the nearest upcoming day. */
+/** MM/DD/YYYY, ISO date, or weekday name → MM/DD/YYYY (weekday → next occurrence, not today). */
 function resolveNextStepDateToMmdd(raw: string): string {
   const t = raw.trim()
   if (!t) return ''
@@ -649,7 +652,53 @@ function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): bo
 }
 
 /**
- * One telegraphic key insight from crmFull (context-only, non-action) — no full sentences, no crmText fallback.
+ * Fallback context for calendar body when crmFull lines are generic — notes/summary/product+location.
+ * Same dedupe rules as insight lines; still telegraphic.
+ */
+function buildCalendarDescriptionFallbackContext(
+  data: StructureResult,
+  exclude: Set<string>,
+  primaryNs: string,
+  eventTitle: string,
+): string {
+  const tryOut = (raw: string): string | null => {
+    const compact = compactInsightForCalendar(raw)
+    if (!compact.trim()) return null
+    if (insightLineContainsActionLanguage(compact)) return null
+    if (insightLineTooVagueForCalendarDescription(compact)) return null
+    let s = telegraphicInsightFragment(compact)
+    s = s.replace(/\s+/g, ' ').trim()
+    if (s.length < 8) return null
+    if (insightLineTooVagueForCalendarDescription(s)) return null
+    if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
+    if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
+    return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
+  }
+
+  const notes = (data.notes || '').trim()
+  if (notes) {
+    const o = tryOut(notes)
+    if (o) return o
+  }
+  const summary = (data.summary || '').trim()
+  if (summary) {
+    const o = tryOut(summary)
+    if (o) return o
+  }
+  const product = stripEmojisForCalendar((data.product || '').trim())
+  const loc = stripEmojisForCalendar((data.location || '').trim())
+  if (product || loc) {
+    const combined = [product, loc].filter(Boolean).join(' · ')
+    if (combined.length >= 8) {
+      const o = tryOut(combined)
+      if (o) return o
+    }
+  }
+  return ''
+}
+
+/**
+ * One telegraphic key insight from crmFull (context-only, non-action) — prefers concrete lines; may fall back to notes/summary/product.
  */
 function buildCalendarDescriptionKeyInsight(
   data: StructureResult,
@@ -662,9 +711,11 @@ function buildCalendarDescriptionKeyInsight(
     const compact = compactInsightForCalendar(raw)
     if (!compact.trim()) return null
     if (insightLineContainsActionLanguage(compact)) return null
+    if (insightLineTooVagueForCalendarDescription(compact)) return null
     let s = telegraphicInsightFragment(compact)
     s = s.replace(/\s+/g, ' ').trim()
     if (s.length < 6) return null
+    if (insightLineTooVagueForCalendarDescription(s)) return null
     if (calendarLineDuplicatesContext(s, exclude, primaryNs)) return null
     if (calendarFragmentOverlapsTitle(s, eventTitle)) return null
     return truncateCalendarLine(s, CALENDAR_DESC_LINE_MAX)
@@ -676,7 +727,7 @@ function buildCalendarDescriptionKeyInsight(
     if (out) return out
   }
 
-  return ''
+  return buildCalendarDescriptionFallbackContext(data, exclude, primaryNs, eventTitle)
 }
 
 /** Same date+time as the primary calendar event (`buildCalendarOpenOptsFromResult`). */
@@ -774,9 +825,43 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
   }
 }
 
-function supportingStepCalendarTitle(step: AdditionalStep): string {
+/** Supporting Google/ICS SUMMARY only — includes contact/company; not used for on-screen SUPPORTING titles. */
+const SUPPORTING_CALENDAR_TITLE_MAX = 100
+
+function truncateSupportingCalendarTitle(s: string): string {
+  const t = s.replace(/\s+/g, ' ').trim()
+  if (t.length <= SUPPORTING_CALENDAR_TITLE_MAX) return t
+  return `${t.slice(0, SUPPORTING_CALENDAR_TITLE_MAX - 1).trim()}…`
+}
+
+function supportingCalendarEventTitleWithContext(
+  baseActionTitle: string,
+  step: AdditionalStep,
+  r: StructureResult,
+): string {
+  const base = cleanCalendarTitle(stripEmojisForCalendar(baseActionTitle.trim())) || 'Follow-up'
+  let contact = stripEmojisForCalendar((step.contact || '').trim())
+  let company = stripEmojisForCalendar((step.company || '').trim())
+  if (!contact) contact = stripEmojisForCalendar((r.contact || '').trim())
+  if (!company) company = stripEmojisForCalendar((r.contactCompany || r.customer || '').trim())
+  const cLo = contact.toLowerCase()
+  const coLo = company.toLowerCase()
+  let suffix = ''
+  if (contact && company && cLo !== coLo) {
+    suffix = `${contact} (${company})`
+  } else if (company) {
+    suffix = company
+  } else if (contact) {
+    suffix = contact
+  }
+  if (!suffix) return truncateSupportingCalendarTitle(base)
+  const full = `${base} — ${suffix}`
+  return truncateSupportingCalendarTitle(cleanCalendarTitle(full))
+}
+
+function supportingStepCalendarTitle(step: AdditionalStep, r: StructureResult): string {
   const raw = stripEmojisForCalendar((step.action || '').trim())
-  return cleanCalendarTitle(raw || 'Follow-up')
+  return supportingCalendarEventTitleWithContext(raw || 'Follow-up', step, r)
 }
 
 /** Event description: only structured supporting fields (type, label, date, time). */
@@ -799,13 +884,12 @@ function buildCalendarOpenOptsForSupportingStep(
   const langEs = detectNoteLanguage(`${r.nextStep || ''} ${step.action || ''}`) === 'spanish'
   let title: string
   if (step.supportingType && step.label?.trim()) {
-    title = cleanCalendarTitle(
-      stripEmojisForCalendar(
-        supportingStructuredActionLine(step.supportingType, step.label.trim(), langEs),
-      ),
+    const base = stripEmojisForCalendar(
+      supportingStructuredActionLine(step.supportingType, step.label.trim(), langEs),
     )
+    title = supportingCalendarEventTitleWithContext(base, step, r)
   } else {
-    title = supportingStepCalendarTitle(step)
+    title = supportingStepCalendarTitle(step, r)
   }
 
   const mmddRaw = ((step.structuredDate || step.resolvedDate) || '').trim()

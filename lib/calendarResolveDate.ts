@@ -33,6 +33,15 @@ export function toUserAnchorDateTime(
   return dt.setZone(z)
 }
 
+/** Options for {@link resolveRelativePhraseToMmdd} / {@link resolveRelativeDate}. */
+export type ResolveRelativePhraseOptions = {
+  /**
+   * Primary next-step only: a bare weekday (Mon–Sun) resolves to the **next** occurrence of that
+   * weekday, never the anchor calendar day. Omit for supporting rows (nearest-weekday behavior).
+   */
+  weekdaySkipAnchorDay?: boolean
+}
+
 /**
  * Resolve a natural-language date reference to MM/DD/YYYY in `timeZone`, anchored to the user's
  * real clock instant (not server local time, not UTC calendar day alone).
@@ -41,12 +50,13 @@ export function resolveRelativeDate(
   reference: string | null | undefined,
   userLocalNow: Date | number | string,
   timeZone: string,
+  options?: ResolveRelativePhraseOptions,
 ): string | null {
   const phrase = (reference || '').trim()
   if (!phrase) return null
   const z = normalizeIanaTimeZone(timeZone)
   const anchor = toUserAnchorDateTime(userLocalNow, z)
-  return resolveRelativePhraseToMmdd(phrase, z, anchor)
+  return resolveRelativePhraseToMmdd(phrase, z, anchor, options)
 }
 
 /** @deprecated Use {@link resolveRelativeDate} — same behavior when `now` is the client instant. */
@@ -54,8 +64,9 @@ export function resolveDate(
   timeReference: string | null | undefined,
   now: Date,
   timeZone: string,
+  options?: ResolveRelativePhraseOptions,
 ): string | null {
-  return resolveRelativeDate(timeReference, now, timeZone)
+  return resolveRelativeDate(timeReference, now, timeZone, options)
 }
 
 function normalizeIanaTimeZone(tz: string): string {
@@ -149,6 +160,7 @@ export function resolveRelativePhraseToMmdd(
   raw: string,
   timeZone: string,
   anchor: DateTime,
+  options?: ResolveRelativePhraseOptions,
 ): string | null {
   const z = normalizeIanaTimeZone(timeZone)
   const anchorDt = anchor.setZone(z)
@@ -186,14 +198,18 @@ export function resolveRelativePhraseToMmdd(
   const luxWd = parseWeekdayToLuxonWeekday(s)
   if (luxWd !== null) {
     let add = (luxWd - anchorDt.weekday + 7) % 7
-    if (add === 0 && isExplicitNextWeekdayPhrase(lower)) {
-      add = 7
-    } else if (
-      add === 0 &&
-      !isExplicitNextWeekdayPhrase(lower) &&
-      anchorDt.hour >= LATE_SAME_WEEKDAY_LOCAL_HOUR
-    ) {
-      add = 7
+    if (options?.weekdaySkipAnchorDay) {
+      if (add === 0) add = 7
+    } else {
+      if (add === 0 && isExplicitNextWeekdayPhrase(lower)) {
+        add = 7
+      } else if (
+        add === 0 &&
+        !isExplicitNextWeekdayPhrase(lower) &&
+        anchorDt.hour >= LATE_SAME_WEEKDAY_LOCAL_HOUR
+      ) {
+        add = 7
+      }
     }
     return anchorDt.plus({ days: add }).toFormat('MM/dd/yyyy')
   }

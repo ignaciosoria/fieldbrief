@@ -31,3 +31,24 @@ export function filterInsightsToContextOnly(lines: string[]): string[] {
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter((l) => l.length > 0 && !insightLineContainsActionLanguage(l))
 }
+
+/**
+ * Calendar body lines should be recallable days later — skip generic CRM fluff (EN + ES).
+ * Used when picking crmFull for event description; does not affect on-screen insights list.
+ */
+const VAGUE_CALENDAR_DESCRIPTION_PATTERNS: RegExp[] = [
+  /\binterest\s+in\b/i,
+  /\binter[eé]s\s+en\b/i,
+  /\bpositive\s+momentum\b/i,
+  /\bnegative\s+momentum\b/i,
+  /\bpotential\s+closing\b/i,
+  /\bcierre\s+potencial\b/i,
+  /\bgood\s+momentum\b/i,
+  /\bstrong\s+interest\b/i,
+]
+
+export function insightLineTooVagueForCalendarDescription(line: string): boolean {
+  const t = line.replace(/\s+/g, ' ').trim()
+  if (!t) return true
+  return VAGUE_CALENDAR_DESCRIPTION_PATTERNS.some((re) => re.test(t))
+}

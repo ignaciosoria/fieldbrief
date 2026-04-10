@@ -392,7 +392,12 @@ function applyRankedNextStepSelection(
     const dateTrim = r.date.trim()
     const timeTrim = r.time.trim()
     const rawForResolve = dateTrim || timeTrim
-    const mmdd = resolveRelativePhraseToMmdd(rawForResolve, timeZone, anchor)
+    const mmdd = resolveRelativePhraseToMmdd(
+      rawForResolve,
+      timeZone,
+      anchor,
+      r.source === 'primary' ? { weekdaySkipAnchorDay: true } : undefined,
+    )
     const dateForSort = mmdd ?? dateTrim
 
     const nt = normalizedTypeForRow(r.action, r.title)
@@ -595,12 +600,14 @@ function applyServerCalendarResolution(
   const ref = (result.nextStepTimeReference || '').trim()
   let nextDate = (result.nextStepDate || '').trim()
 
+  const primaryDateResolve = { weekdaySkipAnchorDay: true } as const
+
   if (ref) {
-    const resolved = resolveRelativeDate(ref, userNow, timeZone)
+    const resolved = resolveRelativeDate(ref, userNow, timeZone, primaryDateResolve)
     if (resolved) nextDate = resolved
   } else if (nextDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(nextDate)) {
     const anchor = toUserAnchorDateTime(userNow, timeZone)
-    const resolved = resolveRelativePhraseToMmdd(nextDate, timeZone, anchor)
+    const resolved = resolveRelativePhraseToMmdd(nextDate, timeZone, anchor, primaryDateResolve)
     if (resolved) nextDate = resolved
   }
 

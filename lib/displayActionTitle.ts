@@ -112,7 +112,7 @@ export type SupportingDisplayTitleInput = {
 }
 
 /**
- * APP only — timing inline. Calendar event title for supporting stays action-only via `cleanCalendarTitle`.
+ * APP only — timing inline. Calendar ICS/Google SUMMARY for supporting is built in `app/page.tsx` with contact/company.
  * Example: `Send contract — Today · 16:00`
  */
 export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): string {
