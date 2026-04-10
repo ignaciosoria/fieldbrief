@@ -10,6 +10,7 @@ import {
   stripDealerLinesFromCrmFull,
 } from '../lib/dealerField'
 import { normalizeProductField, productFieldToList } from '../lib/productField'
+import { formatProfessionalCrmNote } from '../lib/formatCrmSalesNote'
 
 /**
  * Merge legacy `crop` + `product` for one Product row (📦 pills).
@@ -367,14 +368,6 @@ function ensureCalendarDateTimeNotPast(
   }
 }
 
-/** MM/DD/YYYY → YYYY-MM-DD for date input (YYYY-MM-DD). */
-function mmddyyyyToIsoDate(mmddyyyy: string): string | null {
-  const t = mmddyyyy.trim()
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return null
-  const [mm, dd, yyyy] = t.split('/')
-  return `${yyyy}-${mm}-${dd}`
-}
-
 function isoDateToMmddyyyy(iso: string): string {
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return ''
@@ -384,19 +377,6 @@ function isoDateToMmddyyyy(iso: string): string {
 function todayIsoDate() {
   const d = new Date()
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-}
-
-function hourMinuteToTimeInput(hour: number, minute: number) {
-  return `${pad2(hour)}:${pad2(minute)}`
-}
-
-function timeInputToHourMinute(value: string): { hour: number; minute: number } {
-  const m = value.trim().match(/^(\d{1,2}):(\d{2})$/)
-  if (!m) return { hour: 9, minute: 0 }
-  return {
-    hour: Math.min(23, Math.max(0, parseInt(m[1], 10))),
-    minute: Math.min(59, Math.max(0, parseInt(m[2], 10))),
-  }
 }
 
 type CalendarTimeInput =
@@ -439,51 +419,99 @@ function stripEmojisForCalendar(s: string): string {
     .trim()
 }
 
-/** Calendar description first line: `Contact (contactCompany)` only — never use `customer` (end account). */
-function formatCalendarContactLine(
-  data: Pick<StructureResult, 'contact' | 'contactCompany'>,
-): string {
-  const contact = stripEmojisForCalendar(data.contact || '')
-  const company = stripEmojisForCalendar((data.contactCompany || '').trim())
-  if (contact && company) return `${contact} (${company})`
-  if (contact) return contact
-  if (company) return company
-  return ''
-}
-
-/** Strip emoji/bullets; trim a leading arrow so we can re-add a single →. */
-function cleanCalendarBulletLine(raw: string): string {
-  return stripEmojisForCalendar(raw)
-    .replace(/^[\s•\u2022\u25AA\-–—→]+\s*/u, '')
-    .trim()
-}
-
-/** Full visit / summary text for calendar body — no length cap (strip emoji only). */
-function formatCalendarProseBlock(raw: string): string {
-  const t = (raw || '').trim()
+/** First sentence or capped fragment for calendar context (plain prose, no labels). */
+function firstCalendarSentence(raw: string, maxLen: number): string {
+  const t = stripEmojisForCalendar(raw).replace(/\s+/g, ' ').trim()
   if (!t) return ''
-  const lines = t.split(/\n/).map((l) => l.trim()).filter(Boolean)
-  if (lines.length > 1) {
-    return lines
-      .map((l) => {
-        const c = cleanCalendarBulletLine(l)
-        return c ? `→ ${c}` : ''
-      })
-      .filter(Boolean)
-      .join('\n')
-  }
-  const c = cleanCalendarBulletLine(t)
-  return c ? `→ ${c}` : ''
+  const m = t.match(/^[^.!?]+[.!?]?/)
+  const s = (m ? m[0] : t).trim()
+  return s.length > maxLen ? `${s.slice(0, maxLen - 1).trim()}…` : s
 }
 
-/** Include both CRM prose and bullet summary when present (full text, no truncation). */
-function formatCalendarContextBlock(crmText: string, summary: string): string {
-  const parts: string[] = []
-  const visit = formatCalendarProseBlock(crmText || '')
-  const bullets = formatCalendarProseBlock(summary || '')
-  if (visit) parts.push(`Visit / CRM text\n${visit}`)
-  if (bullets) parts.push(`Summary\n${bullets}`)
-  return parts.join('\n\n')
+function calendarPrepFirstLine(cal: string): string {
+  const line = (cal || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) || ''
+  return stripEmojisForCalendar(line.replace(/^→\s*/, '')).trim()
+}
+
+function dedupeCalendarOptionalLines(
+  lines: string[],
+  context: string,
+  followUp: string,
+): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const ctx = context.toLowerCase()
+  const fu = followUp.toLowerCase()
+  for (const line of lines) {
+    const l = line.trim()
+    if (!l) continue
+    const k = l.toLowerCase()
+    if (seen.has(k)) continue
+    if (ctx && k === ctx) continue
+    if (fu && k === fu) continue
+    seen.add(k)
+    out.push(l)
+  }
+  return out
+}
+
+/**
+ * Calendar event body: scannable in seconds — account / company / location, situation,
+ * single follow-up, optional facts. No labels, no CRM dump, no extra actions or system fields.
+ */
+function buildCalendarDescription(data: StructureResult): string {
+  const customer = stripEmojisForCalendar((data.customer || '').trim())
+  const company = stripEmojisForCalendar((data.contactCompany || '').trim())
+  const location = stripEmojisForCalendar((data.location || '').trim())
+  const line1Parts: string[] = []
+  if (customer) line1Parts.push(customer)
+  if (company && company.toLowerCase() !== customer.toLowerCase()) line1Parts.push(company)
+  if (location) line1Parts.push(location)
+  let line1 = line1Parts.join(' — ')
+  if (!line1) {
+    const contact = stripEmojisForCalendar((data.contact || '').trim())
+    if (contact && company) line1 = `${contact}, ${company}`
+    else line1 = contact || company || location || ''
+  }
+
+  let context = ''
+  const crm = (data.crmText || '').trim()
+  if (crm) {
+    context = firstCalendarSentence(crm, 320)
+  }
+  if (!context) {
+    context = calendarPrepFirstLine(data.calendarDescription || '')
+  }
+  if (!context) {
+    const raw = (data.crmFull || []).map(normalizeLegacyInsightLine).find((l) => l.trim())
+    if (raw) context = stripEmojisForCalendar(raw).trim()
+  }
+
+  const followUp = stripEmojisForCalendar((data.nextStepTitle || data.nextStep || '').trim())
+
+  const optionalRaw: string[] = []
+  const calLines = (data.calendarDescription || '')
+    .split(/\r?\n/)
+    .map((l) => stripEmojisForCalendar(l.replace(/^→\s*/, '').trim()))
+    .filter(Boolean)
+  if (calLines.length > 1) {
+    for (const extra of calLines.slice(1, 4)) {
+      optionalRaw.push(extra)
+    }
+  }
+  const shortNotes = stripEmojisForCalendar((data.notes || '').trim())
+  if (shortNotes && shortNotes.length < 220) {
+    optionalRaw.push(shortNotes)
+  }
+  const optional = dedupeCalendarOptionalLines(optionalRaw, context, followUp).slice(0, 2)
+
+  const sections: string[] = []
+  if (line1) sections.push(line1)
+  if (context) sections.push(context)
+  if (followUp) sections.push(followUp)
+  if (optional.length) sections.push(optional.join('\n'))
+
+  return sections.join('\n\n').trim()
 }
 
 /** Google Calendar event title: short structured title first, then long next step. */
@@ -493,88 +521,29 @@ function calendarEventTitle(r: StructureResult): string {
   return (r.nextStep || '').trim()
 }
 
-function buildCalendarDescription(data: StructureResult) {
-  const contactLine = formatCalendarContactLine(data)
-  const calPrep = (data.calendarDescription || '').trim()
-  const parts: string[] = []
-  if (contactLine) parts.push(contactLine)
-  if (calPrep) {
-    parts.push(calPrep)
-  } else {
-    const contextBlock = formatCalendarContextBlock(data.crmText || '', '')
-    const insightLines = (data.crmFull || [])
-      .map((i) => cleanCalendarBulletLine(i))
-      .filter(Boolean)
-      .map((line) => (line.trimStart().startsWith('→') ? line : `→ ${line}`))
-    if (contextBlock) parts.push(contextBlock)
-    if (insightLines.length > 0) {
-      parts.push(insightLines.join('\n'))
-    }
+/** Build event payload for Google Calendar URL or ICS — no modals; uses structured result as-is. */
+function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
+  const title = calendarEventTitle(r)
+  const mmddRaw = (r.nextStepDate || '').trim()
+  const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
+    ? mmddRaw
+    : isoDateToMmddyyyy(todayIsoDate())
+  const resolved = resolveTimeFromHint(r.nextStepTimeHint || '')
+  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  let details = buildCalendarDescription(r)
+  const target = (r.nextStepTarget || '').trim()
+  if (target) {
+    const line = `Follow-up with: ${target}`
+    details = details ? `${details}\n\n${line}` : line
   }
-
-  const detailLines: string[] = []
-  const step = (data.nextStepTitle || data.nextStep || '').trim()
-  if (step) detailLines.push(`Next step: ${stripEmojisForCalendar(step)}`)
-  if ((data.nextStepDate || '').trim()) detailLines.push(`Follow-up date: ${(data.nextStepDate || '').trim()}`)
-  if ((data.nextStepTimeHint || '').trim()) {
-    detailLines.push(`Time: ${stripEmojisForCalendar((data.nextStepTimeHint || '').trim())}`)
+  const loc = stripEmojisForCalendar((r.location || '').trim())
+  return {
+    title,
+    dateMmddyyyy: adj.dateMmddyyyy,
+    details,
+    time: { kind: 'clock', hour: adj.hour, minute: adj.minute },
+    ...(loc ? { location: loc } : {}),
   }
-
-  if ((data.customer || '').trim()) {
-    detailLines.push(`Customer (account): ${stripEmojisForCalendar(data.customer.trim())}`)
-  }
-  if ((data.location || '').trim()) {
-    detailLines.push(`Location: ${stripEmojisForCalendar(data.location.trim())}`)
-  }
-  const products = productDisplayItems(data.crop, data.product).filter(Boolean)
-  if (products.length > 0) {
-    detailLines.push(
-      `Products (rep): ${products.map((p) => stripEmojisForCalendar(p)).join(', ')}`,
-    )
-  }
-  if ((data.acreage || '').trim()) {
-    detailLines.push(`Volume / quantity: ${stripEmojisForCalendar(data.acreage.trim())}`)
-  }
-
-  const more = (data.additionalSteps || []).filter((s) => (s.action || '').trim())
-  if (more.length > 0) {
-    const stepBullets = more.map((s) => {
-      const dt = [s.date, s.time].filter(Boolean).join(', ')
-      const suf = dt ? ` — ${dt}` : ''
-      return `→ ${stripEmojisForCalendar(s.action.trim())}${suf}`
-    })
-    detailLines.push(['Other scheduled actions', ...stepBullets].join('\n'))
-  }
-
-  if ((data.mentionedEntities || []).length > 0) {
-    const entityLines = data.mentionedEntities.map((e) => {
-      const type = (e.type || '').trim()
-      return `→ ${stripEmojisForCalendar(e.name)}${type ? ` (${type})` : ''}`
-    })
-    detailLines.push(['People & organizations', ...entityLines].join('\n'))
-  }
-
-  if ((data.ambiguityFlags || []).length > 0) {
-    detailLines.push(
-      `Flags: ${data.ambiguityFlags.map((f) => stripEmojisForCalendar(f)).join('; ')}`,
-    )
-  }
-
-  if ((data.notes || '').trim()) {
-    detailLines.push(`Notes: ${stripEmojisForCalendar(data.notes.trim())}`)
-  }
-
-  if (detailLines.length > 0) parts.push(['Scheduling & account details', ...detailLines].join('\n'))
-
-  return parts.filter(Boolean).join('\n\n')
-}
-
-function needsCalendarConfirmation(r: StructureResult): boolean {
-  const conf = (r.nextStepConfidence || '').toLowerCase()
-  const hasDate = !!(r.nextStepDate || '').trim() && /^\d{2}\/\d{2}\/\d{4}$/.test((r.nextStepDate || '').trim())
-  const hasTarget = !!(r.nextStepTarget || '').trim()
-  const flags = r.ambiguityFlags?.length ?? 0
-  return conf !== 'high' || !hasDate || !hasTarget || flags > 0
 }
 
 /** Model or pipeline flags asking the app to validate instead of guessing. */
@@ -592,17 +561,6 @@ function contactTargetMismatch(r: StructureResult): boolean {
   const t = (r.nextStepTarget || '').trim()
   if (!c || !t) return false
   return !namesRoughlyMatch(c, t)
-}
-
-function needsTargetPicker(r: StructureResult): boolean {
-  if ((r.mentionedEntities?.length ?? 0) > 1) return true
-  const f = r.ambiguityFlags || []
-  return f.some(
-    (x) =>
-      x.includes('unclear_target') ||
-      x.includes('multiple_people') ||
-      x.includes('multiple_people_mentioned'),
-  )
 }
 
 /** Only when no date was extracted; never re-prompt because of unclear_date if a date string exists. */
@@ -772,6 +730,8 @@ type CalendarOpenOpts = {
   dateMmddyyyy: string
   details: string
   time: CalendarTimeInput
+  /** Physical / account location for Google Calendar + ICS. */
+  location?: string
 }
 
 function openGoogleCalendarWindow(opts: CalendarOpenOpts) {
@@ -779,7 +739,9 @@ function openGoogleCalendarWindow(opts: CalendarOpenOpts) {
   if (!range) return
   const title = encodeURIComponent(opts.title.trim())
   const details = encodeURIComponent(opts.details)
-  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${range.start}/${range.end}&details=${details}`
+  const loc = (opts.location || '').trim()
+  const locQ = loc ? `&location=${encodeURIComponent(loc)}` : ''
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${range.start}/${range.end}&details=${details}${locQ}`
   window.open(url, '_blank')
 }
 
@@ -805,7 +767,8 @@ function buildIcsCalendarFile(opts: CalendarOpenOpts): string | null {
   const dtstamp = `${now.getUTCFullYear()}${pad2(now.getUTCMonth() + 1)}${pad2(now.getUTCDate())}T${pad2(now.getUTCHours())}${pad2(now.getUTCMinutes())}${pad2(now.getUTCSeconds())}Z`
   const summary = escapeIcsText(opts.title.trim())
   const description = escapeIcsText(opts.details.trim())
-  const lines = [
+  const loc = (opts.location || '').trim()
+  const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Folup//EN',
@@ -818,9 +781,9 @@ function buildIcsCalendarFile(opts: CalendarOpenOpts): string | null {
     `DTEND:${range.end}`,
     `SUMMARY:${summary}`,
     `DESCRIPTION:${description}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
   ]
+  if (loc) lines.push(`LOCATION:${escapeIcsText(loc)}`)
+  lines.push('END:VEVENT', 'END:VCALENDAR')
   return lines.join('\r\n')
 }
 
@@ -971,16 +934,6 @@ type SavedNote = {
   date: string
   result: StructureResult
   transcript: string
-}
-
-type CalendarConfirmState = {
-  title: string
-  dateIso: string
-  timeStr: string
-  target: string
-  showTarget: boolean
-  targetOptions: string[]
-  baseDescription: string
 }
 
 function isWeakNextStep(nextStep: string) {
@@ -1315,9 +1268,6 @@ export default function Home() {
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
-  const [calendarConfirm, setCalendarConfirm] = useState<CalendarConfirmState | null>(null)
-  /** After "Add to Calendar", user picks Google (web URL) or Apple (.ics). */
-  const [addToCalendarChoice, setAddToCalendarChoice] = useState<CalendarOpenOpts | null>(null)
   const [pendingDatePick, setPendingDatePick] = useState<{
     result: StructureResult
     transcript: string
@@ -1568,9 +1518,6 @@ export default function Home() {
       merged = stripAmbiguityFlagsAfterDateConfirm(merged)
       setResult(merged)
       saveNote(merged, p.transcript)
-      if (needsCalendarConfirmation(merged)) {
-        openCalendarFromStructuredResult(merged)
-      }
       return null
     })
   }
@@ -1588,7 +1535,7 @@ export default function Home() {
     }
   }
 
-  /** After next-step clarify (or if skipped / not needed): optional date sheet → resultado; calendar confirm when review needed. */
+  /** After next-step clarify (or if skipped / not needed): optional date sheet → resultado. */
   const advanceAfterNextStepClarifyResolved = (
     merged: StructureResult,
     transcript: string,
@@ -1598,9 +1545,6 @@ export default function Home() {
     } else {
       setResult(merged)
       saveNote(merged, transcript)
-      if (needsCalendarConfirmation(merged)) {
-        openCalendarFromStructuredResult(merged)
-      }
     }
   }
 
@@ -1786,32 +1730,7 @@ export default function Home() {
     } catch {}
   }
 
-  const buildShareText = (r: StructureResult) => {
-    const lines: string[] = ['📋 Folup Note', '']
-    if (r.contact) {
-      lines.push(
-        `👤 ${r.contact}${r.contactCompany ? ` — ${r.contactCompany}` : r.customer ? ` — ${r.customer}` : ''}`,
-      )
-    }
-    const productPills = productDisplayItems(r.crop, r.product).map((p) => `📦 ${p}`)
-    const pills = [r.location && `📍 ${r.location}`, ...productPills].filter(Boolean)
-    if (pills.length) lines.push(pills.join('  '))
-    const stepLine = (r.nextStepTitle || r.nextStep).trim()
-    if (stepLine) { lines.push(''); lines.push('⚡ NEXT STEP'); lines.push(stepLine) }
-    const insightLines = filterKeyInsightsForDisplay(r.crmFull)
-    if (insightLines.length > 0) {
-      lines.push('')
-      lines.push('KEY INSIGHTS')
-      lines.push(...insightLines)
-    }
-    const cal = topCalendarContextLines((r.calendarDescription || '').trim(), 3)
-    if (cal) {
-      lines.push('')
-      lines.push('BEFORE FOLLOW-UP')
-      lines.push(cal)
-    }
-    return lines.join('\n')
-  }
+  const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
 
   const handleShare = async (r: StructureResult) => {
     const text = buildShareText(r)
@@ -1890,15 +1809,7 @@ export default function Home() {
   const copyText = useMemo(() => {
     const r = activeResult
     if (!r) return ''
-    const parts: string[] = []
-    const insights = filterKeyInsightsForDisplay(r.crmFull)
-    if (insights.length > 0) parts.push(...insights)
-    const cal = topCalendarContextLines((r.calendarDescription || '').trim(), 3)
-    if (cal) {
-      if (parts.length) parts.push('')
-      parts.push(cal)
-    }
-    return parts.join('\n')
+    return formatProfessionalCrmNote(r)
   }, [activeResult])
 
   const formatSeconds = (s: number) => {
@@ -2038,9 +1949,6 @@ export default function Home() {
       } else {
         setResult(final)
         saveNote(final, tx)
-        if (needsCalendarConfirmation(final)) {
-          openCalendarFromStructuredResult(final)
-        }
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -2087,9 +1995,6 @@ export default function Home() {
       } else {
         setResult(final)
         saveNote(final, input)
-        if (needsCalendarConfirmation(final)) {
-          openCalendarFromStructuredResult(final)
-        }
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -2123,50 +2028,28 @@ export default function Home() {
     setSelectedNote(null)
     setShowEditArea(false)
     setShowCalendarToast(false)
-    setCalendarConfirm(null)
-    setAddToCalendarChoice(null)
   }
 
-  const openCalendarFromStructuredResult = (r: StructureResult) => {
-    if (needsCalendarConfirmation(r)) {
-      const title = calendarEventTitle(r)
-      const mmddRaw = (r.nextStepDate || '').trim()
-      const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
-        ? mmddRaw
-        : isoDateToMmddyyyy(todayIsoDate())
-      const resolved = resolveTimeFromHint(r.nextStepTimeHint || '')
-      const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
-      const dateIso = mmddyyyyToIsoDate(adj.dateMmddyyyy) ?? todayIsoDate()
-      const timeStr = hourMinuteToTimeInput(adj.hour, adj.minute)
-      const showTarget = needsTargetPicker(r)
-      const targetOptions = [
-        ...new Set(
-          [
-            (r.nextStepTarget || '').trim(),
-            ...r.mentionedEntities.map((e) => e.name.trim()),
-          ].filter(Boolean),
-        ),
-      ]
-      const target = (r.nextStepTarget || targetOptions[0] || '').trim()
-      setCalendarConfirm({
-        title,
-        dateIso,
-        timeStr,
-        target,
-        showTarget,
-        targetOptions,
-        baseDescription: buildCalendarDescription(r),
-      })
+  /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
+  const addResultToCalendar = (r: StructureResult) => {
+    if (navigator.vibrate) navigator.vibrate(10)
+    const opts = buildCalendarOpenOptsFromResult(r)
+    const range = buildGoogleCalendarDateRangeParts(opts.dateMmddyyyy, opts.time)
+    if (!range) {
+      setError('Could not build the event. Check date and time in the note.')
       return
     }
-    const dateMmdd = (r.nextStepDate || '').trim()
-    const opts: CalendarOpenOpts = {
-      title: calendarEventTitle(r),
-      dateMmddyyyy: dateMmdd,
-      details: buildCalendarDescription(r),
-      time: { kind: 'hint', hint: r.nextStepTimeHint || '' },
+    if (session?.user) {
+      openGoogleCalendarWindow(opts)
+      setShowCalendarToast(true)
+      return
     }
-    setAddToCalendarChoice(opts)
+    const ok = openAppleCalendarFromOpts(opts)
+    if (ok) {
+      setShowCalendarToast(true)
+    } else {
+      setError('Could not create the calendar file.')
+    }
   }
 
   if (!mounted) return null
@@ -2822,236 +2705,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Confirm calendar — bottom sheet when AI output needs review */}
-      {calendarConfirm && (
-        <div
-          className="fixed inset-0 z-[102] flex flex-col justify-end bg-black/45 px-0 pt-8 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="calendar-confirm-title"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            aria-label="Close"
-            onClick={() => setCalendarConfirm(null)}
-          />
-          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_8px_28px_rgba(0,0,0,0.05)]">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
-            <h2
-              id="calendar-confirm-title"
-              className="mb-3 text-center text-[15px] font-bold tracking-tight text-[#111111]"
-            >
-              Confirm next step
-            </h2>
-            <label className="mb-2 block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                Next step title
-              </span>
-              <input
-                type="text"
-                value={calendarConfirm.title}
-                onChange={(e) =>
-                  setCalendarConfirm((c) => (c ? { ...c, title: e.target.value } : c))
-                }
-                className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none ring-0 focus:border-indigo-500/55"
-              />
-            </label>
-            <div className="mb-2 flex gap-2">
-              <label className="min-w-0 flex-1">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                  Date
-                </span>
-                <input
-                  type="date"
-                  value={calendarConfirm.dateIso}
-                  onChange={(e) =>
-                    setCalendarConfirm((c) => (c ? { ...c, dateIso: e.target.value } : c))
-                  }
-                  className="w-full rounded-xl border border-[#e5e7eb] bg-white px-2 py-2.5 text-[13px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
-                />
-              </label>
-              <label className="min-w-0 w-[8.5rem]">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                  Time
-                </span>
-                <input
-                  type="time"
-                  value={calendarConfirm.timeStr}
-                  onChange={(e) =>
-                    setCalendarConfirm((c) => (c ? { ...c, timeStr: e.target.value } : c))
-                  }
-                  className="w-full rounded-xl border border-[#e5e7eb] bg-white px-2 py-2.5 text-[13px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
-                />
-              </label>
-            </div>
-            {calendarConfirm.showTarget ? (
-              <label className="mb-4 block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                  Target
-                </span>
-                {calendarConfirm.targetOptions.length > 1 ? (
-                  <select
-                    value={calendarConfirm.target}
-                    onChange={(e) =>
-                      setCalendarConfirm((c) =>
-                        c ? { ...c, target: e.target.value } : c,
-                      )
-                    }
-                    className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
-                  >
-                    {calendarConfirm.targetOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={calendarConfirm.target}
-                    onChange={(e) =>
-                      setCalendarConfirm((c) =>
-                        c ? { ...c, target: e.target.value } : c,
-                      )
-                    }
-                    className="w-full rounded-xl border border-[#e5e7eb] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111111] outline-none focus:border-indigo-500/55"
-                    placeholder="Who is this for?"
-                  />
-                )}
-              </label>
-            ) : (
-              <div className="mb-4" />
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setCalendarConfirm(null)}
-                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3 text-[14px] font-semibold text-[#111111] transition-colors active:scale-[0.99]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const c = calendarConfirm
-                  const mmdd = isoDateToMmddyyyy(c.dateIso)
-                  if (!mmdd) return
-                  const { hour, minute } = timeInputToHourMinute(c.timeStr)
-                  let details = c.baseDescription
-                  if (c.showTarget && c.target.trim()) {
-                    const line = `Target: ${c.target.trim()}`
-                    details = details ? `${details}\n\n${line}` : line
-                  }
-                  const opts: CalendarOpenOpts = {
-                    title: c.title.trim(),
-                    dateMmddyyyy: mmdd,
-                    details,
-                    time: { kind: 'clock', hour, minute },
-                  }
-                  setCalendarConfirm(null)
-                  setAddToCalendarChoice(opts)
-                }}
-                className="flex-[1.15] rounded-xl py-3 text-[14px] font-bold text-white shadow-sm transition-[transform,filter] active:scale-[0.99]"
-                style={{ backgroundColor: '#10b981' }}
-              >
-                Confirm and add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Google Calendar (URL) vs Apple Calendar (.ics) — all platforms */}
-      {addToCalendarChoice && (
-        <div
-          className="fixed inset-0 z-[103] flex flex-col justify-end bg-black/45 px-0 pt-8 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-calendar-choice-title"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            aria-label="Close"
-            onClick={() => setAddToCalendarChoice(null)}
-          />
-          <div className="relative z-[1] mx-auto w-full max-w-lg rounded-t-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_8px_28px_rgba(0,0,0,0.05)]">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200/90" aria-hidden />
-            <h2
-              id="add-calendar-choice-title"
-              className="mb-1 text-center text-[15px] font-bold tracking-tight text-[#111111]"
-            >
-              Add to calendar
-            </h2>
-            <p className="mb-4 text-center text-[13px] font-medium leading-snug text-[#6b7280]">
-              Open in Google Calendar on the web, or use an .ics file for Apple Calendar (opens in Calendar on iPhone; downloads on desktop).
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const o = addToCalendarChoice
-                  openGoogleCalendarWindow(o)
-                  setAddToCalendarChoice(null)
-                  setShowCalendarToast(true)
-                }}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#4F46E5] py-3.5 pl-4 pr-4 text-[14px] font-bold text-white shadow-md transition-[transform,filter] active:scale-[0.99]"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-                Google Calendar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const o = addToCalendarChoice
-                  const ok = openAppleCalendarFromOpts(o)
-                  setAddToCalendarChoice(null)
-                  if (ok) {
-                    setShowCalendarToast(true)
-                  } else {
-                    setError('Could not create the calendar file. Check the date and time.')
-                  }
-                }}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[#e5e7eb] bg-white py-3.5 text-[14px] font-bold text-[#111111] shadow-sm transition-[transform,filter] active:scale-[0.99]"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0 text-[#111111]" aria-hidden>
-                  <path
-                    fill="currentColor"
-                    d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.55-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.3 4.63-3.74 4.25z"
-                  />
-                </svg>
-                Apple Calendar
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAddToCalendarChoice(null)}
-              className="mt-3 w-full rounded-xl py-2.5 text-[13px] font-semibold text-[#6b7280] transition-colors hover:text-[#111111]"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">
 
@@ -3236,10 +2889,7 @@ export default function Home() {
                       </div>
 
                       <button
-                        onClick={() => {
-                          if (navigator.vibrate) navigator.vibrate(10)
-                          openCalendarFromStructuredResult(result)
-                        }}
+                        onClick={() => addResultToCalendar(result)}
                         type="button"
                         className="group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[transform,box-shadow,filter] duration-200 ease-out hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]"
                         style={{ backgroundColor: '#4F46E5' }}
@@ -3247,7 +2897,7 @@ export default function Home() {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
-                        <span className="tracking-tight">Add to Calendar</span>
+                        <span className="tracking-tight">Add to calendar</span>
                       </button>
                     </>
                   )}

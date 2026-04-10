@@ -301,15 +301,16 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 - Ruthlessly omit repetition of the next step line and generic pleasantries.
 
 **2) CRM TEXT — JSON string **crmText****
-- The **complete structured CRM record** of the visit: **all** topics discussed, client concerns, competitor mentions, opportunities, quantities, stakeholders, context — nothing important omitted.
-- Use clear structure: short paragraphs and/or labeled lines (e.g. "Topics:", "Concerns:", "Competition:", "Numbers:") in the **same language** as the note. This is the full file copy for the CRM system.
+- **Professional sales note** for pasting into a CRM: plain language, **no emojis**, no bullet symbols, no decorative punctuation. Same language as the note.
+- Write **one short paragraph** (or two very short paragraphs only if needed) that covers: **interest level / intent**, **what they use today or incumbent solution**, **competition or alternatives mentioned**, and **any critical context** (budget, timing, stakeholders, risk). Nothing important omitted.
+- Do **not** repeat the next-step line verbatim here; do **not** label sections with "Topics:"—write flowing prose like a rep's own note.
 - Do NOT add a dedicated "distributor" or "Distribuidor:" closing line.
 - **Volume / quantity:** If the note states any numeric volume, quantity, units, capacity, seats, headcount, or deal size, **crmText** MUST include it explicitly. Set JSON **acreage** to a short phrase restating that fact (same language), or "" if none stated.
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
-- **At most 3** lines. Plain text. Each line must start with **→** then a space (example: **→ Client concerned about pricing**).
-- Purpose: what to **remember in 5 seconds** before the follow-up **call or visit** — concerns, comparisons, deadlines, decision timing. No emojis in this field. Same language as the note.
-- Scannable; no long sentences. Not a duplicate of **crmText** — extract the **highest-signal** reminders only. Put only the **three** most execution-critical reminders (omit lower-priority context).
+- **At most 3** lines. Plain sentences only — **no** labels like "Customer:", "Next step:", or field names. No emojis. Same language as the note.
+- Each line may start with **→** then a space (optional); the app strips arrows. Line 1 = highest-signal reminder before follow-up; lines 2–3 = only if distinct extra facts (deadlines, risk, comparison). Not a duplicate of **crmText**.
+- Purpose: snippets the rep can read in **under 5 seconds** in a calendar event — concerns, timing, decision context. Put only the **three** most execution-critical reminders (omit lower-priority context).
 
 ---
 
