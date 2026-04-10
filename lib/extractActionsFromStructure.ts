@@ -6,7 +6,8 @@ import { isNoClearFollowUpLine } from './noFollowUp'
 /**
  * Split compound `nextStep` only — does not pull supporting actions from summary/CRM prose.
  */
-function normalizeDedupeKey(s: string): string {
+/** Exported for ranking: supporting rows must not repeat the primary action line. */
+export function normalizeActionLineDedupeKey(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
@@ -14,6 +15,10 @@ function normalizeDedupeKey(s: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function normalizeDedupeKey(s: string): string {
+  return normalizeActionLineDedupeKey(s)
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { AdditionalStep } from './additionalStepEnrichment'
 import { filterInsightsToContextOnly } from './filterInsightLines'
+import { inferActionKind } from './nextStepActionKind'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -33,7 +34,7 @@ export type StructuredAiPayload = {
 function normPrimaryType(raw: string): StructuredPrimaryType | null {
   const t = raw.trim().toLowerCase().replace(/\s+/g, '_')
   if (t === 'call') return 'call'
-  if (t === 'send') return 'send'
+  if (t === 'send' || t === 'share' || t === 'deliver') return 'send'
   if (t === 'meeting' || t === 'meet') return 'meeting'
   if (t === 'follow_up' || t === 'followup' || t === 'follow-up') return 'follow_up'
   return null
@@ -104,6 +105,34 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
   }
 }
 
+/**
+ * When the transcript orders send/email before call, the model sometimes marks primary as call/follow_up.
+ * Correct primary.type so buildNextStepLine does not emit "Call" for a same-day send.
+ */
+export function alignStructuredPayloadWithNote(
+  note: string,
+  payload: StructuredAiPayload,
+): StructuredAiPayload {
+  const n = note.trim()
+  if (!n) return payload
+
+  const primary = { ...payload.primary }
+  const supporting = payload.supporting.map((s) => ({ ...s }))
+
+  const idxSend = n.search(
+    /\b(send|enviar|email|e-mail|share|deliver|forward|program|proposal|contract)\b/i,
+  )
+  const idxCall = n.search(/\b(call|I['']?ll\s+call|llamar|llamada|phone|tel[ée]fono|ring)\b/i)
+
+  if (idxSend !== -1 && idxCall !== -1 && idxSend < idxCall) {
+    if (primary.type === 'call' || primary.type === 'follow_up') {
+      primary.type = 'send'
+    }
+  }
+
+  return { ...payload, primary, supporting }
+}
+
 function normalizeDateMmdd(d: string): string {
   const t = d.trim()
   if (!t) return ''
@@ -172,13 +201,21 @@ function buildNextStepLine(
 
 function supportingToAction(s: StructuredSupporting, langEs: boolean): string {
   const label = truncateWords(s.label, 5)
+  const kind = inferActionKind(`${s.type} ${label}`)
+
   if (langEs) {
     if (s.type === 'email') return `Email ${label}`
     if (s.type === 'send') return `Enviar ${label}`
+    if (kind === 'call' || kind === 'follow_up') return `Llamar ${label}`
+    if (kind === 'meeting') return `Reunirse ${label}`
+    if (kind === 'send') return `Enviar ${label}`
     return `Enviar ${label}`
   }
   if (s.type === 'email') return `Email ${label}`
   if (s.type === 'send') return `Send ${label}`
+  if (kind === 'call' || kind === 'follow_up') return `Call ${label}`
+  if (kind === 'meeting') return `Meet ${label}`
+  if (kind === 'send') return `Send ${label}`
   return `Send ${label}`
 }
 
@@ -223,9 +260,13 @@ export type StructureBodyLike = {
 export function structuredPayloadToStructureBody(
   payload: StructuredAiPayload,
   noteLanguage: string,
+  rawNote?: string,
 ): StructureBodyLike {
+  const aligned = rawNote?.trim()
+    ? alignStructuredPayloadWithNote(rawNote, payload)
+    : payload
   const langEs = isSpanish(noteLanguage)
-  const { primary, supporting, insights } = payload
+  const { primary, supporting, insights } = aligned
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()

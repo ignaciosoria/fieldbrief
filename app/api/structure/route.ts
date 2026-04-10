@@ -22,7 +22,10 @@ import {
 import { normalizeProductField, productFieldToList } from '../../../lib/productField'
 import { detectNoteLanguage } from '../../../lib/detectNoteLanguage'
 import { isNoClearFollowUpLine } from '../../../lib/noFollowUp'
-import { enrichStructureWithExtractedActions } from '../../../lib/extractActionsFromStructure'
+import {
+  enrichStructureWithExtractedActions,
+  normalizeActionLineDedupeKey,
+} from '../../../lib/extractActionsFromStructure'
 import {
   enrichAdditionalStepsList,
   extractRoughTimeHint,
@@ -543,6 +546,19 @@ function applyRankedNextStepSelection(
     .filter((r) => r.idx !== primary.idx)
     .sort((a, b) => a.idx - b.idx)
 
+  /** Drop supporting rows that echo the primary line or duplicate another supporting row (same action+date+time). */
+  const primaryActionKey = normalizeActionLineDedupeKey(primary.action)
+  const restDeduped: ScoredRow[] = []
+  const seenSupportingComposite = new Set<string>()
+  for (const r of rest) {
+    const ak = normalizeActionLineDedupeKey(r.action)
+    if (ak.length >= 4 && ak === primaryActionKey) continue
+    const composite = `${ak}|${r.date.trim()}|${r._timeRaw.trim()}`
+    if (seenSupportingComposite.has(composite)) continue
+    seenSupportingComposite.add(composite)
+    restDeduped.push(r)
+  }
+
   if (resolved.length >= 2 && rest.length !== resolved.length - 1) {
     console.warn('[structure] rank: expected N-1 supporting rows', {
       resolvedCount: resolved.length,
@@ -577,7 +593,7 @@ function applyRankedNextStepSelection(
       nextStepTimeHint,
       timeRawUsed: hintRaw || '(empty)',
     },
-    supportingActions: rest.map((r) => ({
+    supportingActions: restDeduped.map((r) => ({
       idx: r.idx,
       action: r.action.slice(0, 100),
       resolvedDate: r.date,
@@ -585,7 +601,7 @@ function applyRankedNextStepSelection(
     })),
   })
 
-  const rankedSupporting: AdditionalStep[] = rest.map((r) => ({
+  const rankedSupporting: AdditionalStep[] = restDeduped.map((r) => ({
     action: r.action,
     contact: '',
     company: '',
@@ -818,7 +834,7 @@ export async function POST(request: Request) {
           { status: 500 },
         )
       }
-      result = structuredPayloadToStructureBody(payload, detectedLanguage) as StructureBody
+      result = structuredPayloadToStructureBody(payload, detectedLanguage, note) as StructureBody
       logStructurePipelineStage('05_mapped_structure_body', result)
     } catch {
       return NextResponse.json(

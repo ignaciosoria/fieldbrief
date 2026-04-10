@@ -36,7 +36,7 @@ export function inferActionKind(action: string): ActionKind {
     return 'follow_up'
   }
   if (
-    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?)\b/i.test(
+    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?|share|deliver|delivery|compartir|entregar)\b/i.test(
       a,
     )
   ) {

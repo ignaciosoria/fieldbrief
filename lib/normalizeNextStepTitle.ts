@@ -132,17 +132,25 @@ function matchesLeadingVerb(
 }
 
 function inferVerb(nextStep: string, title: string, spanish: boolean): VerbEn | VerbEs {
-  const s = `${nextStep} ${title}`.toLowerCase()
+  const combined = `${nextStep} ${title}`.toLowerCase()
+  /** Prefer the first clause so "send today … then … call" does not collapse to Call. */
+  const firstSegment = combined.split(/\bthen\b/i)[0].split(/\band then\b/i)[0].trim()
+
   if (spanish) {
-    if (/\b(email|e-mail|correo|mail)\b/.test(s)) return 'Email'
-    if (/\b(enviar|mandar|envío)\b/.test(s)) return 'Enviar'
-    if (/\b(reunión|reunir|reunirse|visita|visitar|café)\b/.test(s)) return 'Reunirse'
+    if (/\b(email|e-mail|correo|mail)\b/.test(firstSegment)) return 'Email'
+    if (/\b(enviar|mandar|envío|compartir|entregar)\b/.test(firstSegment)) return 'Enviar'
+    if (/\b(reunión|reunir|reunirse|visita|visitar|café)\b/.test(firstSegment)) return 'Reunirse'
+    if (/\b(llamar|llamada|teléfono|seguimiento)\b/.test(firstSegment)) return 'Llamar'
+    if (/\b(enviar|mandar|compartir)\b/.test(combined)) return 'Enviar'
     return 'Llamar'
   }
-  if (/\b(email|e-mail|mail)\b/.test(s)) return 'Email'
-  if (/\b(send|ship|forward|deliver)\b/.test(s)) return 'Send'
-  if (/\b(meet|meeting|visit|lunch|coffee|catch\s*up)\b/.test(s)) return 'Meet'
-  if (/\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring)\b/.test(s)) return 'Call'
+  if (/\b(email|e-mail|mail)\b/.test(firstSegment)) return 'Email'
+  if (/\b(send|ship|forward|deliver|share)\b/.test(firstSegment)) return 'Send'
+  if (/\b(meet|meeting|visit|lunch|coffee|catch\s*up)\b/.test(firstSegment)) return 'Meet'
+  if (/\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring)\b/.test(firstSegment)) return 'Call'
+  if (/\b(send|ship|forward|deliver|share)\b/.test(combined)) return 'Send'
+  if (/\b(meet|meeting|visit)\b/.test(combined)) return 'Meet'
+  if (/\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring)\b/.test(combined)) return 'Call'
   return 'Call'
 }
 
