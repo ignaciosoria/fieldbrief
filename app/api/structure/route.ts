@@ -35,7 +35,7 @@ type StructureBody = {
   acreage: string
   crmText: string
   crmFull: string[]
-  /** 3–5 scannable → lines for calendar / before follow-up; separate from crmFull and crmText. */
+  /** 3–5 scannable → lines for calendar event body; separate from crmFull and crmText. */
   calendarDescription: string
   additionalSteps: AdditionalStep[]
 }
@@ -336,7 +336,7 @@ THREE OUTPUT ZONES (distinct purposes — do not duplicate the same sentence acr
 
 **3) CALENDAR DESCRIPTION — JSON string **calendarDescription****
 - **At most 3** lines. Plain sentences only — **no** labels like "Customer:", "Next step:", or field names. No emojis. Same language as the note.
-- Each line may start with **→** then a space (optional); the app strips arrows. Line 1 = highest-signal reminder before follow-up; lines 2–3 = only if distinct extra facts (deadlines, risk, comparison). Not a duplicate of **crmText**.
+- Each line may start with **→** then a space (optional); the app strips arrows. Line 1 = highest-signal context for the calendar body; lines 2–3 = only if distinct extra facts (deadlines, risk, comparison). Not a duplicate of **crmText**.
 - Purpose: snippets the rep can read in **under 5 seconds** in a calendar event — concerns, timing, decision context. Put only the **three** most execution-critical reminders (omit lower-priority context).
 
 ---

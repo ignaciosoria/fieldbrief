@@ -31,21 +31,13 @@ function normalizeLegacyInsightLine(line: string): string {
     .replace(/^(\s*)🌾/u, '$1📊')
 }
 
-/** Result screen: hide date/schedule insight lines — those belong in Before follow-up / next step. */
+/** Result screen: hide date/schedule insight lines — timing belongs in next step / calendar export. */
 function filterKeyInsightsForDisplay(lines: string[]): string[] {
   return lines
     .map(normalizeLegacyInsightLine)
     .filter((line) => !line.trimStart().startsWith('📅'))
 }
 
-/** Before follow-up: at most `max` lines (highest-signal context only). */
-function topCalendarContextLines(raw: string, max: number): string {
-  const lines = raw
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-  return lines.slice(0, max).join('\n')
-}
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
@@ -74,7 +66,7 @@ type StructureResult = {
   acreage: string
   crmText: string
   crmFull: string[]
-  /** 3–5 → lines for calendar / before follow-up (from API). */
+  /** API field; used when building calendar event body (not shown as its own screen section). */
   calendarDescription: string
   additionalSteps: AdditionalStep[]
 }
@@ -420,7 +412,7 @@ function stripEmojisForCalendar(s: string): string {
     .trim()
 }
 
-/** First sentence or capped fragment for calendar context (plain prose, no labels). */
+/** First sentence or capped fragment (plain prose, no labels). */
 function firstCalendarSentence(raw: string, maxLen: number): string {
   const t = stripEmojisForCalendar(raw).replace(/\s+/g, ' ').trim()
   if (!t) return ''
@@ -434,85 +426,150 @@ function calendarPrepFirstLine(cal: string): string {
   return stripEmojisForCalendar(line.replace(/^→\s*/, '')).trim()
 }
 
-function dedupeCalendarOptionalLines(
-  lines: string[],
-  context: string,
-  followUp: string,
-): string[] {
+function normalizeCalendarDedupeKey(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function truncateCalendarLine(s: string, max: number): string {
+  const t = s.replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  return t.length > max ? `${t.slice(0, max - 1).trim()}…` : t
+}
+
+function compactInsightForCalendar(line: string): string {
+  let s = normalizeLegacyInsightLine(line).trim()
+  s = stripEmojisForCalendar(s).replace(/^[\s\-•*→]+/g, '').trim()
+  return s
+}
+
+const CALENDAR_MAX_CONTEXT = 160
+const CALENDAR_MAX_ACTION = 140
+const CALENDAR_MAX_NOTE_LINE = 100
+const CALENDAR_MAX_LINES = 6
+
+/** Line 1: company / account + location (instant scan). */
+function buildCalendarCompanyLocationLine(data: StructureResult): string {
+  const customer = stripEmojisForCalendar((data.customer || '').trim())
+  const contactCo = stripEmojisForCalendar((data.contactCompany || '').trim())
+  const location = stripEmojisForCalendar((data.location || '').trim())
+
+  let org = ''
+  if (customer && contactCo && customer.toLowerCase() !== contactCo.toLowerCase()) {
+    org = `${customer} · ${contactCo}`
+  } else {
+    org = customer || contactCo
+  }
+  if (!org) {
+    org = stripEmojisForCalendar((data.contact || '').trim())
+  }
+  if (!org && !location) return ''
+  if (!org) return location
+  return location ? `${org} — ${location}` : org
+}
+
+/** Line 2: one short sentence — interest and situation. */
+function buildCalendarContextSentence(data: StructureResult): string {
+  const crm = (data.crmText || '').trim()
+  if (crm) return firstCalendarSentence(crm, CALENDAR_MAX_CONTEXT)
+  const cal = calendarPrepFirstLine(data.calendarDescription || '')
+  if (cal) return firstCalendarSentence(cal, CALENDAR_MAX_CONTEXT)
+  const raw = (data.crmFull || [])
+    .map(normalizeLegacyInsightLine)
+    .find((l) => l.trim() && !l.trimStart().startsWith('📅'))
+  if (raw) return firstCalendarSentence(compactInsightForCalendar(raw), CALENDAR_MAX_CONTEXT)
+  return ''
+}
+
+/** Line 3: action only if it does not repeat the event title. */
+function buildCalendarActionLine(data: StructureResult, eventTitle: string): string {
+  const title = stripEmojisForCalendar(eventTitle.trim())
+  const actionPhrase = stripEmojisForCalendar((data.nextStepAction || '').trim())
+  const stepLine = stripEmojisForCalendar((data.nextStepTitle || data.nextStep || '').trim())
+  const pick = actionPhrase || stepLine
+  if (!pick) return ''
+  if (title && normalizeCalendarDedupeKey(pick) === normalizeCalendarDedupeKey(title)) return ''
+  return truncateCalendarLine(pick, CALENDAR_MAX_ACTION)
+}
+
+/** Lines 4–6: 2–3 short fact lines (no labels). */
+function buildCalendarFactLines(data: StructureResult, exclude: Set<string>): string[] {
   const out: string[] = []
   const seen = new Set<string>()
-  const ctx = context.toLowerCase()
-  const fu = followUp.toLowerCase()
-  for (const line of lines) {
-    const l = line.trim()
-    if (!l) continue
-    const k = l.toLowerCase()
-    if (seen.has(k)) continue
-    if (ctx && k === ctx) continue
-    if (fu && k === fu) continue
+  const contactNorm = normalizeCalendarDedupeKey(stripEmojisForCalendar((data.contact || '').trim()))
+
+  const add = (raw: string) => {
+    const t = truncateCalendarLine(compactInsightForCalendar(raw), CALENDAR_MAX_NOTE_LINE)
+    if (!t) return
+    const k = normalizeCalendarDedupeKey(t)
+    if (seen.has(k) || exclude.has(k)) return
     seen.add(k)
-    out.push(l)
+    out.push(t)
   }
-  return out
+
+  for (const line of data.crmFull || []) {
+    if (out.length >= 3) break
+    const l = normalizeLegacyInsightLine(line)
+    if (!l.trim() || l.trimStart().startsWith('📅')) continue
+    add(l)
+  }
+
+  for (const line of (data.calendarDescription || '').split(/\r?\n/)) {
+    if (out.length >= 3) break
+    const t = stripEmojisForCalendar(line.replace(/^→\s*/, '').trim())
+    if (t) add(t)
+  }
+
+  const notes = stripEmojisForCalendar((data.notes || '').trim())
+  if (notes && out.length < 3) {
+    for (const part of notes.split(/\n+/)) {
+      if (out.length >= 3) break
+      add(part)
+    }
+  }
+
+  const target = stripEmojisForCalendar((data.nextStepTarget || '').trim())
+  if (target && out.length < 3) {
+    const tk = normalizeCalendarDedupeKey(target)
+    if (!contactNorm || tk !== contactNorm) {
+      add(target)
+    }
+  }
+
+  return out.slice(0, 3)
 }
 
 /**
- * Calendar event body: scannable in seconds — account / company / location, situation,
- * single follow-up, optional facts. No labels, no CRM dump, no extra actions or system fields.
+ * Calendar description: ≤6 tight lines for quick reading in Google / Apple / ICS.
+ * 1) Company + location 2) Context 3) Action (if not same as title) 4–6) Key facts only.
  */
 function buildCalendarDescription(data: StructureResult): string {
-  const customer = stripEmojisForCalendar((data.customer || '').trim())
-  const company = stripEmojisForCalendar((data.contactCompany || '').trim())
-  const location = stripEmojisForCalendar((data.location || '').trim())
-  const line1Parts: string[] = []
-  if (customer) line1Parts.push(customer)
-  if (company && company.toLowerCase() !== customer.toLowerCase()) line1Parts.push(company)
-  if (location) line1Parts.push(location)
-  let line1 = line1Parts.join(' — ')
-  if (!line1) {
-    const contact = stripEmojisForCalendar((data.contact || '').trim())
-    if (contact && company) line1 = `${contact}, ${company}`
-    else line1 = contact || company || location || ''
+  const eventTitle = calendarEventTitle(data)
+  const line1 = buildCalendarCompanyLocationLine(data)
+  const context = buildCalendarContextSentence(data)
+  const action = buildCalendarActionLine(data, eventTitle)
+
+  const exclude = new Set<string>()
+  const pushEx = (s: string) => {
+    const k = normalizeCalendarDedupeKey(s)
+    if (k) exclude.add(k)
+  }
+  if (line1) pushEx(line1)
+  if (context) pushEx(context)
+  if (action) pushEx(action)
+  if (eventTitle) pushEx(stripEmojisForCalendar(eventTitle))
+
+  const facts = buildCalendarFactLines(data, exclude)
+
+  const lines: string[] = []
+  if (line1) lines.push(line1)
+  if (context) lines.push(context)
+  if (action) lines.push(action)
+  for (const f of facts) {
+    if (lines.length >= CALENDAR_MAX_LINES) break
+    lines.push(f)
   }
 
-  let context = ''
-  const crm = (data.crmText || '').trim()
-  if (crm) {
-    context = firstCalendarSentence(crm, 320)
-  }
-  if (!context) {
-    context = calendarPrepFirstLine(data.calendarDescription || '')
-  }
-  if (!context) {
-    const raw = (data.crmFull || []).map(normalizeLegacyInsightLine).find((l) => l.trim())
-    if (raw) context = stripEmojisForCalendar(raw).trim()
-  }
-
-  const followUp = stripEmojisForCalendar((data.nextStepTitle || data.nextStep || '').trim())
-
-  const optionalRaw: string[] = []
-  const calLines = (data.calendarDescription || '')
-    .split(/\r?\n/)
-    .map((l) => stripEmojisForCalendar(l.replace(/^→\s*/, '').trim()))
-    .filter(Boolean)
-  if (calLines.length > 1) {
-    for (const extra of calLines.slice(1, 4)) {
-      optionalRaw.push(extra)
-    }
-  }
-  const shortNotes = stripEmojisForCalendar((data.notes || '').trim())
-  if (shortNotes && shortNotes.length < 220) {
-    optionalRaw.push(shortNotes)
-  }
-  const optional = dedupeCalendarOptionalLines(optionalRaw, context, followUp).slice(0, 2)
-
-  const sections: string[] = []
-  if (line1) sections.push(line1)
-  if (context) sections.push(context)
-  if (followUp) sections.push(followUp)
-  if (optional.length) sections.push(optional.join('\n'))
-
-  return sections.join('\n\n').trim()
+  return lines.join('\n').trim()
 }
 
 /** Google Calendar event title: short structured title first, then long next step. */
@@ -531,12 +588,7 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
     : isoDateToMmddyyyy(todayIsoDate())
   const resolved = resolveTimeFromHint(r.nextStepTimeHint || '')
   const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
-  let details = buildCalendarDescription(r)
-  const target = (r.nextStepTarget || '').trim()
-  if (target) {
-    const line = `Follow-up with: ${target}`
-    details = details ? `${details}\n\n${line}` : line
-  }
+  const details = buildCalendarDescription(r)
   const loc = stripEmojisForCalendar((r.location || '').trim())
   return {
     title,
@@ -2924,7 +2976,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 2 — Contact & company → 3 — Insights → 4 — Before follow-up → actions */}
+                {/* Contact & company → Key insights → actions */}
                 <div className="mt-4 flex flex-col gap-6">
                   {(result.contact || result.customer || result.location || result.crop || result.product) && (
                     <div className="rounded-2xl border border-zinc-200/90 bg-[#fafafa] px-4 py-3.5">
@@ -2980,17 +3032,6 @@ export default function Home() {
                       />
                     </div>
                   )}
-
-                  {(result.calendarDescription || '').trim() ? (
-                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-4 py-3.5">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
-                        Before follow-up
-                      </p>
-                      <p className="whitespace-pre-line text-[13px] font-medium leading-snug tracking-tight text-[#111111]">
-                        {topCalendarContextLines((result.calendarDescription || '').trim(), 3)}
-                      </p>
-                    </div>
-                  ) : null}
 
                   {/* Copy / Share / Correct — inline, directly under content */}
                   <div className="flex items-center gap-2 border-t border-zinc-200/60 pt-4 pb-0">
@@ -3127,17 +3168,6 @@ export default function Home() {
                       />
                     </div>
                   )}
-
-                  {(selectedNote.result.calendarDescription || '').trim() ? (
-                    <div className="rounded-2xl border border-zinc-200/80 bg-white px-4 py-4">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
-                        Before follow-up
-                      </p>
-                      <p className="whitespace-pre-line text-[15px] font-medium leading-snug tracking-tight text-[#111111]">
-                        {topCalendarContextLines((selectedNote.result.calendarDescription || '').trim(), 3)}
-                      </p>
-                    </div>
-                  ) : null}
 
                   {(selectedNote.result.nextStep || selectedNote.result.nextStepTitle) && (
                     <div className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-4 ring-1 ring-indigo-500/20">
