@@ -8,7 +8,6 @@ import {
   toUserAnchorDateTime,
 } from '../../../lib/calendarResolveDate'
 import {
-  isHighValuePrimaryCandidate,
   isSendOrEmailTier,
   kindScoreForPrimarySelection,
   normalizedTypeForRow,
@@ -295,21 +294,57 @@ function mergeCropIntoProduct(crop: string, product: string): { crop: string; pr
   return { crop: '', product: normalizeProductField([c, ...parts].join(', ')) }
 }
 
-/** Sort key: MM/DD/YYYY, ISO date, or missing (missing = last). */
-function parseStepDateMs(dateStr: string): number {
-  const t = (dateStr || '').trim()
-  if (!t) return Number.POSITIVE_INFINITY
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) {
-    const [mm, dd, yyyy] = t.split('/').map((x) => parseInt(x, 10))
-    if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return Number.POSITIVE_INFINITY
-    return new Date(yyyy, mm - 1, dd).getTime()
+/** Calendar-day offset from anchor (0 = today in `zone`). */
+function calendarDayDiffFromAnchor(mmdd: string, anchor: DateTime, zone: string): number | null {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) return null
+  const [mm, dd, yyyy] = mmdd.split('/').map((x) => parseInt(x, 10))
+  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) return null
+  const d = DateTime.fromObject({ year: yyyy, month: mm, day: dd }, { zone })
+  if (!d.isValid) return null
+  const a = anchor.setZone(zone).startOf('day')
+  return Math.round(d.startOf('day').diff(a, 'days').days)
+}
+
+/**
+ * Lower = more urgent for primary selection.
+ * 0 = send/email today (must win if any exist), 1 = other actions today, 2 = tomorrow,
+ * 3 = dated future or past, 4 = no resolved date.
+ */
+function urgencyBandForPrimary(row: ScoredRow, anchor: DateTime, zone: string): number {
+  const mmdd = (row.date || '').trim()
+  const diff = calendarDayDiffFromAnchor(mmdd, anchor, zone)
+  if (diff === null) return 4
+  if (diff === 0) {
+    if (isSendOrEmailTier(row._normalizedType)) return 0
+    return 1
   }
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
-    const d = new Date(t.slice(0, 10) + 'T12:00:00')
-    return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
+  if (diff === 1) return 2
+  return 3
+}
+
+/** Earlier wall-clock instant = more urgent; missing/invalid → last. */
+function rowEventInstantMsForPrimarySort(
+  row: ScoredRow,
+  zone: string,
+): number {
+  const mmdd = (row.date || '').trim()
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) return Number.POSITIVE_INFINITY
+  const hint = resolveCalendarTimeHint(
+    (row._timeRaw || row.time || '').trim(),
+    row.action,
+    row.title,
+    row.action,
+  )
+  const [mm, dd, yyyy] = mmdd.split('/').map((x) => parseInt(x, 10))
+  let hour = 9
+  let minute = 0
+  const hm = hint.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (hm) {
+    hour = Math.min(23, Math.max(0, parseInt(hm[1], 10)))
+    minute = Math.min(59, Math.max(0, parseInt(hm[2], 10)))
   }
-  const d = new Date(t)
-  return Number.isNaN(d.getTime()) ? Number.POSITIVE_INFINITY : d.getTime()
+  const dt = DateTime.fromObject({ year: yyyy, month: mm, day: dd, hour, minute }, { zone })
+  return dt.isValid ? dt.toMillis() : Number.POSITIVE_INFINITY
 }
 
 type ChronologicalRow = {
@@ -335,11 +370,11 @@ type ScoredRow = ChronologicalRow & {
 
 /**
  * Phase 2 — deterministic primary/supporting:
- * - **Tier 0** (meeting, call, follow_up) always beats **tier 1** (send, email) and **tier 2** (other).
- * - send/email cannot be primary if any tier-0 action exists (sort + safety net).
- * - Within tier: meeting > call > follow_up > … by kind score, then **earlier date** breaks ties,
- *   then stable idx. **Every non-primary row is kept** in `additionalSteps` (sorted by original `idx`);
- *   send/email are never dropped when a tier-0 action is primary.
+ * - Primary is chosen by **urgency**, not call-vs-send tier: send/email **today** outrank calls/meetings
+ *   on later days; **earlier wall-clock instant** breaks ties within the same urgency band.
+ * - Bands (ascending = more urgent): (0) send/email today, (1) other actions today, (2) tomorrow,
+ *   (3) other resolved calendar dates, (4) undated.
+ * - **Every non-primary row is kept** in `additionalSteps` (stable `idx` order among supporting).
  */
 function applyRankedNextStepSelection(
   result: StructureBody,
@@ -416,7 +451,7 @@ function applyRankedNextStepSelection(
   })
 
   console.log(
-    '[structure] rank: tiers (0=call/meeting/follow_up, 1=send/email, 2=other)',
+    '[structure] rank: types + legacy tier/kind (urgency sort below)',
     resolved.map((r) => ({
       source: r.source,
       type: r._normalizedType,
@@ -428,37 +463,27 @@ function applyRankedNextStepSelection(
   )
 
   resolved.sort((a, b) => {
-    if (a._tier !== b._tier) return a._tier - b._tier
-    if (b._kindScore !== a._kindScore) return b._kindScore - a._kindScore
-    const da = parseStepDateMs(a.date)
-    const db = parseStepDateMs(b.date)
-    if (da !== db) return da - db
+    const za = urgencyBandForPrimary(a, anchor, timeZone)
+    const zb = urgencyBandForPrimary(b, anchor, timeZone)
+    if (za !== zb) return za - zb
+    const ia = rowEventInstantMsForPrimarySort(a, timeZone)
+    const ib = rowEventInstantMsForPrimarySort(b, timeZone)
+    if (ia !== ib) return ia - ib
     return a.idx - b.idx
   })
 
   console.log(
-    '[structure] rank: order (tier asc, kindScore desc, date asc, idx)',
+    '[structure] rank: order (urgency band asc, instant asc, idx)',
     resolved.map((r) => ({
       source: r.source,
       type: r._normalizedType,
-      tier: r._tier,
+      urgency: urgencyBandForPrimary(r, anchor, timeZone),
       action: r.action.slice(0, 120),
       dateResolved: r.date,
     })),
   )
 
-  let primary = resolved[0]
-  const anyHighTier = resolved.some((r) => isHighValuePrimaryCandidate(r._normalizedType))
-  if (anyHighTier && isSendOrEmailTier(primary._normalizedType)) {
-    const alt = resolved.find((r) => isHighValuePrimaryCandidate(r._normalizedType))
-    if (alt) {
-      console.log('[structure] rank: send/email blocked as primary — tier-0 action exists', {
-        skipped: primary.action.slice(0, 100),
-        chosenPrimary: alt.action.slice(0, 100),
-      })
-      primary = alt
-    }
-  }
+  const primary = resolved[0]
 
   const rest = resolved
     .filter((r) => r.idx !== primary.idx)

@@ -2,11 +2,9 @@ import { ACTION_KIND_SCORE, inferActionKind } from './nextStepActionKind'
 import { inferNormalizedActionType, type NormalizedActionType } from './normalizedActions'
 
 /**
- * Phase 2 — deterministic primary vs supporting:
- * - Tier 0 (meeting / call / follow_up) always outranks tier 1 (send / email) and tier 2 (other).
- * - send/email can never win primary when any tier-0 action exists (enforced by sort + safety check).
- * - Within the same tier: kind strength (meeting > call > follow_up > send/email), then **date**,
- *   then stable order — date never moves a lower tier above a higher tier.
+ * Helpers for primary ranking (`applyRankedNextStepSelection` in structure route):
+ * - `primaryBusinessTier` / `kindScoreForPrimarySelection` are retained for logging and typing.
+ * - **Primary winner** is chosen by urgency (date + send/email-today rule), not by tier alone — see route.
  */
 
 export function primaryBusinessTier(t: NormalizedActionType): 0 | 1 | 2 {
