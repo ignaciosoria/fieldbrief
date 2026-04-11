@@ -18,7 +18,7 @@ import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
 import type { ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
-import { filterInsightsToContextOnly } from '../lib/filterInsightLines'
+import { filterInsightsToContextOnly, normalizePendingInsightTense } from '../lib/filterInsightLines'
 import { buildCalendarEventDescriptionBody } from '../lib/calendarEventDescription'
 import {
   isWakeLockHeld,
@@ -349,8 +349,10 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     productDisplayItems(base.crop, normalizeProductField(base.product)).join(', '),
   )
   const noteLanguageHint = [base.nextStep, base.nextStepTitle, base.crmText].filter(Boolean).join('\n')
+  const noteLang = detectNoteLanguage(noteLanguageHint.trim() || 'Note')
+  const langEsInsights = noteLang === 'spanish'
   const additionalStepsSanitized = sanitizeAdditionalSteps(normalizeAdditionalSteps(base.additionalSteps), {
-    noteLanguage: detectNoteLanguage(noteLanguageHint.trim() || 'Note'),
+    noteLanguage: noteLang,
   })
   return {
     ...base,
@@ -360,7 +362,9 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     product: productMerged,
     crop: '',
     crmFull: filterInsightsToContextOnly(
-      stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
+      stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)).map((l) =>
+        normalizePendingInsightTense(l, langEsInsights),
+      ),
     ).slice(0, 4),
     crmText: stripDealerClosingFromCrmText(base.crmText),
     calendarDescription: (base.calendarDescription || '').trim(),

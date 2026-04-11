@@ -25,6 +25,38 @@ export function insightLineContainsActionLanguage(line: string): boolean {
   return ACTION_LANGUAGE_PATTERNS.some((re) => re.test(t))
 }
 
+/**
+ * Past-tense openers often wrongly imply a task is done. Rewrite to pending phrasing.
+ * Output must stay compatible with {@link insightLineContainsActionLanguage} (no bare send/call/…).
+ */
+export function normalizePendingInsightTense(line: string, spanish: boolean): string {
+  let s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return s
+
+  if (spanish) {
+    s = s
+      .replace(/^envié\s+/i, 'Pendiente entrega de ')
+      .replace(/^llamé\s+/i, 'Contacto pendiente con ')
+      .replace(/^enviad[oa]\s+/i, 'Pendiente entrega de ')
+      .replace(/^llamad[oa]\s+/i, 'Contacto pendiente con ')
+      .replace(/^revisé\s+/i, 'Revisión pendiente: ')
+      .replace(/^comprobé\s+/i, 'Comprobación pendiente: ')
+    return s.replace(/\s+/g, ' ').trim()
+  }
+
+  s = s
+    .replace(/^sent\s*$/i, 'Outstanding delivery')
+    .replace(/^sent\s+(.+)$/i, 'Needs $1 sent')
+    .replace(/^called\s+(.+)$/i, 'Still to connect with $1')
+    .replace(/^followed\s+up\s+on\s+(.+)$/i, 'Open item on $1')
+    .replace(/^followed\s+up\s*$/i, 'Follow-on still open')
+    .replace(/^checked\s+(.+)$/i, 'Still checking $1')
+    .replace(/^emailed\s+(.+)$/i, 'Outreach to $1 still pending')
+    .replace(/^mailed\s+(.+)$/i, 'Delivery to $1 still pending')
+
+  return s.replace(/\s+/g, ' ').trim()
+}
+
 /** Keep only context-style insight lines; preserves order. */
 export function filterInsightsToContextOnly(lines: string[]): string[] {
   return lines

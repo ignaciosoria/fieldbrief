@@ -6,7 +6,7 @@ import {
   verbForSupportingStructuredType,
   type ActionStructuredFields,
 } from './actionTitleContract'
-import { filterInsightsToContextOnly } from './filterInsightLines'
+import { filterInsightsToContextOnly, normalizePendingInsightTense } from './filterInsightLines'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -344,7 +344,13 @@ export function structuredPayloadToStructureBody(
   })
 
   const crmFull = filterInsightsToContextOnly(
-    insights.map((line) => line.replace(/^[.!?]+\s*$/, '').trim()).filter(Boolean),
+    insights
+      .map((line) => line.replace(/^[.!?]+\s*$/, '').trim())
+      .filter(Boolean)
+      .map((line) => normalizePendingInsightTense(line, langEs))
+      .map((line) =>
+        langEs ? line.replace(/\bde el\b/gi, 'del').replace(/\s+/g, ' ').trim() : line,
+      ),
   ).slice(0, 4)
 
   return {
