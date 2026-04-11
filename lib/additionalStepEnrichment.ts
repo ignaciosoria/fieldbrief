@@ -1,4 +1,9 @@
-import { resolveCalendarTimeHint, resolveRelativePhraseToMmdd, toUserAnchorDateTime } from './calendarResolveDate'
+import {
+  inferTimeHintFromProse,
+  resolveCalendarTimeHint,
+  resolveRelativePhraseToMmdd,
+  toUserAnchorDateTime,
+} from './calendarResolveDate'
 import type { ActionStructuredFields } from './actionTitleContract'
 
 /** From model `supporting[].type` — supporting-only calendar uses these with `label` / structured date/time. */
@@ -23,41 +28,12 @@ export type AdditionalStep = {
   actionStructured?: ActionStructuredFields
 }
 
-function pad2(n: number) {
-  return n.toString().padStart(2, '0')
-}
-
 /**
  * Pull clock / period hints from free text when structured time was empty
  * (e.g. "call at 3pm", "por la mañana", "10:30 am").
  */
 export function extractRoughTimeHint(text: string): string {
-  const t = (text || '').trim()
-  if (!t) return ''
-
-  const lower = t.toLowerCase()
-  if (/\bpor\s+la\s+mañana\b/.test(lower) || /\bin\s+the\s+morning\b/.test(lower)) return 'morning'
-  if (/\bpor\s+la\s+tarde\b/.test(lower) || /\bin\s+the\s+afternoon\b/.test(lower)) return 'afternoon'
-  if (/\bal\s+mediod[ií]a\b/.test(lower) || /\bnoon\b/.test(lower)) return 'noon'
-
-  const m24 = t.match(/\b(\d{1,2}):(\d{2})\b/)
-  if (m24) {
-    const h = Math.min(23, Math.max(0, parseInt(m24[1], 10)))
-    const min = Math.min(59, Math.max(0, parseInt(m24[2], 10)))
-    return `${pad2(h)}:${pad2(min)}`
-  }
-
-  const m12 = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i)
-  if (m12) {
-    let h = parseInt(m12[1], 10)
-    const min = m12[2] ? parseInt(m12[2], 10) : 0
-    const ap = m12[3].toLowerCase()
-    if (ap === 'pm' && h < 12) h += 12
-    if (ap === 'am' && h === 12) h = 0
-    return `${pad2(h)}:${pad2(min)}`
-  }
-
-  return ''
+  return inferTimeHintFromProse(text)
 }
 
 function mergeTimeHints(structured: string, action: string): string {

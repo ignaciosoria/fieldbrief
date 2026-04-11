@@ -1,9 +1,4 @@
 import { DateTime } from 'luxon'
-import {
-  defaultTimeForActionKind,
-  inferActionKind,
-  type ActionKind,
-} from './nextStepActionKind'
 
 /**
  * Convert a client-provided instant (always interpreted in `timeZone` for calendar math).
@@ -226,7 +221,79 @@ export function formatClockHint(hour: number, minute: number): string {
   return `${pad2(hour)}:${pad2(minute)}`
 }
 
-/** If hint already has a concrete clock, keep it; else use action-kind defaults. */
+/**
+ * Infer a time hint from prose only when the note implies a real clock or time-of-day window.
+ * Does **not** invent times for vague phrases ("later today", "next week", "if I can").
+ * Returns '' when no defensible inference; canonical tokens: morning | afternoon | evening | noon | first thing | HH:mm.
+ */
+export function inferTimeHintFromProse(text: string): string {
+  const raw = (text || '').trim()
+  if (!raw) return ''
+
+  const m24 = raw.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (m24) {
+    const h = Math.min(23, Math.max(0, parseInt(m24[1], 10)))
+    const min = Math.min(59, Math.max(0, parseInt(m24[2], 10)))
+    return `${pad2(h)}:${pad2(min)}`
+  }
+
+  const m12 = raw.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i)
+  if (m12) {
+    let h = parseInt(m12[1], 10)
+    const min = m12[2] ? parseInt(m12[2], 10) : 0
+    const ap = m12[3].toLowerCase()
+    if (ap === 'pm' && h < 12) h += 12
+    if (ap === 'am' && h === 12) h = 0
+    return `${pad2(Math.min(23, h))}:${pad2(Math.min(59, min))}`
+  }
+
+  /** Explicit windows — checked before vague-only phrases. */
+  if (/\bfirst\s+thing\b/i.test(raw) || /\ba\s+primera\s+hora\b/i.test(raw)) return 'first thing'
+  if (/\b(today|tomorrow)\s+morning\b/i.test(raw) || /\bmañana\s+por\s+la\s+mañana\b/i.test(raw)) {
+    return 'morning'
+  }
+  if (/\b(today|tomorrow)\s+afternoon\b/i.test(raw)) return 'afternoon'
+  if (/\b(today|tomorrow)\s+evening\b/i.test(raw)) return 'evening'
+  if (
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+morning\b/i.test(raw)
+  ) {
+    return 'morning'
+  }
+  if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+afternoon\b/i.test(raw)) {
+    return 'afternoon'
+  }
+  if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+evening\b/i.test(raw)) {
+    return 'evening'
+  }
+  if (/\bin\s+the\s+morning\b/i.test(raw) || /\bpor\s+la\s+mañana\b/i.test(raw)) return 'morning'
+  if (/\bin\s+the\s+afternoon\b/i.test(raw) || /\bpor\s+la\s+tarde\b/i.test(raw)) return 'afternoon'
+  if (
+    /\bin\s+the\s+evening\b/i.test(raw) ||
+    /\bpor\s+la\s+noche\b/i.test(raw) ||
+    /\bthis\s+evening\b/i.test(raw)
+  ) {
+    return 'evening'
+  }
+  if (/\bnoon\b/i.test(raw) || /\bal\s+mediod[ií]a\b/i.test(raw)) return 'noon'
+
+  /** Vague — no specific clock or window. */
+  if (/\b(later\s+today|later\s+tonight|later\s+this\s+week)\b/i.test(raw)) return ''
+  if (/\b(m[aá]s\s+tarde\s+hoy|luego\s+hoy|despu[eé]s\s+de\s+hoy)\b/i.test(raw)) return ''
+  if (/\bsometime\b/i.test(raw)) return ''
+  if (/\b(if\s+i\s+can|when\s+possible|when\s+i\s+can|whenever)\b/i.test(raw)) return ''
+  if (/\bnext\s+week\b/i.test(raw)) return ''
+  if (/\bpr[oó]xima\s+semana\b/i.test(raw)) return ''
+  if (/\besta\s+semana\b/i.test(raw)) return ''
+  if (/\bcuando\s+pueda\b/i.test(raw)) return ''
+  if (/\bas\s+soon\s+as\b/i.test(raw)) return ''
+
+  return ''
+}
+
+/**
+ * Resolve the stored time hint: keep explicit clocks; infer only from real windows/clocks in prose.
+ * Never falls back to action-kind defaults (avoids fake 9:00 AM for vague notes).
+ */
 export function resolveCalendarTimeHint(
   nextStepTimeHint: string,
   nextStep: string,
@@ -236,12 +303,19 @@ export function resolveCalendarTimeHint(
   const hint = (nextStepTimeHint || '').trim()
   if (/^\d{1,2}:\d{2}$/.test(hint)) return hint
   if (/\b(am|pm)\b/i.test(hint) && /\d/.test(hint)) return hint
-  const h = hint.toLowerCase()
-  if (h === 'morning' || h === 'afternoon' || h === 'noon') return hint
+  const hl = hint.toLowerCase()
+  if (
+    hl === 'morning' ||
+    hl === 'afternoon' ||
+    hl === 'evening' ||
+    hl === 'noon' ||
+    hl === 'first thing'
+  ) {
+    return hint
+  }
 
-  const kind: ActionKind = inferActionKind(
-    `${nextStepAction} ${nextStep} ${nextStepTitle}`,
-  )
-  const { hour, minute } = defaultTimeForActionKind(kind)
-  return formatClockHint(hour, minute)
+  const fullText = `${nextStepAction} ${nextStep} ${nextStepTitle}`.replace(/\s+/g, ' ').trim()
+  const textForInference = hint ? `${hint} ${fullText}` : fullText
+
+  return inferTimeHintFromProse(textForInference)
 }

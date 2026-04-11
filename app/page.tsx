@@ -394,11 +394,13 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   }
 }
 
-/** Structured calendar: derive wall-clock time from AI hint (default 9:00). */
+/** Structured calendar: derive wall-clock time from AI hint (no default when empty — use all-day). */
 function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   const value = (hint || '').toLowerCase().trim()
   if (value === 'morning') return { hour: 9, minute: 0 }
   if (value === 'afternoon') return { hour: 15, minute: 0 }
+  if (value === 'evening') return { hour: 18, minute: 0 }
+  if (value === 'first thing') return { hour: 8, minute: 0 }
   if (value === 'noon') return { hour: 12, minute: 0 }
   if (!value) return { hour: 9, minute: 0 }
 
@@ -479,14 +481,34 @@ function todayIsoDate() {
 type CalendarTimeInput =
   | { kind: 'hint'; hint: string }
   | { kind: 'clock'; hour: number; minute: number }
+  /** No specific clock — all-day event (date only). */
+  | { kind: 'allday' }
 
-/** Build Google Calendar `dates` segment; 30-minute duration. Requires MM/DD/YYYY. */
+type GoogleCalendarDateRange =
+  | { kind: 'floating'; start: string; end: string }
+  | { kind: 'allday'; start: string; end: string }
+
+/** Build Google Calendar `dates` segment; 30-minute duration for timed events. Requires MM/DD/YYYY. */
 function buildGoogleCalendarDateRangeParts(
   dateMmddyyyy: string,
   time: CalendarTimeInput,
-): { start: string; end: string } | null {
+): GoogleCalendarDateRange | null {
   const ds = dateMmddyyyy.trim()
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) return null
+
+  if (time.kind === 'allday') {
+    const bumped = ensureCalendarDateTimeNotPast(ds, 12, 0)
+    const [mm, dd, yyyy] = bumped.dateMmddyyyy.split('/').map((x) => parseInt(x, 10))
+    const y = String(yyyy).padStart(4, '0')
+    const m = String(mm).padStart(2, '0')
+    const d = String(dd).padStart(2, '0')
+    const start = `${y}${m}${d}`
+    const dt = new Date(yyyy, mm - 1, dd)
+    dt.setDate(dt.getDate() + 1)
+    const end = `${dt.getFullYear()}${pad2(dt.getMonth() + 1)}${pad2(dt.getDate())}`
+    return { kind: 'allday', start, end }
+  }
+
   const resolved =
     time.kind === 'hint'
       ? resolveTimeFromHint(time.hint)
@@ -502,6 +524,7 @@ function buildGoogleCalendarDateRangeParts(
     endM -= 60
   }
   return {
+    kind: 'floating',
     start: `${yyyy}${mm}${dd}T${pad2(hour)}${pad2(minute)}00`,
     end: `${yyyy}${mm}${dd}T${pad2(endH)}${pad2(endM)}00`,
   }
@@ -560,10 +583,21 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
   const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
     ? mmddRaw
     : isoDateToMmddyyyy(todayIsoDate())
-  const resolved = resolveTimeFromHint(r.nextStepTimeHint || '')
-  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  const hintRaw = (r.nextStepTimeHint || '').trim()
   const details = buildCalendarDescription(r)
   const loc = stripEmojisForCalendar((r.location || '').trim())
+  if (!hintRaw) {
+    const adj = ensureCalendarDateTimeNotPast(mmdd, 12, 0)
+    return {
+      title,
+      dateMmddyyyy: adj.dateMmddyyyy,
+      details,
+      time: { kind: 'allday' },
+      ...(loc ? { location: loc } : {}),
+    }
+  }
+  const resolved = resolveTimeFromHint(hintRaw)
+  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
   return {
     title,
     dateMmddyyyy: adj.dateMmddyyyy,
@@ -687,8 +721,12 @@ function buildCalendarOpenOptsForSupportingStep(
   const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
     ? mmddRaw
     : isoDateToMmddyyyy(todayIsoDate())
-  const resolved = resolveTimeFromHint((step.structuredTime || step.timeHint || '').trim())
+  const hintRaw = (step.structuredTime || step.timeHint || '').trim()
+  const resolved = hintRaw ? resolveTimeFromHint(hintRaw) : { hour: 12, minute: 0 }
   const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  const timeOpts: CalendarTimeInput = hintRaw
+    ? { kind: 'clock', hour: adj.hour, minute: adj.minute }
+    : { kind: 'allday' }
   const details = buildCalendarEventDescriptionBody(
     {
       customer: r.customer,
@@ -718,7 +756,7 @@ function buildCalendarOpenOptsForSupportingStep(
     title,
     dateMmddyyyy: adj.dateMmddyyyy,
     details,
-    time: { kind: 'clock', hour: adj.hour, minute: adj.minute },
+    time: timeOpts,
   }
 }
 
@@ -954,11 +992,15 @@ function buildIcsCalendarFile(opts: CalendarOpenOpts): string | null {
     'BEGIN:VEVENT',
     `UID:${uid}@folup`,
     `DTSTAMP:${dtstamp}`,
-    `DTSTART:${range.start}`,
-    `DTEND:${range.end}`,
-    `SUMMARY:${summary}`,
-    `DESCRIPTION:${description}`,
   ]
+  if (range.kind === 'allday') {
+    lines.push(`DTSTART;VALUE=DATE:${range.start}`)
+    lines.push(`DTEND;VALUE=DATE:${range.end}`)
+  } else {
+    lines.push(`DTSTART:${range.start}`)
+    lines.push(`DTEND:${range.end}`)
+  }
+  lines.push(`SUMMARY:${summary}`, `DESCRIPTION:${description}`)
   if (loc) lines.push(`LOCATION:${escapeIcsText(loc)}`)
   lines.push('END:VEVENT', 'END:VCALENDAR')
   return lines.join('\r\n')

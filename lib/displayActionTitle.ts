@@ -9,6 +9,8 @@ function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   const value = (hint || '').toLowerCase().trim()
   if (value === 'morning') return { hour: 9, minute: 0 }
   if (value === 'afternoon') return { hour: 15, minute: 0 }
+  if (value === 'evening') return { hour: 18, minute: 0 }
+  if (value === 'first thing') return { hour: 8, minute: 0 }
   if (value === 'noon') return { hour: 12, minute: 0 }
   if (!value) return { hour: 9, minute: 0 }
 
