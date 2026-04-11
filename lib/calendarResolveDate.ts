@@ -148,6 +148,47 @@ function isExplicitNextWeekdayPhrase(lower: string): boolean {
 const LATE_SAME_WEEKDAY_LOCAL_HOUR = 21
 
 /**
+ * When the user corrects themselves ("today but … tomorrow", "actually Monday"),
+ * keep only the text after the last correction cue so date/time resolution matches
+ * their final intention.
+ */
+export function extractFinalTemporalClauseForResolution(text: string): string {
+  const t = (text || '').replace(/\s+/g, ' ').trim()
+  if (!t) return t
+
+  const patterns: RegExp[] = [
+    /,\s*but\s+/gi,
+    /\s+but\s+/gi,
+    /\s+pero\s+/gi,
+    /\s+actually\s+/gi,
+    /\s+en\s+realidad\s+/gi,
+    /\s+instead\s*,?\s+/gi,
+    /\s+probably\s+/gi,
+    /better\s+to\s+/gi,
+    /\s+so\s+(?=(?:the\s+)?(?:tomorrow|today|next|later|this|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mañana|hoy|el\s+lunes|pr[oó]xima|esta))/gi,
+  ]
+
+  let lastEnd = -1
+  for (const re of patterns) {
+    const r = new RegExp(re.source, 'gi')
+    let m: RegExpExecArray | null
+    while ((m = r.exec(t)) !== null) {
+      const end = m.index + m[0].length
+      if (end > lastEnd) lastEnd = end
+    }
+  }
+
+  return lastEnd > 0 ? t.slice(lastEnd).trim() : t
+}
+
+function stripTemporalResolutionFiller(s: string): string {
+  return s
+    .replace(/\s+makes\s+more\s+sense\.?\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Convert relative / phrase date strings to MM/DD/YYYY using the user's timezone and **anchor**
  * instant (client "now"). All "today" / "tomorrow" / weekday math uses `anchor` in `timeZone`.
  */
@@ -168,7 +209,9 @@ export function resolveRelativePhraseToMmdd(
     return d.isValid ? d.toFormat('MM/dd/yyyy') : null
   }
 
-  let s = stripTimeOfDayFromDatePhrase(t)
+  const tResolved = stripTemporalResolutionFiller(extractFinalTemporalClauseForResolution(t))
+
+  let s = stripTimeOfDayFromDatePhrase(tResolved)
   s = s.replace(/^el\s+/i, '').replace(/^la\s+/i, '').trim()
   const lower = s.toLowerCase()
 
@@ -227,7 +270,7 @@ export function formatClockHint(hour: number, minute: number): string {
  * Returns '' when no defensible inference; canonical tokens: morning | afternoon | evening | noon | first thing | HH:mm.
  */
 export function inferTimeHintFromProse(text: string): string {
-  const raw = (text || '').trim()
+  const raw = stripTemporalResolutionFiller(extractFinalTemporalClauseForResolution((text || '').trim()))
   if (!raw) return ''
 
   const m24 = raw.match(/\b(\d{1,2}):(\d{2})\b/)

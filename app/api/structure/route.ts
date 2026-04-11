@@ -420,9 +420,13 @@ function resolveMmddForPrimaryRanking(
   const dateTrim = r.date.trim()
   const timeTrim = r.time.trim()
   const prose = `${r.action} ${r.title}`.replace(/\s+/g, ' ').trim()
+  /** Full context first so correction clauses ("today but … tomorrow") win over an early date field. */
+  const merged = [dateTrim, timeTrim, prose].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 
-  for (const candidate of [dateTrim, `${dateTrim} ${timeTrim}`.trim(), prose, timeTrim]) {
-    const m = tryP(candidate)
+  for (const candidate of [merged, dateTrim, `${dateTrim} ${timeTrim}`.trim(), prose, timeTrim]) {
+    const c = candidate.replace(/\s+/g, ' ').trim()
+    if (!c) continue
+    const m = tryP(c)
     if (m) return m
   }
 

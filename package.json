@@ -12,9 +12,10 @@
     "@supabase/supabase-js": "^2.101.1",
     "franc": "^6.2.0",
     "luxon": "^3.7.2",
-    "next": "16.2.2",
+    "next": "^16.2.3",
     "next-auth": "^5.0.0-beta.30",
     "openai": "^6.33.0",
+    "posthog-js": "^1.367.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

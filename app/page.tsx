@@ -1,5 +1,6 @@
 'use client'
 
+import posthog, { initPosthog } from '@/lib/posthog'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
@@ -1631,6 +1632,10 @@ export default function Home() {
     setMounted(true)
   }, [])
 
+  useEffect(() => {
+    initPosthog()
+  }, [])
+
   const calendarStorageKey = useMemo(() => {
     if (activeTab === 'history' && selectedNote) {
       return getCalendarStorageKey(selectedNote.result, selectedNote.id)
@@ -2158,6 +2163,9 @@ export default function Home() {
           final = inferMissingContact(final)
           final = finalizeNextStepFields(final, combined)
           await awaitMinProcessingDisplay()
+          try {
+            posthog.capture('note_processed')
+          } catch {}
           updateNote(noteId, final, combined)
         } catch (err: any) {
           setError(err?.message || 'Correction failed.')
@@ -2169,6 +2177,9 @@ export default function Home() {
       setCorrectingSeconds(0)
       correctTimerRef.current = setInterval(() => setCorrectingSeconds((s) => s + 1), 1000)
       recorder.start()
+      try {
+        posthog.capture('record_started')
+      } catch {}
       setIsCorrectingRecording(true)
     } catch (err: any) {
       setError(err?.message || 'Could not start correction.')
@@ -2260,6 +2271,9 @@ export default function Home() {
       }
 
       recorder.start()
+      try {
+        posthog.capture('record_started')
+      } catch {}
       setIsRecording(true)
     } catch (err: any) {
       setError(err?.message || 'Could not start recording.')
@@ -2329,6 +2343,9 @@ export default function Home() {
       final = finalizeNextStepFields(final, tx)
 
       await awaitMinProcessingDisplay()
+      try {
+        posthog.capture('note_processed')
+      } catch {}
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: tx })
       } else if (needsNextStepTargetPick(final)) {
@@ -2379,6 +2396,9 @@ export default function Home() {
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, input)
       await awaitMinProcessingDisplay()
+      try {
+        posthog.capture('note_processed')
+      } catch {}
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: input })
       } else if (needsNextStepTargetPick(final)) {
@@ -2405,6 +2425,9 @@ export default function Home() {
     if (!copyText) return
     try {
       await navigator.clipboard.writeText(copyText)
+      try {
+        posthog.capture('copy_crm_clicked')
+      } catch {}
       setCopied(true)
     } catch {
       setError('Could not copy to clipboard.')
@@ -2439,6 +2462,9 @@ export default function Home() {
       setError('Could not build the event. Check date and time in the note.')
       return
     }
+    try {
+      posthog.capture('add_to_calendar_clicked')
+    } catch {}
     setPrimaryAdded(true)
 
     if (session?.user) {
@@ -2469,6 +2495,9 @@ export default function Home() {
       setError('Could not build the event. Check date and time for this action.')
       return
     }
+    try {
+      posthog.capture('add_to_calendar_clicked')
+    } catch {}
     const key = getCalendarStorageKey(r, opts?.noteId ?? null)
     const stepId = supportingCalendarStepId(index)
     setSupportingAdded((prev) => ({ ...prev, [stepId]: true }))
