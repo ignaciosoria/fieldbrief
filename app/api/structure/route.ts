@@ -10,6 +10,7 @@ import {
 import {
   isSendOrEmailTier,
   kindScoreForPrimarySelection,
+  linguisticUrgencyModifierForPrimaryRow,
   normalizedTypeForRow,
   primaryBusinessTier,
 } from '../../../lib/actionPrimarySelection'
@@ -437,13 +438,25 @@ function resolveMmddForPrimaryRanking(
     }
   }
 
+  /** Same-day deadline often lives only in action prose; anchor today when unambiguous. */
+  const pl = prose.toLowerCase()
+  if (/\btoday\b|\bhoy\b/.test(pl)) {
+    if (
+      /\b(before|antes)\b/.test(pl) ||
+      /\b(send|enviar|email|mail|forward|program|contract|proposal|quote|pdf|deck|updated)\b/.test(pl)
+    ) {
+      return anchor.setZone(timeZone).toFormat('MM/dd/yyyy')
+    }
+  }
+
   return dateTrim
 }
 
 /**
  * Phase 2 — deterministic primary/supporting:
  * - Primary is chosen by **urgency**, not call-vs-send tier: send/email **today** outrank calls/meetings
- *   on later days; **earlier wall-clock instant** breaks ties within the same urgency band.
+ *   on later days; **linguistic cues** (today / before [time] / urgent vs next week / no rush) break ties
+ *   within a band; **earlier wall-clock instant** breaks ties after that.
  * - Bands (ascending = more urgent): (0) send/email today, (1) other actions today, (2) tomorrow,
  *   (3) other resolved calendar dates, (4) undated.
  * - **Every non-primary row is kept** in `additionalSteps` (stable `idx` order among supporting).
@@ -534,6 +547,9 @@ function applyRankedNextStepSelection(
     const za = urgencyBandForPrimary(a, anchor, timeZone)
     const zb = urgencyBandForPrimary(b, anchor, timeZone)
     if (za !== zb) return za - zb
+    const la = linguisticUrgencyModifierForPrimaryRow(a.action, a.title)
+    const lb = linguisticUrgencyModifierForPrimaryRow(b.action, b.title)
+    if (la !== lb) return la - lb
     const ia = rowEventInstantMsForPrimarySort(a, timeZone)
     const ib = rowEventInstantMsForPrimarySort(b, timeZone)
     if (ia !== ib) return ia - ib
@@ -541,11 +557,12 @@ function applyRankedNextStepSelection(
   })
 
   console.log(
-    '[structure] rank: order (urgency band asc, instant asc, idx)',
+    '[structure] rank: order (urgency band asc, linguistic asc, instant asc, idx)',
     resolved.map((r) => ({
       source: r.source,
       type: r._normalizedType,
       urgency: urgencyBandForPrimary(r, anchor, timeZone),
+      linguistic: linguisticUrgencyModifierForPrimaryRow(r.action, r.title),
       action: r.action.slice(0, 120),
       dateResolved: r.date,
     })),
