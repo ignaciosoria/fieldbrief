@@ -43,7 +43,10 @@ import {
   type NormalizedActionType,
 } from '../../../lib/normalizedActions'
 import { normalizeNextStepTitleStrict } from '../../../lib/normalizeNextStepTitle'
-import { sanitizeAdditionalSteps } from '../../../lib/sanitizeAdditionalSteps'
+import {
+  mergePromotedInsightsIntoCrmFull,
+  sanitizeAdditionalSteps,
+} from '../../../lib/sanitizeAdditionalSteps'
 import { STRUCTURED_AI_SYSTEM_PROMPT } from '../../../lib/structuredAiPrompt'
 import {
   parseStructuredAiPayload,
@@ -918,11 +921,13 @@ export async function POST(request: Request) {
     result = applyServerCalendarResolution(result, timeZone, userLocalNow)
     logStructurePipelineStage('08_after_applyServerCalendarResolution', result)
 
+    const sanitizeResult = sanitizeAdditionalSteps(result.additionalSteps, {
+      noteLanguage: detectedLanguage,
+    })
     result = {
       ...result,
-      additionalSteps: sanitizeAdditionalSteps(result.additionalSteps, {
-        noteLanguage: detectedLanguage,
-      }),
+      additionalSteps: sanitizeResult.steps,
+      crmFull: mergePromotedInsightsIntoCrmFull(result.crmFull, sanitizeResult.promotedInsights),
     }
     logStructurePipelineStage('09_after_sanitizeAdditionalSteps', result)
 

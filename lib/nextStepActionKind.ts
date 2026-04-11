@@ -1,3 +1,8 @@
+import {
+  hasExplicitMeetScheduleIntent,
+  isNarrativeMeetingDiscussionContext,
+} from './actionIntentGuard'
+
 /** Used for ranking primary next steps and default calendar clock times. */
 export const ACTION_KIND_SCORE = {
   meeting: 100,
@@ -18,12 +23,31 @@ export function isHigherValueKindThanSend(k: ActionKind): boolean {
  */
 export function inferActionKind(action: string): ActionKind {
   const a = action.toLowerCase()
-  if (
-    /\b(meeting|reuni[oó]n|reunion|demo|demostraci[oó]n|site\s+visit|visita\b|visit\b(?!\s+note)|appointment|cita\b|presentaci[oó]n|pitch|workshop|webinar|entrevista)\b/i.test(
-      a,
-    )
-  ) {
-    return 'meeting'
+  const narrative = isNarrativeMeetingDiscussionContext(action)
+
+  if (!narrative) {
+    if (
+      /\b(demo|demostraci[oó]n|site\s+visit|appointment|cita\b|presentaci[oó]n|pitch|workshop|webinar|entrevista)\b/i.test(
+        a,
+      )
+    ) {
+      return 'meeting'
+    }
+    if (
+      /\b(meeting|reuni[oó]n|reunion)\b/i.test(a) &&
+      hasExplicitMeetScheduleIntent(action)
+    ) {
+      return 'meeting'
+    }
+    if (/\bvisita\b/i.test(a) && hasExplicitMeetScheduleIntent(action)) {
+      return 'meeting'
+    }
+    if (/\bvisit\b(?!\s+note)/i.test(a) && hasExplicitMeetScheduleIntent(action)) {
+      return 'meeting'
+    }
+    if (/\bmeet\b/i.test(a) && hasExplicitMeetScheduleIntent(action)) {
+      return 'meeting'
+    }
   }
   if (
     /\b(call|llamar|llama|llamada|phone|tel[ée]fono|callback|devolver\s+la\s+llamada|marcar|ring\b)\b/i.test(

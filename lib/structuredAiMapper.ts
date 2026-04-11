@@ -6,6 +6,7 @@ import {
   verbForSupportingStructuredType,
   type ActionStructuredFields,
 } from './actionTitleContract'
+import { hasExplicitMeetScheduleIntent, isNarrativeMeetingDiscussionContext } from './actionIntentGuard'
 import { filterInsightsToContextOnly, normalizePendingInsightTense } from './filterInsightLines'
 
 /** Model response shape — no prose fields outside this tree. */
@@ -152,6 +153,13 @@ export function alignStructuredPayloadWithNote(
     if (first && first.type === 'other') {
       supporting[0] = { ...first, type: 'call' }
     }
+  }
+
+  if (
+    primary.type === 'meeting' &&
+    (isNarrativeMeetingDiscussionContext(n) || !hasExplicitMeetScheduleIntent(n))
+  ) {
+    primary.type = 'follow_up'
   }
 
   return { ...payload, primary, supporting }

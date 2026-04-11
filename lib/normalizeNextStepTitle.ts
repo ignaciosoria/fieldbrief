@@ -1,4 +1,5 @@
 import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitleContract'
+import { hasExplicitMeetScheduleIntent, isNarrativeMeetingDiscussionContext } from './actionIntentGuard'
 import { isNoClearFollowUpLine } from './noFollowUp'
 
 const EM_DASH = '\u2014'
@@ -133,25 +134,57 @@ function matchesLeadingVerb(
 }
 
 function inferVerb(nextStep: string, title: string, spanish: boolean): VerbEn | VerbEs {
-  const combined = `${nextStep} ${title}`.toLowerCase()
+  const combinedRaw = `${nextStep} ${title}`
+  const combined = combinedRaw.toLowerCase()
   /** Prefer the first clause so "send today … then … call" does not collapse to Call. */
   const firstSegment = combined.split(/\bthen\b/i)[0].split(/\band then\b/i)[0].trim()
 
   if (spanish) {
     if (/\b(email|e-mail|correo|mail)\b/.test(firstSegment)) return 'Email'
     if (/\b(enviar|mandar|envío|compartir|entregar)\b/.test(firstSegment)) return 'Enviar'
-    if (/\b(reunión|reunir|reunirse|visita|visitar|café)\b/.test(firstSegment)) return 'Reunirse'
-    if (/\b(llamar|llamada|teléfono|seguimiento)\b/.test(firstSegment)) return 'Llamar'
+    if (
+      !isNarrativeMeetingDiscussionContext(combinedRaw) &&
+      hasExplicitMeetScheduleIntent(combinedRaw) &&
+      /\b(reunión|reunirse|cita|visita)\b/.test(firstSegment)
+    ) {
+      return 'Reunirse'
+    }
+    if (/\b(llamar|llamada|teléfono|seguimiento|preparar|confirmar|revisar)\b/.test(firstSegment))
+      return 'Llamar'
     if (/\b(enviar|mandar|compartir)\b/.test(combined)) return 'Enviar'
     return 'Llamar'
   }
   if (/\b(email|e-mail|mail)\b/.test(firstSegment)) return 'Email'
   if (/\b(send|ship|forward|deliver|share)\b/.test(firstSegment)) return 'Send'
-  if (/\b(meet|meeting|visit|lunch|coffee|catch\s*up)\b/.test(firstSegment)) return 'Meet'
-  if (/\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring)\b/.test(firstSegment)) return 'Call'
+  if (
+    !isNarrativeMeetingDiscussionContext(combinedRaw) &&
+    hasExplicitMeetScheduleIntent(combinedRaw) &&
+    /\b(meet|meeting|visit|lunch|coffee|catch\s*up|site\s+visit)\b/.test(firstSegment)
+  ) {
+    return 'Meet'
+  }
+  if (
+    /\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring|prepare|confirm|check)\b/.test(
+      firstSegment,
+    )
+  ) {
+    return 'Call'
+  }
   if (/\b(send|ship|forward|deliver|share)\b/.test(combined)) return 'Send'
-  if (/\b(meet|meeting|visit)\b/.test(combined)) return 'Meet'
-  if (/\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring)\b/.test(combined)) return 'Call'
+  if (
+    !isNarrativeMeetingDiscussionContext(combinedRaw) &&
+    hasExplicitMeetScheduleIntent(combinedRaw) &&
+    /\b(meet|meeting|visit|site\s+visit)\b/.test(combined)
+  ) {
+    return 'Meet'
+  }
+  if (
+    /\b(follow[- ]?up|followup|check[- ]?in|call|phone|ring|prepare|confirm|check)\b/.test(
+      combined,
+    )
+  ) {
+    return 'Call'
+  }
   return 'Call'
 }
 

@@ -14,7 +14,10 @@ import { formatProfessionalCrmNote } from '../lib/formatCrmSalesNote'
 import { isNoClearFollowUpResult } from '../lib/noFollowUp'
 import { cleanCalendarTitle } from '../lib/calendarTitle'
 import { detectNoteLanguage } from '../lib/detectNoteLanguage'
-import { sanitizeAdditionalSteps } from '../lib/sanitizeAdditionalSteps'
+import {
+  mergePromotedInsightsIntoCrmFull,
+  sanitizeAdditionalSteps,
+} from '../lib/sanitizeAdditionalSteps'
 import type { ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
@@ -351,9 +354,13 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   const noteLanguageHint = [base.nextStep, base.nextStepTitle, base.crmText].filter(Boolean).join('\n')
   const noteLang = detectNoteLanguage(noteLanguageHint.trim() || 'Note')
   const langEsInsights = noteLang === 'spanish'
-  const additionalStepsSanitized = sanitizeAdditionalSteps(normalizeAdditionalSteps(base.additionalSteps), {
+  const sanitizeStepsResult = sanitizeAdditionalSteps(normalizeAdditionalSteps(base.additionalSteps), {
     noteLanguage: noteLang,
   })
+  const crmFullMerged = mergePromotedInsightsIntoCrmFull(
+    stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
+    sanitizeStepsResult.promotedInsights,
+  )
   return {
     ...base,
     customer,
@@ -362,15 +369,13 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     product: productMerged,
     crop: '',
     crmFull: filterInsightsToContextOnly(
-      stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)).map((l) =>
-        normalizePendingInsightTense(l, langEsInsights),
-      ),
+      crmFullMerged.map((l) => normalizePendingInsightTense(l, langEsInsights)),
     ).slice(0, 4),
     crmText: stripDealerClosingFromCrmText(base.crmText),
     calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
-    additionalSteps: additionalStepsSanitized,
+    additionalSteps: sanitizeStepsResult.steps,
     mentionedEntities: base.mentionedEntities.map((e) => ({
       ...e,
       name: dedupeConsecutiveRepeatedWords(e.name),
