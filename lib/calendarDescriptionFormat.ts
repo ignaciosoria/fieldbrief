@@ -10,12 +10,12 @@ export type CommercialContextFields = {
 }
 
 export type BuildCalendarContextInput = {
-  contact: string
-  company: string
+  contact?: string
+  company?: string
   problem?: string
   productInterest?: string
   barrier?: string
-  langEs: boolean
+  langEs?: boolean
 }
 
 export type FormatForCalendarInput = {
@@ -70,22 +70,28 @@ function productLabelForSend(
   return extractProductLabelFromInterest(input.productInterest || '')
 }
 
+function stripProblemPrefix(raw: string): string {
+  return raw
+    .replace(/^Problemas?\s+de\s+/i, '')
+    .replace(/^Issues?\s+with\s+/i, '')
+    .trim()
+}
+
 /**
  * Línea 1 (oraciones completas):
  * ES: {contact} en {company}. Problemas de {problem}.
  * EN: {contact} at {company}. Issues with {problem}.
  * La segunda oración siempre lleva verbo encabezado (Problemas de / Issues with); mayúscula tras el punto.
  */
-export function buildCalendarContext(input: BuildCalendarContextInput): string {
-  const { contact, company, problem, langEs } = input
+export function buildCalendarContext(fields: BuildCalendarContextInput): string {
+  const problem = stripProblemPrefix(fields.problem || '')
+  const contact = (fields.contact || '').trim()
+  const company = (fields.company || '').trim()
+  const langEs = fields.langEs ?? false
+
   const c = contact.replace(/\s+/g, ' ').trim()
   const co = company.replace(/\s+/g, ' ').trim()
-  let pr = (problem || '').replace(/\s+/g, ' ').trim()
-  if (pr) {
-    pr = langEs
-      ? pr.replace(/^problemas\s+de\s+/i, '').trim()
-      : pr.replace(/^(issues?|problems)\s+with\s+/i, '').trim()
-  }
+  let pr = problem.replace(/\s+/g, ' ').trim()
 
   const who =
     c && co ? (langEs ? `${c} en ${co}` : `${c} at ${co}`) : c ? c : co ? co : ''

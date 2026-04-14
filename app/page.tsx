@@ -682,6 +682,34 @@ function buildCalendarDescription(data: StructureResult): string {
     stripEmojisForCalendar((data.nextStepTitle || '').trim()),
     stripEmojisForCalendar(eventTitle),
   ].filter(Boolean)
+
+  // ✅ SAME path as supporting actions: derive from structured fields, not pre-written API string
+  const langEs = detectNoteLanguage(`${data.nextStep || ''} ${data.nextStepTitle || ''}`) === 'spanish'
+  const primaryActionType = data.primaryActionStructured?.type || data.nextStepAction || 'other'
+  const kind: CalendarFormatActionKind =
+    primaryActionType === 'send' || primaryActionType === 'email'
+      ? 'send'
+      : primaryActionType === 'call'
+        ? 'call'
+        : primaryActionType === 'follow_up'
+          ? 'other'
+          : 'other'
+
+  const derivedDescription = formatForCalendar(kind, {
+    contextParagraph: buildCalendarContext({
+      contact: data.contact,
+      company: data.contactCompany || data.customer,
+      problem: data.commercialContext?.problem,
+      productInterest: data.commercialContext?.productInterest,
+      barrier: data.commercialContext?.barrier,
+      langEs,
+    }),
+    langEs,
+    deliverable: data.primaryActionStructured?.object || '',
+    productInterest: data.commercialContext?.productInterest,
+    productCsv: (data.product || '').trim(),
+  })
+
   return buildCalendarEventDescriptionBody(
     {
       customer: data.customer,
@@ -691,7 +719,7 @@ function buildCalendarDescription(data: StructureResult): string {
       product: data.product,
       location: data.location,
       acreage: data.acreage,
-      calendarDescription: data.calendarDescription,
+      calendarDescription: derivedDescription, // ← CLEAN, STRUCTURED (same as supporting)
       crmText: data.crmText,
       crmFull: data.crmFull || [],
       notes: data.notes,
