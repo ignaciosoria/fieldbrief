@@ -31,6 +31,7 @@ SCHEMA (exact top-level keys):
     }
   ],
   "crm_summary": "string — multi-line CRM narrative; see CRM_SUMMARY",
+  "calendar_description": "string — calendar event body; see CALENDAR_DESCRIPTION",
   "insights": [
     "short bullet",
     "short bullet"
@@ -53,6 +54,24 @@ This is the **account narrative** for the CRM record. It is **separate** from ac
 - **Length:** **5–8 lines maximum**, separated by newline characters inside the string. Use **fewer lines** if the note is genuinely thin; **never** pad with generic filler. If the note is rich, use the full 5–8 lines before omitting material — **completeness beats shortness** when both conflict.
 
 **Style:** Full sentences or short paragraphs. No markdown bullets or leading \`-\` / \`*\` in **crm_summary**.
+
+---
+
+CALENDAR_DESCRIPTION (field: **calendar_description**) — **required string** (use \`""\` only when the note has zero usable context)
+
+Plain text for the **calendar event description** (Google / Apple / ICS). **Separate** from **crm_summary** and **insights**. This is what the rep sees when opening the calendar invite — not the CRM essay.
+
+**Structure — exactly three labeled sections** (English or Spanish labels per note language):
+
+1. **Context:** (or **Contexto:**) — One or two **full sentences**: situation, what happened on the visit, account state. **Never** a bare name or noun fragment (wrong: \`Marcos\`; right: \`Marcos is the agronomist pushing for a trial on the north block.\`).
+2. **Goal / Focus:** (or **Objetivo / Enfoque:**) — One or two **full sentences**: what to prepare, ask, or focus on **during** this action (call, visit, send). **Not** the calendar time (that is on the event already).
+3. **Opportunity:** (or **Oportunidad:**) — One sentence on expansion, referral, upsell, or upside — or a single **—** if none.
+
+**Rules:**
+- **3–6 lines total** (including labels); each section usually **one** line after the colon.
+- **Do not** repeat the event title line or restate **date/time** (\`tomorrow\`, \`next week\`, \`MM/DD\`, \`mañana\`, etc.) — timing lives on the calendar event fields.
+- **Concise and scannable** — someone reviewing **5 seconds** before a call should know **why**, **what to focus on**, and **where the upside is**.
+- Same language as the note (English labels for English notes; Spanish labels for Spanish notes).
 
 ---
 
@@ -88,6 +107,7 @@ STRICT RULES:
 3. primary.type must be exactly one of: call, send, meeting, follow_up (use underscores as shown).
 4. contact = name of the person the rep spoke with (counterparty), or "" if not clear. Never put the **thing being sent** in **contact** — use **object** for that. Never duplicate the deliverable string into **contact**.
 5. company = that person's organization / account label for this visit, or "".
+5a. **Titles** are built as **[action] + person + — + company** (e.g. **Enviar comparativa a Roberto — Coastal Ag**, **Llamar a Laura — FreshCo**, **Seguimiento con Daniel — AgroWest**). Always extract **contact** when the note names who to call, meet, follow up with, or send to — otherwise the calendar line is unclear. If no person is named, **company** alone is used after the em dash.
 5b. If primary.type is **send**, **primary.object** must be the deliverable phrase whenever one exists in the note (see OBJECT section). Use "" only for send when no specific item is mentioned at all. Use "" for call, meeting, follow_up.
 6. date / time = only when explicitly anchored in the note; otherwise "".
 7. supporting: at most **2** objects. For **send** or **email** rows, **object** is mandatory whenever the note names what is sent (same rules as primary). Prefer **object** (send/email) or **contact** (calls) over **label**. **label** = max 4–5 words fallback only, never a sentence.
@@ -148,6 +168,6 @@ For **call**, **meeting**, or **send**, set **follow_up_strength** and **soft_ti
 
 9. insights: max **5** strings (use fewer only if fewer distinct important facts exist). **Key insights** — each line must carry a **specific, non-obvious** fact or implication; omit lines that would be generic ("good relationship", "strong potential", "positive visit"). **Concrete situational context only** — blockers, competitor moves, buyer expectations, acreage/volume, pricing pressure — in short telegraphic phrases (not full paragraphs; that belongs in **crm_summary**). **Forbidden:** vague labels like "interest in …", "positive momentum", "potential closing", or Spanish equivalents ("interés en …", "cierre potencial", "buen momentum") — prefer specifics (e.g. "Waiting on contract from legal", "Extra 80 ha farm in same deal"). **Context only:** never tasks. **Forbidden inside insights** (omit the line if it would contain): **send**, **call**, **follow up**, **meeting**, or Spanish equivalents (**enviar**, **llamar**, **seguimiento**, **reunión**). Insights must **never** describe actions.
 9b. **Tense (insights only):** Phrase everything as **still pending / in-flight** when work is **not** done. **Never** use past-tense verbs that sound like the rep already finished a task that is still outstanding — wrong: "Sent …", "Called …", "Followed up …", "Checked …", "Emailed …" (English); wrong: "Envié …", "Llamé …", "Enviado …" (Spanish). Prefer **need / waiting / requested / outstanding** style: e.g. "Needs updated program sent", "Waiting for review", "Requested pricing", "Buyer wants deck", "Still outstanding: contract", "Pendiente entrega de programa", "A la espera de respuesta" — forms that reflect **reality**, not completed work.
-10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background).
+10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background). **calendar_description** may be "" only when there is nothing to say beyond the title; otherwise always fill the three sections per CALENDAR_DESCRIPTION.
 
 Return ONLY valid JSON.`

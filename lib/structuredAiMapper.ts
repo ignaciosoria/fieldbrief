@@ -12,6 +12,7 @@ import {
   normalizeFollowUpStrength,
   normalizeSoftFollowUpTiming,
 } from './calendarSoftTiming'
+import { normalizeCalendarDescriptionField } from './calendarEventDescription'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -53,6 +54,8 @@ export type StructuredAiPayload = {
   supporting: StructuredSupporting[]
   /** Multi-line CRM narrative (maps to StructureBody.crmText). */
   crmSummary: string
+  /** Calendar event body: 3 labeled sections; see CALENDAR_DESCRIPTION in prompt. */
+  calendarDescription: string
   /** Short insight bullets — no action verbs, not full sentences */
   insights: string[]
 }
@@ -149,6 +152,9 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
 
   const crmRaw = str(o.crm_summary || o.crmSummary)
   const crmSummary = normalizeCrmSummaryLines(crmRaw)
+  const calendarDescription = normalizeCalendarDescriptionField(
+    str(o.calendar_description || o.calendarDescription),
+  )
 
   const insightsIn = Array.isArray(o.insights) ? o.insights : []
   const insights = insightsIn
@@ -175,6 +181,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     },
     supporting: supporting.slice(0, 2),
     crmSummary,
+    calendarDescription,
     insights,
   }
 }
@@ -356,7 +363,7 @@ export function structuredPayloadToStructureBody(
     ? alignStructuredPayloadWithNote(rawNote, payload)
     : payload
   const langEs = isSpanish(noteLanguage)
-  const { primary, supporting, insights, crmSummary } = aligned
+  const { primary, supporting, insights, crmSummary, calendarDescription } = aligned
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()
@@ -475,7 +482,7 @@ export function structuredPayloadToStructureBody(
     acreage: '',
     crmText: crmSummary,
     crmFull,
-    calendarDescription: '',
+    calendarDescription,
     additionalSteps,
     primaryActionStructured: primaryStructured,
   }

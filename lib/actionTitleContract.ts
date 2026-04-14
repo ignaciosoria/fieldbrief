@@ -79,17 +79,16 @@ function stripLeadingActionVerbFromContactName(contact: string, langEs: boolean)
   const s = contact.trim()
   if (!s) return ''
   const re = langEs
-    ? /^(llamar|call|reunirse|dar\s+seguimiento|seguimiento\s+con|seguimiento|phone)\s+/i
-    : /^(call|meet|phone|ring|follow[-\s]?up\s+with|follow[-\s]?up)\s+/i
+    ? /^(llamar\s+a\s+|llamar|call|reunirse\s+con\s+|reunirse|dar\s+seguimiento|seguimiento\s+con|seguimiento|phone)\s+/i
+    : /^(call|meet(?:\s+with)?|phone|ring|follow[-\s]?up\s+with|follow[-\s]?up)\s+/i
   const stripped = s.replace(re, '').trim()
   return stripped || s
 }
 
 /**
  * Primary next-step line (no calendar date/time suffix).
- * Send/email: Verb + Object — Company (never use contact as the send object).
- * Call / follow_up / meeting: Verb + Contact — Company.
- * follow_up: “Follow up with [contact]” / “Seguimiento con [contact]” (natural phrasing, not “Follow up [name]”).
+ * Always include the **person** when known: `action … person — company`; send uses `a` / `to` before the name.
+ * If contact is missing, fall back to company only (`Verb — Company` or `Verb object — Company` for send).
  */
 export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLanguage: string): string {
   const langEs = isSpanish(noteLanguage)
@@ -104,6 +103,15 @@ export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLangua
 
   if (usesObjectForPrimary(t)) {
     object = normalizePrimarySendObjectField(object, contact, verb, noteLanguage)
+    const who = stripLeadingActionVerbFromContactName(contact, langEs)
+    if (object && who && company) {
+      return langEs
+        ? `${verb} ${object} a ${who} ${EM} ${company}`
+        : `${verb} ${object} to ${who} ${EM} ${company}`
+    }
+    if (object && who) {
+      return langEs ? `${verb} ${object} a ${who}` : `${verb} ${object} to ${who}`
+    }
     if (object && company) return `${verb} ${object} ${EM} ${company}`
     if (object) return `${verb} ${object}`
     if (company) return `${verb} ${EM} ${company}`
@@ -112,10 +120,27 @@ export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLangua
 
   if (usesContactForPrimary(t)) {
     const who = stripLeadingActionVerbFromContactName(contact, langEs)
-    if (who && company) return `${verb} ${who} ${EM} ${company}`
-    if (who) return `${verb} ${who}`
-    if (company) return `${verb} ${EM} ${company}`
-    return verb || (langEs ? 'Llamar' : 'Call')
+    if (t === 'follow_up') {
+      const open = langEs ? 'Seguimiento con' : 'Follow up with'
+      if (who && company) return `${open} ${who} ${EM} ${company}`
+      if (who) return `${open} ${who}`
+      if (company) return `${open} ${EM} ${company}`
+      return open
+    }
+    if (t === 'call') {
+      if (who && company) return langEs ? `Llamar a ${who} ${EM} ${company}` : `Call ${who} ${EM} ${company}`
+      if (who) return langEs ? `Llamar a ${who}` : `Call ${who}`
+      if (company) return langEs ? `Llamar ${EM} ${company}` : `Call ${EM} ${company}`
+      return langEs ? 'Llamar' : 'Call'
+    }
+    if (t === 'meeting') {
+      if (who && company) {
+        return langEs ? `Reunirse con ${who} ${EM} ${company}` : `Meet with ${who} ${EM} ${company}`
+      }
+      if (who) return langEs ? `Reunirse con ${who}` : `Meet with ${who}`
+      if (company) return langEs ? `Reunirse ${EM} ${company}` : `Meet ${EM} ${company}`
+      return langEs ? 'Reunirse' : 'Meet'
+    }
   }
 
   /** Unrecognized `type`: do not mix object vs contact (ambiguous); company-only or verb. */

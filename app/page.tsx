@@ -24,7 +24,7 @@ import {
   mergePromotedInsightsIntoCrmFull,
   sanitizeAdditionalSteps,
 } from '../lib/sanitizeAdditionalSteps'
-import type { ActionStructuredFields } from '../lib/actionTitleContract'
+import { buildPrimaryBaseTitle, type ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import {
   clampSoftTimingToStrength,
@@ -562,8 +562,8 @@ function stripEmojisForCalendar(s: string): string {
 }
 
 /**
- * Calendar export body: line 1 = Company — Contact; lines 2–3 = short visit context (max 2).
- * Timing lives on the event fields, not repeated here.
+ * Calendar export body: Context / Goal / Opportunity (see `buildCalendarEventDescriptionBody`).
+ * Does not repeat the event title; timing lives on the event fields.
  */
 function buildCalendarDescription(data: StructureResult): string {
   const eventTitle = calendarEventTitle(data)
@@ -726,7 +726,7 @@ function supportingStepCalendarTitle(step: AdditionalStep, r: StructureResult): 
   return supportingCalendarEventTitleWithContext(raw || 'Follow-up', step, r)
 }
 
-/** One calendar event for exactly one supporting step — same description shape as primary (header + context). */
+/** One calendar event for exactly one supporting step — same 3-section description as primary. */
 function buildCalendarOpenOptsForSupportingStep(
   r: StructureResult,
   step: AdditionalStep,
@@ -1411,6 +1411,9 @@ function resolveActionMiddleSlot(r: StructureResult): string {
   const primary = (r.actions || []).find((a) => a.primary === true)
   if (primary && (primary.type === 'send' || primary.type === 'email')) {
     const o = (primary.object || '').trim()
+    const person = (r.nextStepTarget || r.contact || '').trim()
+    const langEs = detectNoteLanguage(`${r.nextStep || ''} ${r.nextStepTitle || ''}`) === 'spanish'
+    if (o && person) return langEs ? `${o} a ${person}` : `${o} to ${person}`
     if (o) return o
   }
   return (r.nextStepTarget || r.contact || '').trim()
@@ -1582,8 +1585,19 @@ function finalizeNextStepFields(res: StructureResult, sourceText: string): Struc
     ambiguityFlags = ambiguityFlags.filter((x) => !x.toLowerCase().includes('unclear_contact'))
   }
   const baseAligned = { ...base, contact, nextStepTarget, ambiguityFlags }
-  let nextLine = enrichNextStep(baseAligned.nextStep, baseAligned)
-  let nextTitle = buildCleanNextStepTitle(baseAligned)
+  const noteLang = detectNoteLanguage(
+    `${baseAligned.nextStep || ''} ${baseAligned.nextStepTitle || ''} ${sourceText || ''}`,
+  )
+  let nextLine: string
+  let nextTitle: string
+  if (baseAligned.primaryActionStructured) {
+    const t = buildPrimaryBaseTitle(baseAligned.primaryActionStructured, noteLang)
+    nextLine = t
+    nextTitle = t
+  } else {
+    nextLine = enrichNextStep(baseAligned.nextStep, baseAligned)
+    nextTitle = buildCleanNextStepTitle(baseAligned)
+  }
   nextLine = dedupeConsecutiveRepeatedWords(forceLanguage(nextLine, sourceText))
   nextTitle = dedupeConsecutiveRepeatedWords(forceLanguage(nextTitle, sourceText))
   return {

@@ -1,9 +1,9 @@
 /**
  * Plain-text bodies for calendar export (Google / Apple / ICS).
- * Line 1: Company — Contact. Lines 2–3: short visit context (max 2 lines).
- * Does not affect event titles, times, or UI.
+ * Structured as three scannable sections: Context, Goal / Focus, Opportunity.
  */
 
+import { detectNoteLanguage } from './detectNoteLanguage'
 import { normalizeProductField, productFieldToList } from './productField'
 import {
   insightLineContainsActionLanguage,
@@ -11,6 +11,8 @@ import {
 } from './filterInsightLines'
 
 export const CALENDAR_EVENT_DESC_LINE_MAX = 72
+/** Total lines in the event description (3 section headers + up to 3 content lines). */
+export const CALENDAR_BODY_MAX_LINES = 6
 
 export type CalendarEventDescriptionFields = {
   customer: string
@@ -34,6 +36,13 @@ export type BuildCalendarEventDescriptionOptions = {
   excludeActionPhrases: string[]
 }
 
+/** Cap model output before we parse or display. */
+export function normalizeCalendarDescriptionField(raw: string): string {
+  const t = raw.replace(/\r\n/g, '\n').trim()
+  if (!t) return ''
+  return t.split('\n').slice(0, 12).join('\n').slice(0, 2500)
+}
+
 function stripEmojisForCalendar(s: string): string {
   return s
     .replace(/\p{Extended_Pictographic}/gu, '')
@@ -52,6 +61,25 @@ function truncateCalendarLine(s: string, max: number): string {
   return t.length > max ? `${t.slice(0, max - 1).trim()}…` : t
 }
 
+function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): boolean {
+  const f = normalizeCalendarDedupeKey(fragment)
+  const e = normalizeCalendarDedupeKey(stripEmojisForCalendar(eventTitle))
+  if (!f || !e) return false
+  if (f === e) return true
+  if (f.length >= 14 && (e.includes(f) || f.includes(e))) return true
+  return false
+}
+
+/** Strip timing phrases — event already carries date/time. */
+function stripTimingPhrases(s: string): string {
+  return s
+    .replace(/\b(today|tomorrow|tonight|this\s+week|next\s+week|next\s+month)\b/gi, '')
+    .replace(/\b(hoy|mañana|esta\s+semana|próxima\s+semana)\b/gi, '')
+    .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function normalizeInsightEmoji(line: string): string {
   return line
     .replace(/^(\s*)🌱/u, '$1📦')
@@ -67,20 +95,12 @@ function compactInsightForCalendar(line: string): string {
 /** First clause; strip numeric dates (event already carries timing). */
 function telegraphicInsightFragment(raw: string): string {
   let s = raw.replace(/\s+/g, ' ').trim()
+  s = stripTimingPhrases(s)
   s = s.replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '')
   s = s.replace(/\s+/g, ' ').trim()
   const oneSentence = (s.split(/[.!?]/)[0] || s).trim()
   const oneClause = (oneSentence.split(/[,;:]/)[0] || oneSentence).trim()
   return oneClause.replace(/\.\s*$/g, '').trim()
-}
-
-function calendarFragmentOverlapsTitle(fragment: string, eventTitle: string): boolean {
-  const f = normalizeCalendarDedupeKey(fragment)
-  const e = normalizeCalendarDedupeKey(stripEmojisForCalendar(eventTitle))
-  if (!f || !e) return false
-  if (f === e) return true
-  if (f.length >= 14 && (e.includes(f) || f.includes(e))) return true
-  return false
 }
 
 function contextLineConflicts(
@@ -115,21 +135,100 @@ function productDisplayItems(crop: string, productCsv: string): string[] {
   return [c, ...parts]
 }
 
-function calendarDescriptionLines(raw: string): string[] {
-  return raw
-    .split(/\r?\n/)
-    .map((l) => l.trim().replace(/^→\s*/, '').trim())
-    .filter(Boolean)
+type SectionKey = 'context' | 'goal' | 'opportunity'
+
+function sectionLabel(langEs: boolean, key: SectionKey): string {
+  if (langEs) {
+    if (key === 'context') return 'Contexto:'
+    if (key === 'goal') return 'Objetivo / Enfoque:'
+    return 'Oportunidad:'
+  }
+  if (key === 'context') return 'Context:'
+  if (key === 'goal') return 'Goal / Focus:'
+  return 'Opportunity:'
 }
 
-function crmTextChunks(raw: string): string[] {
-  const t = stripEmojisForCalendar(raw)
-  if (!t) return []
-  const sentences = t
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return sentences.slice(0, 4)
+/**
+ * Parse model output with labeled sections (EN or ES).
+ */
+export function parseStructuredCalendarSections(
+  raw: string,
+): Partial<Record<SectionKey, string>> | null {
+  const text = raw.replace(/\r\n/g, '\n').trim()
+  if (!text) return null
+
+  const header = (line: string): { key: SectionKey; rest: string } | null => {
+    const t = line.trim()
+    let m = t.match(/^Contexto?:\s*(.*)$/i)
+    if (m) return { key: 'context', rest: m[1].trim() }
+    m = t.match(/^Goal\s*\/\s*Focus:\s*(.*)$/i)
+    if (m) return { key: 'goal', rest: m[1].trim() }
+    m = t.match(/^Objetivo\s*\/\s*Enfoque:\s*(.*)$/i)
+    if (m) return { key: 'goal', rest: m[1].trim() }
+    m = t.match(/^Opportunity:\s*(.*)$/i)
+    if (m) return { key: 'opportunity', rest: m[1].trim() }
+    m = t.match(/^Oportunidad:\s*(.*)$/i)
+    if (m) return { key: 'opportunity', rest: m[1].trim() }
+    return null
+  }
+
+  const out: Partial<Record<SectionKey, string>> = {}
+  let current: SectionKey | null = null
+  for (const line of text.split('\n')) {
+    const h = header(line)
+    if (h) {
+      current = h.key
+      if (h.rest) out[current] = (out[current] ? `${out[current]}\n` : '') + h.rest
+      continue
+    }
+    if (current && line.trim()) {
+      out[current] = (out[current] ? `${out[current]}\n` : '') + line.trim()
+    }
+  }
+  if (!out.context && !out.goal && !out.opportunity) return null
+  return out
+}
+
+function isLooseFragment(s: string): boolean {
+  const t = s.trim()
+  if (!t || t === '—' || t === '-') return false
+  const words = t.split(/\s+/).filter(Boolean)
+  return words.length <= 2 && t.length < 36 && !/[.!?]/.test(t)
+}
+
+function ensureSentenceOrDash(s: string, _langEs: boolean, looseFallback: string): string {
+  const t = s.trim()
+  if (!t || t === '—' || t === '-') return looseFallback
+  if (isLooseFragment(t)) return looseFallback
+  return t
+}
+
+function sanitizeSectionBody(
+  raw: string,
+  excludePhrases: string[],
+  pickedKeys: Set<string>,
+  eventTitle: string,
+): string {
+  let s = stripTimingPhrases(raw)
+  s = s.replace(/\s+/g, ' ').trim()
+  if (!s) return s
+  if (contextLineConflicts(s, excludePhrases, pickedKeys, eventTitle)) return ''
+  const k = normalizeCalendarDedupeKey(s)
+  if (k) pickedKeys.add(k)
+  return truncateCalendarLine(s, CALENDAR_EVENT_DESC_LINE_MAX)
+}
+
+/**
+ * Line 1: Company — Contact (account + person). Omits duplicate org in header when same as customer.
+ */
+export function buildCalendarDescriptionHeaderLine(
+  data: Pick<CalendarEventDescriptionFields, 'customer' | 'contact' | 'contactCompany'>,
+): string {
+  const cust = stripEmojisForCalendar((data.customer || '').trim())
+  const contact = stripEmojisForCalendar((data.contact || '').trim())
+  const line =
+    cust && contact ? `${cust} — ${contact}` : cust || contact || ''
+  return line ? truncateCalendarLine(line, CALENDAR_EVENT_DESC_LINE_MAX) : ''
 }
 
 function tryContextLine(
@@ -151,72 +250,86 @@ function tryContextLine(
   return truncateCalendarLine(s, CALENDAR_EVENT_DESC_LINE_MAX)
 }
 
-/**
- * Line 1: Company — Contact (account + person). Omits duplicate org in header when same as customer.
- */
-export function buildCalendarDescriptionHeaderLine(
-  data: Pick<CalendarEventDescriptionFields, 'customer' | 'contact' | 'contactCompany'>,
-): string {
-  const cust = stripEmojisForCalendar((data.customer || '').trim())
-  const contact = stripEmojisForCalendar((data.contact || '').trim())
-  const line =
-    cust && contact ? `${cust} — ${contact}` : cust || contact || ''
-  return line ? truncateCalendarLine(line, CALENDAR_EVENT_DESC_LINE_MAX) : ''
-}
-
-/**
- * Up to two context lines: concrete visit/situation copy, not generic AI filler or a repeat of the action.
- */
-export function buildCalendarEventDescriptionBody(
+function buildFallbackSections(
   data: CalendarEventDescriptionFields,
   options: BuildCalendarEventDescriptionOptions,
 ): string {
   const { eventTitle, excludeActionPhrases } = options
   const phrases = excludeActionPhrases.map((p) => stripEmojisForCalendar(p)).filter(Boolean)
-
-  const header = buildCalendarDescriptionHeaderLine(data)
-  const firstLine = header
-    ? truncateCalendarLine(header, CALENDAR_EVENT_DESC_LINE_MAX)
-    : 'Visit note'
-
   const picked = new Set<string>()
-  if (firstLine) picked.add(normalizeCalendarDedupeKey(firstLine))
-  const out: string[] = [firstLine]
+  const langHint = detectNoteLanguage(
+    [
+      data.crmText,
+      data.summary,
+      (data.crmFull || []).join('\n'),
+      data.notes,
+    ].join('\n'),
+  )
+  const langEs = langHint === 'spanish'
 
-  const pushLine = (raw: string, minLen: number): boolean => {
-    const t = tryContextLine(raw, phrases, picked, eventTitle, minLen)
-    if (!t) return false
-    const key = normalizeCalendarDedupeKey(t)
-    picked.add(key)
-    out.push(t)
-    return true
-  }
+  const looseCtx = langEs
+    ? 'Situación de cuenta a revisar en la visita.'
+    : 'Account situation to review from the visit.'
+  const looseGoal = langEs
+    ? 'Preparar el enfoque comercial según el contexto del cliente.'
+    : 'Prepare the commercial angle using the account context above.'
+  const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
 
-  for (const raw of calendarDescriptionLines((data.calendarDescription || '').trim())) {
-    if (out.length >= 3) break
-    pushLine(raw, 6)
-  }
-
-  for (const raw of data.crmFull || []) {
-    if (out.length >= 3) break
-    if (!raw.trim() || raw.trimStart().startsWith('📅')) continue
-    pushLine(raw, 6)
-  }
-
+  let context = ''
   for (const raw of crmTextChunks((data.crmText || '').trim())) {
-    if (out.length >= 3) break
-    pushLine(raw, 10)
+    const t = tryContextLine(raw, phrases, picked, eventTitle, 10)
+    if (t) {
+      context = t
+      break
+    }
+  }
+  if (!context) {
+    for (const raw of data.crmFull || []) {
+      if (!raw.trim() || raw.trimStart().startsWith('📅')) continue
+      const t = tryContextLine(raw, phrases, picked, eventTitle, 10)
+      if (t) {
+        context = t
+        break
+      }
+    }
+  } else {
+    picked.add(normalizeCalendarDedupeKey(context))
   }
 
-  if (out.length < 3) {
-    const n = (data.notes || '').trim()
-    if (n) pushLine(n, 8)
+  let goal = ''
+  const n = (data.notes || '').trim()
+  const summ = (data.summary || '').trim()
+  if (n && !insightLineContainsActionLanguage(n)) {
+    goal = tryContextLine(n, phrases, picked, eventTitle, 8) || ''
   }
-  if (out.length < 3) {
-    const s = (data.summary || '').trim()
-    if (s) pushLine(s, 8)
+  if (!goal && summ) {
+    goal = tryContextLine(summ, phrases, picked, eventTitle, 8) || ''
   }
-  if (out.length < 3) {
+  if (!goal) {
+    goal = looseGoal
+  }
+
+  let opportunity = ''
+  for (const raw of data.crmFull || []) {
+    if (!raw.includes('🆕')) continue
+    const cleaned = stripEmojisForCalendar(raw.replace(/🆕/g, '').trim())
+    const t = tryContextLine(cleaned, phrases, picked, eventTitle, 8)
+    if (t) {
+      opportunity = t
+      break
+    }
+  }
+  if (!opportunity) {
+    for (const raw of data.crmFull || []) {
+      if (!raw.trim() || raw.includes('🆕')) continue
+      const t = tryContextLine(raw, phrases, picked, eventTitle, 8)
+      if (t) {
+        opportunity = t
+        break
+      }
+    }
+  }
+  if (!opportunity) {
     const offerings = productDisplayItems(data.crop, data.product)
     const loc = stripEmojisForCalendar((data.location || '').trim())
     const size = stripEmojisForCalendar((data.acreage || '').trim())
@@ -226,9 +339,106 @@ export function buildCalendarEventDescriptionBody(
     if (size) parts.push(size)
     if (parts.length) {
       const combined = parts.join(' · ')
-      if (combined.length >= 8) pushLine(combined, 8)
+      if (combined.length >= 8 && !contextLineConflicts(combined, phrases, picked, eventTitle)) {
+        opportunity = truncateCalendarLine(combined, CALENDAR_EVENT_DESC_LINE_MAX)
+      }
     }
   }
+  if (!opportunity) opportunity = looseOpp
 
-  return out.slice(0, 3).join('\n').trim()
+  context = context || looseCtx
+  context = ensureSentenceOrDash(context, langEs, looseCtx)
+  goal = ensureSentenceOrDash(goal, langEs, looseGoal)
+  opportunity = ensureSentenceOrDash(opportunity, langEs, looseOpp)
+
+  const lines = [
+    `${sectionLabel(langEs, 'context')} ${context}`,
+    `${sectionLabel(langEs, 'goal')} ${goal}`,
+    `${sectionLabel(langEs, 'opportunity')} ${opportunity}`,
+  ]
+  return lines.join('\n').trim()
+}
+
+function crmTextChunks(raw: string): string[] {
+  const t = stripEmojisForCalendar(raw)
+  if (!t) return []
+  const sentences = t
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return sentences.slice(0, 4)
+}
+
+function formatStructuredSections(
+  sections: Partial<Record<SectionKey, string>>,
+  langEs: boolean,
+  options: BuildCalendarEventDescriptionOptions,
+): string {
+  const { eventTitle, excludeActionPhrases } = options
+  const phrases = excludeActionPhrases.map((p) => stripEmojisForCalendar(p)).filter(Boolean)
+  const picked = new Set<string>()
+  const looseCtx = langEs
+    ? 'Situación de cuenta a revisar en la visita.'
+    : 'Account situation to review from the visit.'
+  const looseGoal = langEs
+    ? 'Preparar el enfoque comercial según el contexto del cliente.'
+    : 'Prepare the commercial angle using the account context above.'
+  const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
+
+  let context = sanitizeSectionBody(
+    (sections.context || '').replace(/\n/g, ' '),
+    phrases,
+    picked,
+    eventTitle,
+  )
+  let goal = sanitizeSectionBody(
+    (sections.goal || '').replace(/\n/g, ' '),
+    phrases,
+    picked,
+    eventTitle,
+  )
+  let opportunity = sanitizeSectionBody(
+    (sections.opportunity || '').replace(/\n/g, ' '),
+    phrases,
+    picked,
+    eventTitle,
+  )
+
+  context = ensureSentenceOrDash(context, langEs, looseCtx)
+  goal = ensureSentenceOrDash(goal, langEs, looseGoal)
+  opportunity = ensureSentenceOrDash(opportunity, langEs, looseOpp)
+
+  const lines = [
+    `${sectionLabel(langEs, 'context')} ${context}`,
+    `${sectionLabel(langEs, 'goal')} ${goal}`,
+    `${sectionLabel(langEs, 'opportunity')} ${opportunity}`,
+  ]
+  return lines.slice(0, CALENDAR_BODY_MAX_LINES).join('\n').trim()
+}
+
+/**
+ * Calendar event body: three labeled sections (Context, Goal / Focus, Opportunity).
+ * Does not repeat the event title or timing; concise and scannable.
+ */
+export function buildCalendarEventDescriptionBody(
+  data: CalendarEventDescriptionFields,
+  options: BuildCalendarEventDescriptionOptions,
+): string {
+  const { eventTitle } = options
+  const langHint = detectNoteLanguage(
+    [
+      data.calendarDescription,
+      data.crmText,
+      data.summary,
+      (data.crmFull || []).join('\n'),
+    ].join('\n'),
+  )
+  const langEs = langHint === 'spanish'
+
+  const parsed = parseStructuredCalendarSections((data.calendarDescription || '').trim())
+  if (parsed && (parsed.context || parsed.goal || parsed.opportunity)) {
+    return formatStructuredSections(parsed, langEs, options)
+  }
+
+  return buildFallbackSections(data, options)
 }
