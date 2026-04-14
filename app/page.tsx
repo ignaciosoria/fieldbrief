@@ -6,6 +6,7 @@ import { signIn, signOut, useSession } from 'next-auth/react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
+import { stripExecutionBlocksFromCrmNarrative } from '../lib/crmNarrativeSanitize'
 import {
   stripDealerClosingFromCrmText,
   stripDealerLinesFromCrmFull,
@@ -386,7 +387,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     crmFull: filterInsightsToContextOnly(
       crmFullMerged.map((l) => normalizePendingInsightTense(l, langEsInsights)),
     ).slice(0, 5),
-    crmText: stripDealerClosingFromCrmText(base.crmText),
+    crmText: stripExecutionBlocksFromCrmNarrative(stripDealerClosingFromCrmText(base.crmText)),
     calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
@@ -1973,6 +1974,14 @@ export default function Home() {
   }, [pendingNextStepClarifyPick])
 
   const saveNote = async (res: StructureResult, tx: string): Promise<void> => {
+    const validSession = status === 'authenticated' && !!session?.user
+    console.log('[saveNote] start', {
+      path: 'pending',
+      sessionStatus: status,
+      validSession,
+      sessionEmail: sessionEmail ?? '(none)',
+      isSupabaseConfigured,
+    })
     if (savingIdleResetTimerRef.current !== null) {
       clearTimeout(savingIdleResetTimerRef.current)
       savingIdleResetTimerRef.current = null
@@ -2008,6 +2017,12 @@ export default function Home() {
     }
 
     if (!sessionEmail) {
+      console.warn('[saveNote] path=local-only (no Supabase insert)', {
+        reason: 'no-session-email',
+        sessionStatus: status,
+        validSession,
+        sessionEmail: '(none)',
+      })
       console.warn(
         'No authenticated user (email); note kept in UI/history only. Supabase sync skipped.',
       )
@@ -2015,6 +2030,12 @@ export default function Home() {
       return
     }
     if (!isSupabaseConfigured) {
+      console.warn('[saveNote] path=local-only (no Supabase insert)', {
+        reason: 'supabase-not-configured',
+        sessionStatus: status,
+        validSession,
+        sessionEmail,
+      })
       console.error(
         'Save error: Supabase not configured (missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY). Note saved locally only.',
       )
@@ -2044,7 +2065,13 @@ export default function Home() {
       follow_up_strength: (res.followUpStrength || '').trim() || null,
     }
 
-    console.log('Saving note...')
+    console.log('[saveNote] path=supabase-insert (about to insert)', {
+      sessionStatus: status,
+      validSession,
+      sessionEmail,
+      userIdForRow: rowUserId,
+      noteId: note.id,
+    })
     try {
       const attemptInsert = async () =>
         supabase.from('notes').insert(insertPayload).select()

@@ -16,6 +16,7 @@ import {
 } from '../../../lib/actionPrimarySelection'
 import { resolveContactCompany } from '../../../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords } from '../../../lib/stringDedupe'
+import { stripExecutionBlocksFromCrmNarrative } from '../../../lib/crmNarrativeSanitize'
 import {
   stripDealerClosingFromCrmText,
   stripDealerLinesFromCrmFull,
@@ -1029,7 +1030,9 @@ export async function POST(request: Request) {
         0,
         4,
       ),
-      crmText: stripDealerClosingFromCrmText(afterProduct.crmText),
+      crmText: stripExecutionBlocksFromCrmNarrative(
+        stripDealerClosingFromCrmText(afterProduct.crmText),
+      ),
       /** Backend-derived ordered actions (primary/supporting); ranking + extraction, not model order. */
       actions: buildNormalizedActionsFromResult(afterProduct),
     }

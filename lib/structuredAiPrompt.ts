@@ -43,6 +43,8 @@ CRM_SUMMARY (field: **crm_summary**) — required string (use "" only when the n
 
 This is the **account narrative** for the CRM record. It is **separate** from action rows (**primary** / **supporting**) and from **insights** (do not duplicate the insights list here).
 
+**Forbidden in crm_summary:** Any **next steps**, **follow-up task lists**, **dates**, **deadlines**, or **scheduling** language — the product shows actions and timing in the **Next step** UI only. Write **what happened**, **key context**, **commercial interpretation**, and **opportunity** — never execution checklists or calendar plans here.
+
 **Quality bar**
 - Include **all** relevant business information from the note. **Do not drop** important names, numbers, orgs, constraints, or history to save space.
 - Prioritize: **relationships** (who knows whom, reporting lines, intros); **changes** (role moves, territory, policy, farm/operation changes); **sales activity** (who is pushing what, traction, volumes, trials); **strategic angle** (why this matters, competitive position, risk, upside).
