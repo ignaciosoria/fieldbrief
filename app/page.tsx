@@ -3,6 +3,10 @@
 import { initPosthog } from '../lib/posthog'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
+import {
+  logNotesTableRlsAssumptions,
+  logPostgrestError,
+} from '../lib/saveNoteSupabaseDebug'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -2072,13 +2076,48 @@ export default function Home() {
       userIdForRow: rowUserId,
       noteId: note.id,
     })
+    logNotesTableRlsAssumptions({
+      userIdForRow: rowUserId,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    })
+    console.log('[saveNote] insert payload (exact)', insertPayload)
+
+    const verifyNoteRowVisible = async (phase: string) => {
+      const verifyRes = await supabase
+        .from('notes')
+        .select('id, user_id')
+        .eq('id', note.id)
+        .eq('user_id', rowUserId)
+        .maybeSingle()
+      console.log(`[saveNote] verify select (${phase})`, {
+        noteId: note.id,
+        userId: rowUserId,
+        rowFound: !!verifyRes.data,
+        data: verifyRes.data,
+        fullResponse: verifyRes,
+      })
+      if (verifyRes.error) {
+        logPostgrestError('[saveNote] verify select error', verifyRes.error)
+      }
+      return verifyRes
+    }
+
     try {
-      const attemptInsert = async () =>
-        supabase.from('notes').insert(insertPayload).select()
+      const attemptInsert = async () => {
+        const res = await supabase.from('notes').insert(insertPayload).select()
+        console.log('[saveNote] insert response (full)', res)
+        if (res.error) logPostgrestError('[saveNote] insert error', res.error)
+        return res
+      }
 
       let { data, error } = await attemptInsert()
       if (error) {
         if (error.code === '23505') {
+          console.warn('[saveNote] insert duplicate key (23505) — row may already exist', {
+            code: error.code,
+            message: error.message,
+          })
+          await verifyNoteRowVisible('after-23505')
           if (process.env.NODE_ENV === 'development') {
             console.log('Note saved (row already exists for this id)')
           }
@@ -2092,17 +2131,24 @@ export default function Home() {
         error = retry.error
         if (error) {
           if (error.code === '23505') {
+            await verifyNoteRowVisible('after-23505-retry')
             if (process.env.NODE_ENV === 'development') {
               console.log('Note saved (row already exists after retry)')
             }
             setSavingStatus('saved')
             return
           }
-          console.error('Save error:', error)
+          logPostgrestError('[saveNote] insert error (after retry)', error)
           setSavingStatus('error')
           throw new Error(error.message || 'Supabase insert failed after retry')
         }
       }
+      if (!error && (!data || data.length === 0)) {
+        console.warn(
+          '[saveNote] insert succeeded but returned no rows — check RLS SELECT policies or omit .select() behavior',
+        )
+      }
+      await verifyNoteRowVisible('after-successful-insert')
       if (process.env.NODE_ENV === 'development') {
         console.log('Note saved', data?.length ?? 0, 'row(s)')
       }
