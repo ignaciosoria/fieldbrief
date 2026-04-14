@@ -1,7 +1,6 @@
 /**
- * Deterministic calendar event body: context paragraph + action-specific closing.
- * The model supplies only structured commercial fields; this module produces final copy.
- * Closings use concrete verbs, real objects, and optional product names — no generic “performance / differentiation” filler.
+ * Deterministic calendar event body: line 1 = cuenta + problema; line 2 = frase de acción concreta.
+ * Sin lenguaje abstracto (desempeño, diferenciación, evaluación).
  */
 
 export type CommercialContextFields = {
@@ -20,13 +19,13 @@ export type BuildCalendarContextInput = {
 }
 
 export type FormatForCalendarInput = {
+  /** Línea 1: debe ser solo contacto + empresa + problema (vía {@link buildCalendarContext}). */
   contextParagraph: string
   langEs: boolean
-  /** Primary/supporting send object: comparativa, propuesta, PDF, resultados, etc. */
+  /** Nombre de producto explícito (ej. Quantum Flower) si existe en datos estructurados; prioridad sobre CSV/interest */
+  product?: string
   deliverable?: string
-  /** commercial_context.product_interest — used to derive a short product label when needed */
   productInterest?: string
-  /** CRM product field (comma-separated) — first item preferred, e.g. Quantum Flower */
   productCsv?: string
 }
 
@@ -53,7 +52,6 @@ function firstProductFromCsv(csv: string): string {
   return parts[0] || ''
 }
 
-/** Short label from product_interest (first clause, capped) when CSV is empty. */
 function extractProductLabelFromInterest(pi: string): string {
   const t = pi.replace(/\s+/g, ' ').trim()
   if (!t) return ''
@@ -62,94 +60,98 @@ function extractProductLabelFromInterest(pi: string): string {
   return words.slice(0, 8).join(' ')
 }
 
-function productLabelForClosing(input: Pick<FormatForCalendarInput, 'productCsv' | 'productInterest'>): string {
+function productLabelForSend(
+  input: Pick<FormatForCalendarInput, 'product' | 'productCsv' | 'productInterest'>,
+): string {
+  const explicit = (input.product || '').replace(/\s+/g, ' ').trim()
+  if (explicit) return explicit
   const fromCsv = firstProductFromCsv(input.productCsv || '')
-  if (fromCsv) return fromCsv.replace(/\s+/g, ' ').trim()
+  if (fromCsv) return fromCsv
   return extractProductLabelFromInterest(input.productInterest || '')
 }
 
-function closingSendEs(deliverable: string, productLabel: string): string {
-  const d = deliverable.replace(/\s+/g, ' ').trim()
-  const p = productLabel.replace(/\s+/g, ' ').trim()
-  const dl = d.toLowerCase()
-  if (d && p && (dl.includes('comparativa') || dl.includes('comparación'))) {
+/**
+ * Línea 1: {contact} en {company}. {problem} (ES) / {contact} at {company}. {problem} (EN)
+ * Solo cuenta + problema; sin barrera ni interés mezclados aquí.
+ */
+export function buildCalendarContext(input: BuildCalendarContextInput): string {
+  const { contact, company, problem, langEs } = input
+  const c = contact.replace(/\s+/g, ' ').trim()
+  const co = company.replace(/\s+/g, ' ').trim()
+  const pr = (problem || '').replace(/\s+/g, ' ').trim()
+
+  const who =
+    c && co ? (langEs ? `${c} en ${co}` : `${c} at ${co}`) : c ? c : co ? co : ''
+  if (!who && !pr) return ''
+  if (!pr) {
+    const w = who.endsWith('.') ? who.trim() : `${who}.`
+    return w.charAt(0).toUpperCase() + w.slice(1)
+  }
+  const whoPart = who.endsWith('.') ? who.slice(0, -1).trim() : who
+  const probPart = pr.endsWith('.') ? pr.trim() : `${pr}.`
+  const out = `${whoPart}. ${probPart}`.replace(/\s+/g, ' ').trim()
+  return out.charAt(0).toUpperCase() + out.slice(1)
+}
+
+/** SEND — plantilla fija; producto si existe. */
+function closingSendEs(product: string): string {
+  const p = product.replace(/\s+/g, ' ').trim()
+  if (p) {
     return `Enviar comparativa de ${p} con resultados de campo.`
   }
-  if (d && p) {
-    return `Enviar ${d} (${p}) con resultados de campo.`
-  }
-  if (d) {
-    return `Enviar ${d} con resultados de campo.`
-  }
+  return 'Enviar comparativa con resultados de campo.'
+}
+
+function closingSendEn(product: string): string {
+  const p = product.replace(/\s+/g, ' ').trim()
   if (p) {
-    return `Enviar material de ${p} con resultados de campo.`
+    return `Send ${p} comparison with field results.`
   }
-  return 'Enviar material acordado con resultados de campo.'
+  return 'Send comparison with field results.'
 }
 
-function closingSendEn(deliverable: string, productLabel: string): string {
-  const d = deliverable.replace(/\s+/g, ' ').trim()
-  const p = productLabel.replace(/\s+/g, ' ').trim()
-  if (d && p) {
-    return `Send ${d} — ${p} with field results.`
-  }
-  if (d) {
-    return `Send ${d} with field results.`
-  }
-  if (p) {
-    return `Send ${p} materials with field results.`
-  }
-  return 'Send agreed materials with field results.'
+/** CALL — plantilla fija. */
+function closingCallEs(): string {
+  return 'Llamar para revisar la comparativa y ver próximos pasos.'
 }
 
-function closingCallEs(deliverable: string): string {
-  const d = deliverable.replace(/\s+/g, ' ').trim()
-  if (d) {
-    return `Llamar para revisar ${d} y próximos pasos.`
-  }
-  return 'Llamar para revisar la comparativa y próximos pasos.'
+function closingCallEn(): string {
+  return 'Call to review the comparison and see next steps.'
 }
 
-function closingCallEn(deliverable: string): string {
-  const d = deliverable.replace(/\s+/g, ' ').trim()
-  if (d) {
-    return `Call to review ${d} and next steps.`
-  }
-  return 'Call to review the comparison and next steps.'
-}
-
+/** FOLLOW_UP — plantilla fija. */
 function closingFollowUpEs(): string {
-  return 'Dar seguimiento para alinear próximos pasos.'
+  return 'Dar seguimiento para ver interés y próximos pasos.'
 }
 
 function closingFollowUpEn(): string {
-  return 'Follow up to align on next steps.'
+  return 'Follow up to gauge interest and next steps.'
 }
 
+/** MEETING — concreto, sin términos abstractos. */
 function closingMeetingEs(): string {
-  return 'Reunirse para revisar la visita y próximos pasos.'
+  return 'Reunirse para ver la visita y próximos pasos.'
 }
 
 function closingMeetingEn(): string {
-  return 'Meet to review the visit and next steps.'
+  return 'Meet on site to review next steps.'
 }
 
 /**
- * Action line (second block): verb + object (+ product when relevant). No vague “performance / differentiation” filler.
+ * Segunda línea: verbo + objeto; plantillas por tipo de acción.
  */
 export function buildActionClosingLine(
   kind: 'send' | 'call' | 'follow_up' | 'meeting',
-  input: Pick<FormatForCalendarInput, 'langEs' | 'deliverable' | 'productInterest' | 'productCsv'>,
+  input: Pick<FormatForCalendarInput, 'langEs' | 'product' | 'productInterest' | 'productCsv'>,
 ): string {
   const langEs = input.langEs
-  const productLabel = productLabelForClosing(input)
-  const deliverable = (input.deliverable || '').trim()
+  const product = productLabelForSend(input)
 
   switch (kind) {
     case 'send':
-      return langEs ? closingSendEs(deliverable, productLabel) : closingSendEn(deliverable, productLabel)
+      return langEs ? closingSendEs(product) : closingSendEn(product)
     case 'call':
-      return langEs ? closingCallEs(deliverable) : closingCallEn(deliverable)
+      return langEs ? closingCallEs() : closingCallEn()
     case 'follow_up':
       return langEs ? closingFollowUpEs() : closingFollowUpEn()
     case 'meeting':
@@ -157,7 +159,7 @@ export function buildActionClosingLine(
   }
 }
 
-/** @deprecated Use {@link buildActionClosingLine} with deliverable / product hints. */
+/** @deprecated Use {@link buildActionClosingLine}. */
 export function closingLineFor(
   kind: 'send' | 'call' | 'follow_up' | 'meeting',
   langEs: boolean,
@@ -166,50 +168,20 @@ export function closingLineFor(
 }
 
 /**
- * One short paragraph: contact/company, then problem, product interest, barrier — only non-empty fields.
- */
-export function buildCalendarContext(input: BuildCalendarContextInput): string {
-  const { contact, company, problem, productInterest, barrier, langEs } = input
-  const c = contact.replace(/\s+/g, ' ').trim()
-  const co = company.replace(/\s+/g, ' ').trim()
-  const pr = (problem || '').replace(/\s+/g, ' ').trim()
-  const pi = (productInterest || '').replace(/\s+/g, ' ').trim()
-  const ba = (barrier || '').replace(/\s+/g, ' ').trim()
-
-  const segs: string[] = []
-  if (c && co) {
-    segs.push(langEs ? `${c} en ${co}` : `${c} at ${co}`)
-  } else if (c) {
-    segs.push(c)
-  } else if (co) {
-    segs.push(co)
-  }
-  if (pr) segs.push(pr)
-  if (pi) segs.push(pi)
-  if (ba) segs.push(ba)
-
-  if (segs.length === 0) return ''
-
-  let text = segs.map((s) => s.replace(/\.\s*$/g, '').trim()).join('. ')
-  if (!/[.!?]$/.test(text)) text += '.'
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
-
-/**
- * Final calendar description: optional context paragraph + action line (verb + object + product when relevant).
+ * Línea 1 = contextParagraph (contacto + empresa + problema). Línea 2 = plantilla de acción.
  */
 export function formatForCalendar(
   actionType: CalendarFormatActionKind,
   structured: FormatForCalendarInput,
 ): string {
   const kind = normalizeClosingKind(actionType)
+  const line1 = structured.contextParagraph.replace(/\s+/g, ' ').trim()
   const closing = buildActionClosingLine(kind, {
     langEs: structured.langEs,
-    deliverable: structured.deliverable,
+    product: structured.product,
     productInterest: structured.productInterest,
     productCsv: structured.productCsv,
   })
-  const ctx = structured.contextParagraph.replace(/\s+/g, ' ').trim()
-  if (!ctx) return closing
-  return `${ctx}\n\n${closing}`.trim()
+  if (!line1) return closing
+  return `${line1}\n\n${closing}`.trim()
 }
