@@ -876,6 +876,11 @@ function buildCalendarOpenOptsForSupportingStep(
   const timeOpts: CalendarTimeInput = hintRaw
     ? { kind: 'clock', hour: adj.hour, minute: adj.minute }
     : { kind: 'allday' }
+  const st = (step.supportingType || '').toLowerCase()
+  const supportingDeliverable =
+    st === 'send' || st === 'email'
+      ? (step.actionStructured?.object || step.label || '').trim()
+      : (step.actionStructured?.object || '').trim()
   const supportingDetails = formatForCalendar(supportingCalendarFormatKind(step), {
     contextParagraph: buildCalendarContext({
       contact: r.contact,
@@ -886,6 +891,9 @@ function buildCalendarOpenOptsForSupportingStep(
       langEs,
     }),
     langEs,
+    deliverable: supportingDeliverable,
+    productInterest: r.commercialContext?.productInterest,
+    productCsv: (r.product || '').trim(),
   })
   const details = buildCalendarEventDescriptionBody(
     {

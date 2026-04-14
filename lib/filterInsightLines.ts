@@ -143,6 +143,53 @@ function genericInsightPlaceholder(langEs: boolean): string {
  * Never leave key insights empty when the note or CRM narrative is substantive.
  * Used after {@link filterInsightsToContextOnly}, which can drop every model line if it matched action wording.
  */
+/**
+ * When `commercial_context.problem` is set, ensure a dedicated insight line for it.
+ * Prepends the problem if no existing line already expresses the same issue (avoids merging problem into other bullets).
+ */
+export function ensureStandaloneProblemInsight(
+  crmFull: string[],
+  problem: string | undefined,
+  maxLines: number,
+): string[] {
+  const p = (problem ?? '').replace(/\s+/g, ' ').trim()
+  if (!p) return crmFull.slice(0, maxLines)
+  if (insightLineContainsActionLanguage(p)) return crmFull.slice(0, maxLines)
+
+  const lines = crmFull.map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  if (lines.some((line) => lineCoversSameProblem(line, p))) {
+    return lines.slice(0, maxLines)
+  }
+  return [p, ...lines].slice(0, maxLines)
+}
+
+function normalizeInsightWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9áéíóúñü]/gi, ''))
+    .filter((w) => w.length > 2)
+}
+
+/** True if `line` already stands in for the same problem as `problem` (avoid duplicate prepends). */
+function lineCoversSameProblem(line: string, problem: string): boolean {
+  const a = line.toLowerCase().normalize('NFKD').replace(/\s+/g, ' ').trim()
+  const b = problem.toLowerCase().normalize('NFKD').replace(/\s+/g, ' ').trim()
+  if (a === b) return true
+  if (a.length >= 10 && b.length >= 10 && (a.includes(b) || b.includes(a))) return true
+  const wa = new Set(normalizeInsightWords(line))
+  const wb = new Set(normalizeInsightWords(problem))
+  if (wa.size === 0 || wb.size === 0) return false
+  let inter = 0
+  for (const w of wb) {
+    if (wa.has(w)) inter++
+  }
+  const recall = inter / wb.size
+  return recall >= 0.72
+}
+
 export function ensureMinimumCrmFullInsights(options: {
   crmFull: string[]
   rawInsightLines: string[]

@@ -1,6 +1,7 @@
 /**
  * Deterministic calendar event body: context paragraph + action-specific closing.
  * The model supplies only structured commercial fields; this module produces final copy.
+ * Closings use concrete verbs, real objects, and optional product names — no generic “performance / differentiation” filler.
  */
 
 export type CommercialContextFields = {
@@ -21,6 +22,12 @@ export type BuildCalendarContextInput = {
 export type FormatForCalendarInput = {
   contextParagraph: string
   langEs: boolean
+  /** Primary/supporting send object: comparativa, propuesta, PDF, resultados, etc. */
+  deliverable?: string
+  /** commercial_context.product_interest — used to derive a short product label when needed */
+  productInterest?: string
+  /** CRM product field (comma-separated) — first item preferred, e.g. Quantum Flower */
+  productCsv?: string
 }
 
 /** Primary or supporting action kinds accepted by {@link formatForCalendar}. */
@@ -38,32 +45,124 @@ function normalizeClosingKind(kind: CalendarFormatActionKind): 'send' | 'call' |
   return kind
 }
 
+function firstProductFromCsv(csv: string): string {
+  const parts = csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return parts[0] || ''
+}
+
+/** Short label from product_interest (first clause, capped) when CSV is empty. */
+function extractProductLabelFromInterest(pi: string): string {
+  const t = pi.replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  const cut = t.split(/[—–]/)[0].split(/\./)[0].trim()
+  const words = cut.split(/\s+/).filter(Boolean)
+  return words.slice(0, 8).join(' ')
+}
+
+function productLabelForClosing(input: Pick<FormatForCalendarInput, 'productCsv' | 'productInterest'>): string {
+  const fromCsv = firstProductFromCsv(input.productCsv || '')
+  if (fromCsv) return fromCsv.replace(/\s+/g, ' ').trim()
+  return extractProductLabelFromInterest(input.productInterest || '')
+}
+
+function closingSendEs(deliverable: string, productLabel: string): string {
+  const d = deliverable.replace(/\s+/g, ' ').trim()
+  const p = productLabel.replace(/\s+/g, ' ').trim()
+  const dl = d.toLowerCase()
+  if (d && p && (dl.includes('comparativa') || dl.includes('comparación'))) {
+    return `Enviar comparativa de ${p} con resultados de campo.`
+  }
+  if (d && p) {
+    return `Enviar ${d} (${p}) con resultados de campo.`
+  }
+  if (d) {
+    return `Enviar ${d} con resultados de campo.`
+  }
+  if (p) {
+    return `Enviar material de ${p} con resultados de campo.`
+  }
+  return 'Enviar material acordado con resultados de campo.'
+}
+
+function closingSendEn(deliverable: string, productLabel: string): string {
+  const d = deliverable.replace(/\s+/g, ' ').trim()
+  const p = productLabel.replace(/\s+/g, ' ').trim()
+  if (d && p) {
+    return `Send ${d} — ${p} with field results.`
+  }
+  if (d) {
+    return `Send ${d} with field results.`
+  }
+  if (p) {
+    return `Send ${p} materials with field results.`
+  }
+  return 'Send agreed materials with field results.'
+}
+
+function closingCallEs(deliverable: string): string {
+  const d = deliverable.replace(/\s+/g, ' ').trim()
+  if (d) {
+    return `Llamar para revisar ${d} y próximos pasos.`
+  }
+  return 'Llamar para revisar la comparativa y próximos pasos.'
+}
+
+function closingCallEn(deliverable: string): string {
+  const d = deliverable.replace(/\s+/g, ' ').trim()
+  if (d) {
+    return `Call to review ${d} and next steps.`
+  }
+  return 'Call to review the comparison and next steps.'
+}
+
+function closingFollowUpEs(): string {
+  return 'Dar seguimiento para alinear próximos pasos.'
+}
+
+function closingFollowUpEn(): string {
+  return 'Follow up to align on next steps.'
+}
+
+function closingMeetingEs(): string {
+  return 'Reunirse para revisar la visita y próximos pasos.'
+}
+
+function closingMeetingEn(): string {
+  return 'Meet to review the visit and next steps.'
+}
+
+/**
+ * Action line (second block): verb + object (+ product when relevant). No vague “performance / differentiation” filler.
+ */
+export function buildActionClosingLine(
+  kind: 'send' | 'call' | 'follow_up' | 'meeting',
+  input: Pick<FormatForCalendarInput, 'langEs' | 'deliverable' | 'productInterest' | 'productCsv'>,
+): string {
+  const langEs = input.langEs
+  const productLabel = productLabelForClosing(input)
+  const deliverable = (input.deliverable || '').trim()
+
+  switch (kind) {
+    case 'send':
+      return langEs ? closingSendEs(deliverable, productLabel) : closingSendEn(deliverable, productLabel)
+    case 'call':
+      return langEs ? closingCallEs(deliverable) : closingCallEn(deliverable)
+    case 'follow_up':
+      return langEs ? closingFollowUpEs() : closingFollowUpEn()
+    case 'meeting':
+      return langEs ? closingMeetingEs() : closingMeetingEn()
+  }
+}
+
+/** @deprecated Use {@link buildActionClosingLine} with deliverable / product hints. */
 export function closingLineFor(
   kind: 'send' | 'call' | 'follow_up' | 'meeting',
   langEs: boolean,
 ): string {
-  if (langEs) {
-    switch (kind) {
-      case 'send':
-        return 'Enviar la comparativa para respaldar desempeño y diferenciación.'
-      case 'call':
-        return 'Llamar para revisar la comparativa y obtener retroalimentación.'
-      case 'follow_up':
-        return 'Dar seguimiento para mantener la conversación activa.'
-      case 'meeting':
-        return 'Reunirse para alinear próximos pasos y despejar dudas.'
-    }
-  }
-  switch (kind) {
-    case 'send':
-      return 'Send the comparison to support performance and differentiation.'
-    case 'call':
-      return 'Call to review the comparison and get feedback.'
-    case 'follow_up':
-      return 'Follow up to keep the conversation moving.'
-    case 'meeting':
-      return 'Meet to align on next steps and open questions.'
-  }
+  return buildActionClosingLine(kind, { langEs })
 }
 
 /**
@@ -97,13 +196,19 @@ export function buildCalendarContext(input: BuildCalendarContextInput): string {
 }
 
 /**
- * Final calendar description: optional context paragraph + deterministic closing from action type.
+ * Final calendar description: optional context paragraph + action line (verb + object + product when relevant).
  */
 export function formatForCalendar(
   actionType: CalendarFormatActionKind,
   structured: FormatForCalendarInput,
 ): string {
-  const closing = closingLineFor(normalizeClosingKind(actionType), structured.langEs)
+  const kind = normalizeClosingKind(actionType)
+  const closing = buildActionClosingLine(kind, {
+    langEs: structured.langEs,
+    deliverable: structured.deliverable,
+    productInterest: structured.productInterest,
+    productCsv: structured.productCsv,
+  })
   const ctx = structured.contextParagraph.replace(/\s+/g, ' ').trim()
   if (!ctx) return closing
   return `${ctx}\n\n${closing}`.trim()

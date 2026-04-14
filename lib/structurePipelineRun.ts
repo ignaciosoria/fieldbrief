@@ -35,6 +35,7 @@ import {
 import { type NormalizedActionType } from './normalizedActions'
 import { normalizeNextStepTitleStrict } from './normalizeNextStepTitle'
 import { mergePromotedInsightsIntoCrmFull, sanitizeAdditionalSteps } from './sanitizeAdditionalSteps'
+import { ensureStandaloneProblemInsight } from './filterInsightLines'
 import { isNoClearFollowUpLine } from './noFollowUp'
 import { normalizeProductField } from './productField'
 import {
@@ -629,6 +630,9 @@ function applyCalendarDescriptionFormatting(
   const calendarDescription = formatForCalendar(kind, {
     contextParagraph: ctx,
     langEs,
+    deliverable: (result.primaryActionStructured?.object || '').trim(),
+    productInterest: cc.productInterest,
+    productCsv: (result.product || '').trim(),
   })
   return { ...result, calendarDescription }
 }
@@ -673,10 +677,11 @@ export function runStructurePipelineOnMappedBody(
   r = applyStructureResponsePostProcessing(r, timeZone, userNow, detectedLanguage, rawNote)
   r = applyServerCalendarResolution(r, timeZone, userNow)
   const sanitizeResult = sanitizeAdditionalSteps(r.additionalSteps, { noteLanguage: detectedLanguage })
+  const merged = mergePromotedInsightsIntoCrmFull(r.crmFull, sanitizeResult.promotedInsights)
   return {
     ...r,
     additionalSteps: sanitizeResult.steps,
-    crmFull: mergePromotedInsightsIntoCrmFull(r.crmFull, sanitizeResult.promotedInsights),
+    crmFull: ensureStandaloneProblemInsight(merged, r.commercialContext?.problem, 5),
   }
 }
 
