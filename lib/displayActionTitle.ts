@@ -1,4 +1,9 @@
 import { cleanCalendarTitle } from './calendarTitle'
+import {
+  isSoftFollowUpTiming,
+  softFollowUpLabel,
+  type SoftFollowUpTiming,
+} from './calendarSoftTiming'
 
 function pad2(n: number) {
   return n.toString().padStart(2, '0')
@@ -85,6 +90,10 @@ export type PrimaryDisplayTitleInput = {
   nextStepTitle: string
   nextStepDate: string
   nextStepTimeHint: string
+  /** follow_up soft window (no fixed MM/DD until calendar). */
+  nextStepSoftTiming?: string
+  /** When true, use Spanish labels for soft timing. */
+  spanish?: boolean
 }
 
 /**
@@ -98,6 +107,14 @@ export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const mmdd = (r.nextStepDate || '').trim()
   const hint = (r.nextStepTimeHint || '').trim()
   const hasDate = /^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)
+  const softRaw = (r.nextStepSoftTiming || '').trim()
+  if (!hasDate && isSoftFollowUpTiming(softRaw)) {
+    const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, !!r.spanish)
+    const em = '\u2014'
+    return formatRelativeDayWordsForDisplay(
+      label ? `${base} ${em} ${label}` : base,
+    )
+  }
   if (!hasDate && !hint) return formatRelativeDayWordsForDisplay(base)
 
   const dateLabel = hasDate ? formatDisplayDateLabelForPrimary(mmdd) : ''

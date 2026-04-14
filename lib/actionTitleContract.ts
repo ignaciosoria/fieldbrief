@@ -8,6 +8,8 @@ const EM = '\u2014'
 export type ActionStructuredFields = {
   /** Primary: call | send | meeting | follow_up. Supporting: send | email | call | other */
   type: string
+  /** When type is follow_up: soft | medium | hard (opportunity strength). */
+  followUpStrength?: string
   verb: string
   /**
    * What is being sent (send/email): e.g. updated program, quote, samples.
@@ -77,8 +79,8 @@ function stripLeadingActionVerbFromContactName(contact: string, langEs: boolean)
   const s = contact.trim()
   if (!s) return ''
   const re = langEs
-    ? /^(llamar|call|reunirse|seguimiento|phone)\s+/i
-    : /^(call|meet|phone|ring|follow[-\s]?up)\s+/i
+    ? /^(llamar|call|reunirse|dar\s+seguimiento|seguimiento\s+con|seguimiento|phone)\s+/i
+    : /^(call|meet|phone|ring|follow[-\s]?up\s+with|follow[-\s]?up)\s+/i
   const stripped = s.replace(re, '').trim()
   return stripped || s
 }
@@ -87,11 +89,15 @@ function stripLeadingActionVerbFromContactName(contact: string, langEs: boolean)
  * Primary next-step line (no calendar date/time suffix).
  * Send/email: Verb + Object — Company (never use contact as the send object).
  * Call / follow_up / meeting: Verb + Contact — Company.
+ * follow_up: “Follow up with [contact]” / “Seguimiento con [contact]” (natural phrasing, not “Follow up [name]”).
  */
 export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLanguage: string): string {
   const langEs = isSpanish(noteLanguage)
   const t = fields.type.trim().toLowerCase()
   let verb = fields.verb.trim()
+  if (t === 'follow_up') {
+    verb = langEs ? 'Seguimiento con' : 'Follow up with'
+  }
   let object = fields.object.trim()
   const contact = fields.contact.trim()
   const company = fields.company.trim()

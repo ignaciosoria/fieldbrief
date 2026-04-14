@@ -1,5 +1,11 @@
 import { normalizeProductField, productFieldToList } from './productField'
 import { isNoClearFollowUpResult } from './noFollowUp'
+import {
+  isSoftFollowUpTiming,
+  softFollowUpLabel,
+  type SoftFollowUpTiming,
+} from './calendarSoftTiming'
+import { detectNoteLanguage } from './detectNoteLanguage'
 
 /** Fields needed to build the clipboard / share CRM note (matches app StructureResult). */
 export type CrmSalesNoteInput = {
@@ -17,6 +23,8 @@ export type CrmSalesNoteInput = {
   nextStepTitle: string
   nextStepDate?: string
   nextStepTimeHint?: string
+  /** Soft follow-up window when no fixed date (paste uses label, not a guessed day). */
+  nextStepSoftTiming?: string
   notes: string
   additionalSteps: {
     action: string
@@ -192,9 +200,18 @@ function formatCrmNextStepBullet(
   timeHint: string,
   customer: string,
   contactCompany: string,
+  softTiming?: string,
+  spanish?: boolean,
 ): string {
   const base = stripCompanyFromActionLine(action, customer, contactCompany)
-  const timing = formatNaturalTimingPhrase(resolvedDate.trim(), timeHint.trim(), new Date())
+  const d = resolvedDate.trim()
+  const mmddOk = /^\d{2}\/\d{2}\/\d{4}$/.test(d)
+  const soft = (softTiming || '').trim()
+  if (!mmddOk && isSoftFollowUpTiming(soft)) {
+    const label = softFollowUpLabel(soft as SoftFollowUpTiming, !!spanish)
+    return label ? `${base} (${label})`.replace(/\s+/g, ' ').trim() : base
+  }
+  const timing = formatNaturalTimingPhrase(d, timeHint.trim(), new Date())
   if (!timing) return base
   return `${base} ${timing}`.replace(/\s+/g, ' ').trim()
 }
@@ -258,6 +275,7 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
   }
 
   const noFollowUp = isNoClearFollowUpResult(r)
+  const langEs = detectNoteLanguage(`${r.nextStep || ''} ${r.nextStepTitle || ''}`) === 'spanish'
   if (!noFollowUp) {
     if (primary) {
       pushBullet(
@@ -267,6 +285,8 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
           (r.nextStepTimeHint || '').trim(),
           cust,
           company,
+          r.nextStepSoftTiming,
+          langEs,
         ),
       )
     }

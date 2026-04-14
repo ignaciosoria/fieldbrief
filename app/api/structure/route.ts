@@ -65,6 +65,10 @@ type StructureBody = {
   nextStepAction: string
   nextStepTarget: string
   nextStepDate: string
+  /** follow_up soft window when no fixed date (this_week | next_week | in_2_weeks). */
+  nextStepSoftTiming: string
+  /** follow_up only: soft | medium | hard */
+  followUpStrength: string
   /** Relative time phrase only (tomorrow, next Friday, next week). Server resolves to MM/DD/YYYY. */
   nextStepTimeReference: string
   nextStepTimeHint: string
@@ -753,6 +757,8 @@ function normalizeNoFollowUpStructure(result: StructureBody): StructureBody {
     nextStepAction: '',
     nextStepTarget: '',
     nextStepDate: '',
+    nextStepSoftTiming: '',
+    followUpStrength: '',
     nextStepTimeReference: '',
     nextStepTimeHint: '',
     additionalSteps: [],
@@ -805,10 +811,12 @@ function applyServerCalendarResolution(
     nextStepTimeHintOut: hint,
   })
 
+  const canonical = /^\d{2}\/\d{2}\/\d{4}$/.test((nextDate || '').trim())
   return {
     ...result,
     nextStepDate: nextDate,
     nextStepTimeHint: hint,
+    nextStepSoftTiming: canonical ? '' : (result.nextStepSoftTiming || '').trim(),
   }
 }
 
@@ -962,6 +970,8 @@ export async function POST(request: Request) {
       nextStepAction: result.nextStepAction.trim(),
       nextStepTarget: dedupeConsecutiveRepeatedWords(titleCaseWords(result.nextStepTarget)),
       nextStepDate: result.nextStepDate.trim(),
+      nextStepSoftTiming: (result.nextStepSoftTiming || '').trim(),
+      followUpStrength: (result.followUpStrength || '').trim(),
       nextStepTimeReference: (result.nextStepTimeReference || '').trim(),
       nextStepTimeHint: result.nextStepTimeHint.trim(),
       nextStepConfidence: result.nextStepConfidence,

@@ -21,6 +21,14 @@ import {
 } from '../lib/sanitizeAdditionalSteps'
 import type { ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
+import {
+  clampSoftTimingToStrength,
+  isSoftFollowUpTiming,
+  normalizeSoftFollowUpTiming,
+  nextWeekdayMmdd,
+  resolveFollowUpStrengthWithDefault,
+  resolveSoftFollowUpToMmdd,
+} from '../lib/calendarSoftTiming'
 import { buildPrimaryDisplayTitle, buildSupportingDisplayTitle } from '../lib/displayActionTitle'
 import { filterInsightsToContextOnly, normalizePendingInsightTense } from '../lib/filterInsightLines'
 import { buildCalendarEventDescriptionBody } from '../lib/calendarEventDescription'
@@ -104,6 +112,10 @@ type StructureResult = {
   nextStepAction: string
   nextStepTarget: string
   nextStepDate: string
+  /** Soft follow-up window when primary is follow_up with no fixed MM/DD (this_week | next_week | in_2_weeks). */
+  nextStepSoftTiming: string
+  /** follow_up only: soft | medium | hard */
+  followUpStrength: string
   /** Natural-language timing from the note; server resolves to nextStepDate using client timezone. */
   nextStepTimeReference: string
   nextStepTimeHint: string
@@ -135,6 +147,8 @@ const emptyResult: StructureResult = {
   nextStepAction: '',
   nextStepTarget: '',
   nextStepDate: '',
+  nextStepSoftTiming: '',
+  followUpStrength: '',
   nextStepTimeReference: '',
   nextStepTimeHint: '',
   nextStepConfidence: '',
@@ -391,6 +405,8 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     ),
     nextStepTimeReference: (base.nextStepTimeReference || '').trim(),
     nextStepDate: (base.nextStepDate || '').trim(),
+    nextStepSoftTiming: (base.nextStepSoftTiming || '').trim(),
+    followUpStrength: (base.followUpStrength || '').trim(),
     actions: normalizeActions(base.actions),
   }
 }
@@ -581,14 +597,23 @@ function calendarEventTitle(r: StructureResult): string {
 function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
   const title = calendarEventTitle(r)
   const mmddRaw = (r.nextStepDate || '').trim()
-  const mmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(mmddRaw)
-    ? mmddRaw
+  let mmdd = mmddRaw
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) {
+    const soft = (r.nextStepSoftTiming || '').trim()
+    if (isSoftFollowUpTiming(soft)) {
+      mmdd = resolveSoftFollowUpToMmdd(soft)
+    } else {
+      mmdd = isoDateToMmddyyyy(todayIsoDate())
+    }
+  }
+  const mmddResolved = /^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)
+    ? mmdd
     : isoDateToMmddyyyy(todayIsoDate())
   const hintRaw = (r.nextStepTimeHint || '').trim()
   const details = buildCalendarDescription(r)
   const loc = stripEmojisForCalendar((r.location || '').trim())
   if (!hintRaw) {
-    const adj = ensureCalendarDateTimeNotPast(mmdd, 12, 0)
+    const adj = ensureCalendarDateTimeNotPast(mmddResolved, 12, 0)
     return {
       title,
       dateMmddyyyy: adj.dateMmddyyyy,
@@ -598,7 +623,7 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
     }
   }
   const resolved = resolveTimeFromHint(hintRaw)
-  const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
+  const adj = ensureCalendarDateTimeNotPast(mmddResolved, resolved.hour, resolved.minute)
   return {
     title,
     dateMmddyyyy: adj.dateMmddyyyy,
@@ -664,7 +689,7 @@ function supportingCalendarEventTitleWithContext(
 
   if (!verb) {
     const vm = fallbackBase.match(
-      /^(Call|Send|Email|Llamar|Enviar|Follow up|Meet|Reuni[oó]n|Dar seguimiento)\b/i,
+      /^(Call|Send|Email|Llamar|Enviar|Follow up with|Follow up|Seguimiento con|Meet|Reuni[oó]n|Dar seguimiento)\b/i,
     )
     if (vm) verb = vm[1]
   }
@@ -772,6 +797,17 @@ function confidenceLow(r: StructureResult): boolean {
   return (r.nextStepConfidence || '').toLowerCase() === 'low'
 }
 
+function primaryTitleForDisplay(r: StructureResult) {
+  return {
+    nextStep: r.nextStep,
+    nextStepTitle: r.nextStepTitle,
+    nextStepDate: r.nextStepDate,
+    nextStepTimeHint: r.nextStepTimeHint,
+    nextStepSoftTiming: r.nextStepSoftTiming,
+    spanish: detectNoteLanguage(`${r.nextStep || ''} ${r.nextStepTitle || ''}`) === 'spanish',
+  }
+}
+
 function namesRoughlyMatch(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
@@ -785,6 +821,7 @@ function contactTargetMismatch(r: StructureResult): boolean {
 
 /** Date sheet only when no date and extraction confidence is low (otherwise defaults apply). */
 function needsNextStepDatePick(r: StructureResult): boolean {
+  if ((r.nextStepSoftTiming || '').trim()) return false
   return !(r.nextStepDate || '').trim() && confidenceLow(r)
 }
 
@@ -941,8 +978,8 @@ function dateOptionThisWeekFriday(): string {
 }
 
 /**
- * When confidence is medium or high, do not prompt: align target to contact and default missing date
- * to a sensible "this week" anchor (nearest Friday).
+ * When confidence is medium or high, do not prompt: align target to contact; set soft follow-up timing
+ * for exploratory follow_up (no fixed day), or next weekday for call/meeting/send without a date.
  */
 function applyConfidenceDefaults(res: StructureResult): StructureResult {
   if (isNoClearFollowUpResult(res)) return res
@@ -953,16 +990,61 @@ function applyConfidenceDefaults(res: StructureResult): StructureResult {
   if (contact && target && !namesRoughlyMatch(contact, target)) {
     out = { ...out, nextStepTarget: dedupeConsecutiveRepeatedWords(contact) }
   }
-  if (!(out.nextStepDate || '').trim()) {
-    const defaultDate = dateOptionThisWeekFriday()
-    out = { ...out, nextStepDate: defaultDate }
-    if (out.primaryActionStructured) {
+
+  const hasMmdd = /^\d{2}\/\d{2}\/\d{4}$/.test((out.nextStepDate || '').trim())
+  const pt = (out.primaryActionStructured?.type || '').toLowerCase()
+
+  if (!hasMmdd) {
+    if (pt === 'follow_up') {
+      const strength = resolveFollowUpStrengthWithDefault(
+        out.followUpStrength || out.primaryActionStructured?.followUpStrength,
+      )
+      const proposed = normalizeSoftFollowUpTiming(out.nextStepSoftTiming)
+      const soft = clampSoftTimingToStrength(strength, proposed)
       out = {
         ...out,
-        primaryActionStructured: { ...out.primaryActionStructured, date: defaultDate },
+        followUpStrength: strength,
+        nextStepDate: '',
+        nextStepSoftTiming: soft,
+        ambiguityFlags: (out.ambiguityFlags || []).filter(
+          (x) => !x.toLowerCase().includes('unclear_date'),
+        ),
+      }
+      if (out.primaryActionStructured) {
+        out = {
+          ...out,
+          primaryActionStructured: {
+            ...out.primaryActionStructured,
+            followUpStrength: strength,
+            date: '',
+            time: out.primaryActionStructured.time || '',
+          },
+        }
+      }
+    } else if (pt === 'call' || pt === 'meeting' || pt === 'send') {
+      const d = nextWeekdayMmdd()
+      out = {
+        ...out,
+        nextStepDate: d,
+        nextStepSoftTiming: '',
+        followUpStrength: '',
+        primaryActionStructured: out.primaryActionStructured
+          ? { ...out.primaryActionStructured, date: d, followUpStrength: undefined }
+          : undefined,
+      }
+    } else {
+      let soft = normalizeSoftFollowUpTiming(out.nextStepSoftTiming)
+      if (!soft) soft = 'next_week'
+      out = {
+        ...out,
+        nextStepDate: '',
+        nextStepSoftTiming: soft,
       }
     }
+  } else if ((out.nextStepSoftTiming || '').trim()) {
+    out = { ...out, nextStepSoftTiming: '' }
   }
+
   return out
 }
 
@@ -1233,7 +1315,9 @@ function hasStrongVerb(nextStep: string) {
   const verbs = [
     'call',
     'send',
+    'follow up with',
     'follow up',
+    'seguimiento con',
     'visit',
     'confirm',
     'review',
@@ -1411,7 +1495,8 @@ function forceLanguage(nextStep: string, originalText: string) {
     return nextStep
       .replace(/^call/i, 'Llamar')
       .replace(/^send/i, 'Enviar')
-      .replace(/^follow up/i, 'Hacer seguimiento')
+      .replace(/^follow up with/i, 'Seguimiento con')
+      .replace(/^follow up/i, 'Seguimiento con')
       .replace(/^schedule/i, 'Agendar')
   }
 
@@ -1419,7 +1504,8 @@ function forceLanguage(nextStep: string, originalText: string) {
     return nextStep
       .replace(/^llamar/i, 'Call')
       .replace(/^enviar/i, 'Send')
-      .replace(/^hacer seguimiento/i, 'Follow up')
+      .replace(/^seguimiento con/i, 'Follow up with')
+      .replace(/^hacer seguimiento/i, 'Follow up with')
       .replace(/^agendar/i, 'Schedule')
   }
 
@@ -1468,8 +1554,11 @@ function finalizeNextStepFields(res: StructureResult, sourceText: string): Struc
       nextStepAction: '',
       nextStepTarget: '',
       nextStepDate: '',
+      nextStepSoftTiming: '',
+      followUpStrength: '',
       nextStepTimeHint: '',
       additionalSteps: [],
+      primaryActionStructured: undefined,
     }
   }
   const base = { ...res }
@@ -1554,7 +1643,15 @@ function calendarResultFingerprint(r: StructureResult): string {
   const steps = (r.additionalSteps || [])
     .map((s) => `${s.action}|${s.resolvedDate}|${s.timeHint}`)
     .join('¦')
-  return [r.nextStep || '', r.nextStepDate || '', r.nextStepTimeHint || '', r.contact || '', steps].join('§')
+  return [
+    r.nextStep || '',
+    r.nextStepDate || '',
+    r.nextStepSoftTiming || '',
+    r.followUpStrength || '',
+    r.nextStepTimeHint || '',
+    r.contact || '',
+    steps,
+  ].join('§')
 }
 
 function getCalendarStorageKey(r: StructureResult, noteId: string | null | undefined): string {
@@ -1761,6 +1858,8 @@ export default function Home() {
               crmText: n.crm_text || '',
               crmFull: normalizeCrmFull(n.crm_full),
               calendarDescription: n.calendar_description || '',
+              nextStepSoftTiming: n.next_step_soft_timing || '',
+              followUpStrength: n.follow_up_strength || '',
             }),
           }))
           setSavedNotes(mapped)
@@ -1941,6 +2040,8 @@ export default function Home() {
       crm_text: res.crmText,
       crm_full: res.crmFull,
       calendar_description: res.calendarDescription,
+      next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
+      follow_up_strength: (res.followUpStrength || '').trim() || null,
     }
 
     console.log('Saving note...')
@@ -2013,7 +2114,17 @@ export default function Home() {
   const commitPendingDatePick = (mmdd: string) => {
     const p = pendingDatePick
     if (!p) return
-    let merged: StructureResult = { ...p.result, nextStepDate: mmdd }
+    let merged: StructureResult = {
+      ...p.result,
+      nextStepDate: mmdd,
+      nextStepSoftTiming: '',
+    }
+    if (merged.primaryActionStructured) {
+      merged = {
+        ...merged,
+        primaryActionStructured: { ...merged.primaryActionStructured, date: mmdd },
+      }
+    }
     merged = stripAmbiguityFlagsAfterDateConfirm(merged)
     setPendingDatePick(null)
     setResult(merged)
@@ -2231,6 +2342,8 @@ export default function Home() {
           crm_text: res.crmText,
           crm_full: res.crmFull,
           calendar_description: res.calendarDescription,
+          next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
+          follow_up_strength: (res.followUpStrength || '').trim() || null,
         })
         .eq('id', id)
         .eq('user_id', sessionEmail)
@@ -3476,7 +3589,7 @@ export default function Home() {
                           {isNoClearFollowUpResult(result) ? 'Follow-up' : 'NEXT STEP'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
-                          {buildPrimaryDisplayTitle(result)}
+                          {buildPrimaryDisplayTitle(primaryTitleForDisplay(result))}
                         </p>
                       </div>
 
@@ -3759,7 +3872,7 @@ export default function Home() {
                           </p>
                         </div>
                         <p className="text-[19px] font-bold leading-snug text-[#111111]">
-                          {buildPrimaryDisplayTitle(selectedNote.result)}
+                          {buildPrimaryDisplayTitle(primaryTitleForDisplay(selectedNote.result))}
                         </p>
                       </div>
 
@@ -3949,7 +4062,7 @@ export default function Home() {
                         note.result.contact || note.result.customer || '—'
                       const stepLine =
                         note.result.nextStep || note.result.nextStepTitle
-                          ? buildPrimaryDisplayTitle(note.result)
+                          ? buildPrimaryDisplayTitle(primaryTitleForDisplay(note.result))
                           : '—'
                       return (
                         <li key={note.id}>

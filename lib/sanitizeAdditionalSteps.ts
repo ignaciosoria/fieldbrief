@@ -9,7 +9,7 @@ const MAX_ACTION_WORDS = 8
 const EM = '\u2014'
 
 const LEADING_VERB_RE =
-  /^(Call|Send|Email|Llamar|Enviar|Follow\s+up|Meet|Reuni[oó]n|Dar\s+seguimiento)\s*$/i
+  /^(Call|Send|Email|Llamar|Enviar|Follow\s+up(?:\s+with)?|Seguimiento\s+con|Meet|Reuni[oó]n|Dar\s+seguimiento)\s*$/i
 
 /** Verb-only titles with no who/what — not executable. */
 const GENERIC_VERB_ONLY_LINE = new RegExp(
@@ -51,7 +51,8 @@ const TRAILING_AFTER_VERB_RE = new RegExp(
       'Email',
       'Llamar',
       'Enviar',
-      'Follow\\s+up',
+      'Follow\\s+up(?:\\s+with)?',
+      'Seguimiento\\s+con',
       'Meet',
       'Check',
       'Review',
@@ -119,7 +120,7 @@ function looksLikeNarrative(action: string): boolean {
 
 /**
  * Allowed leading verbs only (English or Spanish notes).
- * "Follow up" and "Seguimiento" / "Dar seguimiento" count as action opens.
+ * "Follow up with" / "Seguimiento con" (and legacy "Follow up" / "Dar seguimiento") count as action opens.
  */
 export function actionStartsWithAllowedVerb(action: string, spanish: boolean): boolean {
   const t = action.trim()
@@ -129,19 +130,20 @@ export function actionStartsWithAllowedVerb(action: string, spanish: boolean): b
       /^enviar\b/i.test(t) ||
       /^email\b/i.test(t) ||
       /^llamar\b/i.test(t) ||
+      /^seguimiento\s+con\b/i.test(t) ||
       /^seguimiento\b/i.test(t) ||
       /^dar\s+seguimiento\b/i.test(t) ||
       /^reunirse\b/i.test(t) ||
       /^reuni[oó]n\b/i.test(t) ||
       /^meet\b/i.test(t) ||
-      /^follow\s+up\b/i.test(t)
+      /^follow\s+up(?:\s+with)?\b/i.test(t)
     )
   }
   return (
     /^send\b/i.test(t) ||
     /^email\b/i.test(t) ||
     /^call\b/i.test(t) ||
-    /^follow\s+up\b/i.test(t) ||
+    /^follow\s+up(?:\s+with)?\b/i.test(t) ||
     /^meet\b/i.test(t)
   )
 }
@@ -232,7 +234,7 @@ function legacyHasExecutableTarget(action: string): boolean {
   }
 
   const mLegacy = actionNorm.match(
-    /^(Call|Send|Email|Llamar|Enviar|Follow\s+up|Meet|Reuni[oó]n|Dar\s+seguimiento)\s+(.+)$/i,
+    /^(Call|Send|Email|Llamar|Enviar|Follow\s+up(?:\s+with)?|Seguimiento\s+con|Meet|Reuni[oó]n|Dar\s+seguimiento)\s+(.+)$/i,
   )
   if (mLegacy) {
     const rest = mLegacy[2].trim()
@@ -284,7 +286,7 @@ function weakActionToPromotedInsight(step: AdditionalStep, spanish: boolean): st
 function repairLegacySupportingTitle(raw: string): string {
   let s = raw.replace(/\s+/g, ' ').trim()
   const fix = s.match(
-    /^(Call|Llamar|Enviar|Send|Email|Follow up|Meet|Reuni[oó]n|Dar seguimiento)\s*[—\-]\s*([^—(]+?)\s*\(([^)]+)\)\s*$/i,
+    /^(Call|Llamar|Enviar|Send|Email|Follow up(?: with)?|Seguimiento con|Meet|Reuni[oó]n|Dar seguimiento)\s*[—\-]\s*([^—(]+?)\s*\(([^)]+)\)\s*$/i,
   )
   if (fix) {
     const verb = fix[1].trim()

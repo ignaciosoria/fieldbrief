@@ -8,6 +8,10 @@ import {
 } from './actionTitleContract'
 import { hasExplicitMeetScheduleIntent, isNarrativeMeetingDiscussionContext } from './actionIntentGuard'
 import { filterInsightsToContextOnly, normalizePendingInsightTense } from './filterInsightLines'
+import {
+  normalizeFollowUpStrength,
+  normalizeSoftFollowUpTiming,
+} from './calendarSoftTiming'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -24,6 +28,12 @@ export type StructuredPrimary = {
   date: string
   /** HH:mm or "" */
   time: string
+  /**
+   * When type is follow_up and date is empty: relative intent (no fixed calendar date until user adds to calendar).
+   */
+  softTiming: string
+  /** soft | medium | hard when type is follow_up */
+  followUpStrength: string
 }
 
 export type StructuredSupporting = {
@@ -147,6 +157,11 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     .filter(Boolean)
     .slice(0, 5)
 
+  const softTiming = normalizeSoftFollowUpTiming(pr.soft_timing ?? pr.softTiming)
+  const followUpStrength = normalizeFollowUpStrength(
+    pr.follow_up_strength ?? pr.followUpStrength,
+  )
+
   return {
     primary: {
       type: pType,
@@ -155,6 +170,8 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
       company: str(pr.company),
       date: str(pr.date),
       time: str(pr.time),
+      softTiming,
+      followUpStrength,
     },
     supporting: supporting.slice(0, 2),
     crmSummary,
@@ -233,9 +250,9 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean): string {
       case 'meeting':
         return 'Reunirse'
       case 'follow_up':
-        return 'Llamar'
+        return 'Seguimiento con'
       default:
-        return 'Llamar'
+        return 'Seguimiento con'
     }
   }
   switch (type) {
@@ -246,9 +263,9 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean): string {
     case 'meeting':
       return 'Meet'
     case 'follow_up':
-      return 'Call'
+      return 'Follow up with'
     default:
-      return 'Call'
+      return 'Follow up with'
   }
 }
 
@@ -286,6 +303,10 @@ export type StructureBodyLike = {
   nextStepAction: string
   nextStepTarget: string
   nextStepDate: string
+  /** Soft follow-up window when primary is follow_up with no fixed MM/DD/YYYY. */
+  nextStepSoftTiming: string
+  /** soft | medium | hard when primary follow_up */
+  followUpStrength: string
   nextStepTimeReference: string
   nextStepTimeHint: string
   nextStepConfidence: 'high' | 'medium' | 'low'
@@ -323,6 +344,8 @@ export function structuredPayloadToStructureBody(
   const verb = verbForPrimary(primary.type, langEs)
   const nextStepDate = normalizeDateMmdd(primary.date)
   const nextStepTimeHint = normalizeTimeHint(primary.time)
+  const softTimingRaw = normalizeSoftFollowUpTiming(primary.softTiming)
+  const followUpStrengthRaw = normalizeFollowUpStrength(primary.followUpStrength)
 
   const object =
     primary.type === 'send'
@@ -337,6 +360,9 @@ export function structuredPayloadToStructureBody(
     company,
     date: nextStepDate,
     time: nextStepTimeHint,
+    ...(primary.type === 'follow_up' && followUpStrengthRaw
+      ? { followUpStrength: followUpStrengthRaw }
+      : {}),
   }
   const nextStep = buildPrimaryBaseTitle(primaryStructured, noteLanguage)
   const nextStepTitle = nextStep
@@ -352,7 +378,9 @@ export function structuredPayloadToStructureBody(
   ) {
     ambiguityFlags.push('unclear_contact')
   }
-  if (!nextStepDate) ambiguityFlags.push('unclear_date')
+  if (!nextStepDate && primary.type !== 'follow_up') {
+    ambiguityFlags.push('unclear_date')
+  }
 
   const additionalSteps: AdditionalStep[] = supporting.map((s) => {
     const sd = normalizeDateMmdd(s.date)
@@ -412,6 +440,9 @@ export function structuredPayloadToStructureBody(
     nextStepAction,
     nextStepTarget,
     nextStepDate,
+    nextStepSoftTiming:
+      primary.type === 'follow_up' && !nextStepDate.trim() ? softTimingRaw : '',
+    followUpStrength: primary.type === 'follow_up' ? followUpStrengthRaw : '',
     nextStepTimeReference: '',
     nextStepTimeHint,
     nextStepConfidence,
