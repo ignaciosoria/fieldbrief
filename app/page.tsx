@@ -27,6 +27,12 @@ import {
 import { buildPrimaryBaseTitle, type ActionStructuredFields } from '../lib/actionTitleContract'
 import { supportingStructuredActionLine } from '../lib/structuredAiMapper'
 import {
+  buildCalendarContext,
+  formatForCalendar,
+  type CalendarFormatActionKind,
+  type CommercialContextFields,
+} from '../lib/calendarDescriptionFormat'
+import {
   clampSoftTimingToStrength,
   isSoftFollowUpTiming,
   normalizeSoftFollowUpTiming,
@@ -136,6 +142,8 @@ type StructureResult = {
   crmFull: string[]
   /** API field; used when building calendar event body (not shown as its own screen section). */
   calendarDescription: string
+  /** Structured lines for deterministic calendar context (from structure API); absent on legacy notes. */
+  commercialContext?: CommercialContextFields
   additionalSteps: AdditionalStep[]
   /** Ordered actions with backend-assigned primary; mirrors API `actions`. */
   actions: NormalizedAction[]
@@ -355,8 +363,27 @@ function getClientNowIso(): string {
   return new Date().toISOString()
 }
 
+function normalizeCommercialContext(raw: unknown): CommercialContextFields | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const problem = typeof o.problem === 'string' ? o.problem.trim() : ''
+  const productInterest =
+    typeof o.productInterest === 'string'
+      ? o.productInterest.trim()
+      : typeof o.product_interest === 'string'
+        ? o.product_interest.trim()
+        : ''
+  const barrier = typeof o.barrier === 'string' ? o.barrier.trim() : ''
+  if (!problem && !productInterest && !barrier) return undefined
+  return { problem, productInterest, barrier }
+}
+
 function normalizeStructureResult(m: StructureResult): StructureResult {
-  const { dealer: _legacyDealer, ...mRest } = m as StructureResult & { dealer?: string }
+  const { dealer: _legacyDealer, ...mRest } = m as StructureResult & {
+    dealer?: string
+    commercial_context?: unknown
+  }
   const base = {
     ...emptyResult,
     ...mRest,
@@ -381,6 +408,10 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     stripDealerLinesFromCrmFull(base.crmFull.map(normalizeLegacyInsightLine)),
     sanitizeStepsResult.promotedInsights,
   )
+  const commercialContext = normalizeCommercialContext(
+    (base as StructureResult & { commercial_context?: unknown }).commercialContext ??
+      (base as StructureResult & { commercial_context?: unknown }).commercial_context,
+  )
   return {
     ...base,
     customer,
@@ -393,6 +424,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     ).slice(0, 5),
     crmText: stripExecutionBlocksFromCrmNarrative(stripDealerClosingFromCrmText(base.crmText)),
     calendarDescription: (base.calendarDescription || '').trim(),
+    ...(commercialContext !== undefined ? { commercialContext } : {}),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
     nextStep: dedupeConsecutiveRepeatedWords(base.nextStep),
     additionalSteps: sanitizeStepsResult.steps,
@@ -726,7 +758,15 @@ function supportingStepCalendarTitle(step: AdditionalStep, r: StructureResult): 
   return supportingCalendarEventTitleWithContext(raw || 'Follow-up', step, r)
 }
 
-/** One calendar event for exactly one supporting step — same 3-section description as primary. */
+function supportingCalendarFormatKind(step: AdditionalStep): CalendarFormatActionKind {
+  const st = (step.supportingType || 'other').toLowerCase()
+  if (st === 'send' || st === 'email' || st === 'call' || st === 'other') {
+    return st as CalendarFormatActionKind
+  }
+  return 'other'
+}
+
+/** One calendar event for exactly one supporting step — deterministic body for that action type. */
 function buildCalendarOpenOptsForSupportingStep(
   r: StructureResult,
   step: AdditionalStep,
@@ -758,6 +798,17 @@ function buildCalendarOpenOptsForSupportingStep(
   const timeOpts: CalendarTimeInput = hintRaw
     ? { kind: 'clock', hour: adj.hour, minute: adj.minute }
     : { kind: 'allday' }
+  const supportingDetails = formatForCalendar(supportingCalendarFormatKind(step), {
+    contextParagraph: buildCalendarContext({
+      contact: r.contact,
+      company: r.contactCompany || r.customer,
+      problem: r.commercialContext?.problem,
+      productInterest: r.commercialContext?.productInterest,
+      barrier: r.commercialContext?.barrier,
+      langEs,
+    }),
+    langEs,
+  })
   const details = buildCalendarEventDescriptionBody(
     {
       customer: r.customer,
@@ -767,7 +818,7 @@ function buildCalendarOpenOptsForSupportingStep(
       product: r.product,
       location: r.location,
       acreage: r.acreage,
-      calendarDescription: r.calendarDescription,
+      calendarDescription: supportingDetails,
       crmText: r.crmText,
       crmFull: r.crmFull || [],
       notes: r.notes,

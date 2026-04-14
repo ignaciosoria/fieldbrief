@@ -200,8 +200,11 @@ export const STRUCTURED_AI_TEST_CASES: StructuredAiTestCase[] = [
       ],
       crm_summary:
         'Sarah is the buyer. Table grape block showing smaller fruit vs last year. She asked for the yield comparison PDF today. Mike handles trials — need his read before budget.',
-      calendar_description:
-        'Sarah at Sunrise Growers is evaluating programs on table grapes.\n\nFruit calibre is down versus last season.\n\nSend the yield comparison PDF today; call Mike next week to align on trial results and budget.',
+      commercial_context: {
+        problem: 'Fruit calibre is down versus last season',
+        product_interest: 'Evaluating foliar and nutrition program fit on table grapes',
+        barrier: 'Budget approval waiting on trial results',
+      },
       insights: [
         'Evaluating foliar and nutrition program fit on table grapes — product interest.',
         'Fruit size and yield below last season — main agronomic pressure.',
@@ -233,8 +236,11 @@ export const STRUCTURED_AI_TEST_CASES: StructuredAiTestCase[] = [
       supporting: [],
       crm_summary:
         'Relationship visit. Ana is open to ideas but replanting decision is next season. No immediate SKU discussion.',
-      calendar_description:
-        'Ana at Hillside Co-op — relationship check after a short visit.\n\nStay in touch ahead of replanting conversation next season.',
+      commercial_context: {
+        problem: 'Replant decision is next season',
+        product_interest: 'Programs for next replant',
+        barrier: 'No budget line this quarter',
+      },
       insights: [
         'General interest in programs for next replant — product angle for later.',
         'Timing tied to replant cycle — no acute agronomic firefight.',
@@ -275,8 +281,11 @@ export const STRUCTURED_AI_TEST_CASES: StructuredAiTestCase[] = [
       ],
       crm_summary:
         'Laura pidió la propuesta técnica para el bloque norte. Carlos decide el pedido; hay presión de competidor.',
-      calendar_description:
-        'Laura en Los Pinos necesita la propuesta técnica para el bloque norte.\n\nLlamar a Carlos para avanzar el pedido.',
+      commercial_context: {
+        problem: 'Presión de competidor',
+        product_interest: 'Programa para bloque norte',
+        barrier: 'Pedido sujeto a aprobación de Carlos',
+      },
       insights: [
         'Interés en programa para bloque norte — producto.',
         'Competidor ya cotizó — problema de presión.',
@@ -308,8 +317,11 @@ export const STRUCTURED_AI_TEST_CASES: StructuredAiTestCase[] = [
       supporting: [],
       crm_summary:
         'Priya wants a joint walk of irrigation zones before final quote. Competitive bid in play.',
-      calendar_description:
-        'Priya at Riverbend — site visit to review irrigation layout before quoting.\n\nFocus on zones that drive the quote.',
+      commercial_context: {
+        problem: 'Layout issues driving water waste',
+        product_interest: 'Irrigation upgrade project',
+        barrier: 'Quote held until walkthrough',
+      },
       insights: [
         'Irrigation upgrade project — product scope discussion.',
         'Layout issues driving water waste — operational pain.',
@@ -358,8 +370,11 @@ export const STRUCTURED_AI_TEST_CASES: StructuredAiTestCase[] = [
       ],
       crm_summary:
         'James needs the contract today. Warehouse timing is tight. Emma is waiting on lab results for the south field.',
-      calendar_description:
-        'James at Coastal Ag needs the contract today.\n\nWarehouse slot and Emma’s lab readouts are blocking execution.',
+      commercial_context: {
+        problem: 'South field showing low potassium',
+        product_interest: 'Contract and soil data package',
+        barrier: 'Delivery window not confirmed',
+      },
       insights: [
         'Contract and soil data package — product deliverables.',
         'South field showing low potassium — agronomic issue.',

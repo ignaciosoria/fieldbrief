@@ -41,6 +41,12 @@ import {
   parseStructuredAiPayload,
   structuredPayloadToStructureBody,
 } from './structuredAiMapper'
+import {
+  buildCalendarContext,
+  formatForCalendar,
+  type CalendarFormatActionKind,
+  type CommercialContextFields,
+} from './calendarDescriptionFormat'
 
 export type MentionedEntity = { name: string; type: string }
 
@@ -69,6 +75,7 @@ export type StructureBody = {
   crmText: string
   crmFull: string[]
   calendarDescription: string
+  commercialContext?: CommercialContextFields
   additionalSteps: AdditionalStep[]
   primaryActionStructured?: ActionStructuredFields
 }
@@ -590,6 +597,42 @@ function applyServerCalendarResolution(
   }
 }
 
+function applyCalendarDescriptionFormatting(
+  result: StructureBody,
+  noteLanguage: string,
+): StructureBody {
+  if (result.commercialContext === undefined) {
+    return result
+  }
+  const langEs = noteLanguage.trim().toLowerCase() === 'spanish'
+  const cc = result.commercialContext
+  const ctx = buildCalendarContext({
+    contact: result.contact,
+    company: result.contactCompany || result.customer,
+    problem: cc.problem,
+    productInterest: cc.productInterest,
+    barrier: cc.barrier,
+    langEs,
+  })
+  const rawType = (result.primaryActionStructured?.type || '').trim().toLowerCase()
+  const allowed = new Set<CalendarFormatActionKind>([
+    'send',
+    'call',
+    'meeting',
+    'follow_up',
+    'email',
+    'other',
+  ])
+  const kind = (
+    allowed.has(rawType as CalendarFormatActionKind) ? rawType : 'follow_up'
+  ) as CalendarFormatActionKind
+  const calendarDescription = formatForCalendar(kind, {
+    contextParagraph: ctx,
+    langEs,
+  })
+  return { ...result, calendarDescription }
+}
+
 function applyStructureResponsePostProcessing(
   result: StructureBody,
   timeZone: string,
@@ -613,7 +656,7 @@ function applyStructureResponsePostProcessing(
       primaryActionStructured: r.primaryActionStructured,
     }),
   }
-  return r
+  return applyCalendarDescriptionFormatting(r, noteLanguage)
 }
 
 /**

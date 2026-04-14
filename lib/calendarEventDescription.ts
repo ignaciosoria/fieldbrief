@@ -1,6 +1,7 @@
 /**
  * Plain-text bodies for calendar export (Google / Apple / ICS).
- * Short natural paragraphs: no section labels; see CALENDAR_DESCRIPTION in structuredAiPrompt.
+ * New notes: description is built in `calendarDescriptionFormat` + pipeline; this module dedupes
+ * against the title and handles legacy labeled sections (Context / Goal / Opportunity).
  */
 
 import { detectNoteLanguage } from './detectNoteLanguage'
@@ -424,8 +425,7 @@ function formatStructuredSections(
 }
 
 /**
- * Calendar event body: 2–4 short plain paragraphs (no section labels).
- * Does not repeat the event title or timing; concise and scannable.
+ * Calendar event body for export: dedupes against title, strips timing; supports legacy section headers.
  */
 export function buildCalendarEventDescriptionBody(
   data: CalendarEventDescriptionFields,

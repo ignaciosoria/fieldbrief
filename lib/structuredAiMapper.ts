@@ -16,8 +16,10 @@ import {
   normalizeFollowUpStrength,
   normalizeSoftFollowUpTiming,
 } from './calendarSoftTiming'
-import { normalizeCalendarDescriptionField } from './calendarEventDescription'
 import { MAX_SUPPORTING_ACTIONS } from './sanitizeAdditionalSteps'
+import type { CommercialContextFields } from './calendarDescriptionFormat'
+
+export type { CommercialContextFields } from './calendarDescriptionFormat'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -59,8 +61,8 @@ export type StructuredAiPayload = {
   supporting: StructuredSupporting[]
   /** Multi-line CRM narrative (maps to StructureBody.crmText). */
   crmSummary: string
-  /** Calendar event body: plain paragraphs; see CALENDAR_DESCRIPTION in prompt. */
-  calendarDescription: string
+  /** Short commercial facts for deterministic calendar context (see COMMERCIAL_CONTEXT in prompt). */
+  commercialContext: CommercialContextFields
   /** Short insight bullets — no action verbs, not full sentences */
   insights: string[]
 }
@@ -157,9 +159,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
 
   const crmRaw = str(o.crm_summary || o.crmSummary)
   const crmSummary = normalizeCrmSummaryLines(crmRaw)
-  const calendarDescription = normalizeCalendarDescriptionField(
-    str(o.calendar_description || o.calendarDescription),
-  )
+  const commercialContext = parseCommercialContext(o)
 
   const insightsIn = Array.isArray(o.insights) ? o.insights : []
   const insights = insightsIn
@@ -186,8 +186,21 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     },
     supporting: supporting.slice(0, MAX_SUPPORTING_ACTIONS),
     crmSummary,
-    calendarDescription,
+    commercialContext,
     insights,
+  }
+}
+
+function parseCommercialContext(o: Record<string, unknown>): CommercialContextFields {
+  const cc = o.commercial_context ?? o.commercialContext
+  if (!cc || typeof cc !== 'object') {
+    return { problem: '', productInterest: '', barrier: '' }
+  }
+  const c = cc as Record<string, unknown>
+  return {
+    problem: truncateWords(str(c.problem), 28),
+    productInterest: truncateWords(str(c.product_interest ?? c.productInterest), 28),
+    barrier: truncateWords(str(c.barrier), 28),
   }
 }
 
@@ -351,7 +364,10 @@ export type StructureBodyLike = {
   acreage: string
   crmText: string
   crmFull: string[]
+  /** Filled after primary ranking in the structure pipeline (see `applyCalendarDescriptionFormatting`). */
   calendarDescription: string
+  /** Structured fields for calendar context; pipeline builds `calendarDescription`. */
+  commercialContext?: CommercialContextFields
   additionalSteps: AdditionalStep[]
   primaryActionStructured?: ActionStructuredFields
 }
@@ -368,7 +384,7 @@ export function structuredPayloadToStructureBody(
     ? alignStructuredPayloadWithNote(rawNote, payload)
     : payload
   const langEs = isSpanish(noteLanguage)
-  const { primary, supporting, insights, crmSummary, calendarDescription } = aligned
+  const { primary, supporting, insights, crmSummary, commercialContext } = aligned
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()
@@ -494,7 +510,8 @@ export function structuredPayloadToStructureBody(
     acreage: '',
     crmText: crmSummary,
     crmFull,
-    calendarDescription,
+    calendarDescription: '',
+    commercialContext,
     additionalSteps,
     primaryActionStructured: primaryStructured,
   }
