@@ -11,7 +11,7 @@ import {
   insightLineTooVagueForCalendarDescription,
 } from './filterInsightLines'
 
-export const CALENDAR_EVENT_DESC_LINE_MAX = 72
+export const CALENDAR_EVENT_DESC_LINE_MAX = 300
 /** Max paragraphs when building or normalizing the event description body. */
 export const CALENDAR_BODY_MAX_PARAGRAPHS = 4
 

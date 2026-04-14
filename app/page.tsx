@@ -686,7 +686,7 @@ function buildCalendarDescription(data: StructureResult): string {
   // ✅ SAME path as supporting actions: derive from structured fields, not pre-written API string
   const langEs =
     detectNoteLanguage(
-      `${data.nextStep || ''} ${data.nextStepTitle || ''} ${data.crmText || ''} ${data.summary || ''} ${(data.crmFull || []).join('\n')}`,
+      `${data.crmText || ''} ${data.summary || ''} ${(data.crmFull || []).join('\n')} ${data.nextStep || ''} ${data.nextStepTitle || ''}`,
     ) === 'spanish'
   const primaryActionType = data.primaryActionStructured?.type || data.nextStepAction || 'other'
   const kind: CalendarFormatActionKind =
@@ -880,7 +880,10 @@ function buildCalendarOpenOptsForSupportingStep(
   r: StructureResult,
   step: AdditionalStep,
 ): CalendarOpenOpts {
-  const langEs = detectNoteLanguage(`${r.nextStep || ''} ${step.action || ''}`) === 'spanish'
+  const langEs =
+    detectNoteLanguage(
+      `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''} ${step.action || ''}`,
+    ) === 'spanish'
   let title: string
   if (step.supportingType && step.label?.trim()) {
     const base = stripEmojisForCalendar(
