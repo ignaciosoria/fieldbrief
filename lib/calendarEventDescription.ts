@@ -450,6 +450,8 @@ export function buildCalendarEventDescriptionBody(
   if (raw) {
     const plain = normalizePlainCalendarDescription(raw, options)
     if (plain.trim()) return plain
+    const rawClean = raw.replace(/\s+/g, ' ').trim()
+    if (rawClean) return rawClean
   }
 
   return buildFallbackSections(data, options)
