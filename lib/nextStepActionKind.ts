@@ -19,7 +19,8 @@ export function isHigherValueKindThanSend(k: ActionKind): boolean {
 }
 
 /**
- * Infer kind from action text (EN/ES). Order: meeting → call → follow_up → send → other.
+ * Infer kind from action text (EN/ES). Order: meeting → call → **send** → follow_up → other.
+ * Send is checked before follow_up so phrases like "send a follow-up" classify as send.
  */
 export function inferActionKind(action: string): ActionKind {
   const a = action.toLowerCase()
@@ -56,15 +57,17 @@ export function inferActionKind(action: string): ActionKind {
   ) {
     return 'call'
   }
-  if (/\b(follow[-\s]?up|seguimiento|check[-\s]?in|touch\s*base|recheck)\b/i.test(a)) {
-    return 'follow_up'
-  }
   if (
-    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?|share|deliver|delivery|compartir|entregar)\b/i.test(
+    /\b(send|enviar|env[íi]a|email|e-mail|mail|deck|quote|cotiz|brochure|material|pdf|manda|mandar|forward|adjuntar|pasar(\s+el)?|deliver|delivery|compartir|entregar)\b/i.test(
       a,
-    )
+    ) ||
+    /\bshare\s+/i.test(a) ||
+    (/\bshare\b/i.test(a) && !/\bmarket\s+share\b/i.test(a))
   ) {
     return 'send'
+  }
+  if (/\b(follow[-\s]?up|seguimiento|check[-\s]?in|touch\s*base|recheck)\b/i.test(a)) {
+    return 'follow_up'
   }
   return 'other'
 }

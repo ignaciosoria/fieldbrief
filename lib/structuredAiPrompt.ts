@@ -108,6 +108,8 @@ Use **follow_up** (not call) when the note is mainly:
 - **No urgency** and **no** explicit phone or meeting action,
 - A **check-in** or **touch base** style situation (“stay in touch”, “keep the conversation going”, “revisit next season”) — **unless** the note explicitly says to call or meet.
 
+**8c-send — SEND vs follow_up (hard rule):** If the note contains **any** explicit send/share language — English **send**, **share** (as a verb), **forward**, **email** (verb); Spanish **enviar**, **mandar**, **compartir**, or similar — **primary.type** MUST be **send**, **never** **follow_up**. **follow_up** is only for **exploratory** next steps with **no** concrete send, call, or meeting action. If both a vague check-in and a send appear, **send** wins.
+
 **Do not** choose **call** just because the rep **visited**, **met**, or **spoke with** someone; that background alone is **not** a call trigger. In those exploratory cases use **follow_up**.
 
 The app renders follow-ups as **Follow up with [contact] — [company]** (English) and **Seguimiento con [contact] — [company]** (Spanish). Put **only the person’s name** in **contact** — no extra verbs like “dar seguimiento” or “follow up”.
