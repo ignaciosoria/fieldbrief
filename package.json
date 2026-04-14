@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:structured-ai": "npx --yes tsx scripts/structured-ai-harness.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

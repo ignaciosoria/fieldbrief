@@ -7,7 +7,11 @@ import {
   type ActionStructuredFields,
 } from './actionTitleContract'
 import { hasExplicitMeetScheduleIntent, isNarrativeMeetingDiscussionContext } from './actionIntentGuard'
-import { filterInsightsToContextOnly, normalizePendingInsightTense } from './filterInsightLines'
+import {
+  ensureMinimumCrmFullInsights,
+  filterInsightsToContextOnly,
+  normalizePendingInsightTense,
+} from './filterInsightLines'
 import {
   normalizeFollowUpStrength,
   normalizeSoftFollowUpTiming,
@@ -55,7 +59,7 @@ export type StructuredAiPayload = {
   supporting: StructuredSupporting[]
   /** Multi-line CRM narrative (maps to StructureBody.crmText). */
   crmSummary: string
-  /** Calendar event body: 3 labeled sections; see CALENDAR_DESCRIPTION in prompt. */
+  /** Calendar event body: plain paragraphs; see CALENDAR_DESCRIPTION in prompt. */
   calendarDescription: string
   /** Short insight bullets — no action verbs, not full sentences */
   insights: string[]
@@ -444,15 +448,22 @@ export function structuredPayloadToStructureBody(
     }
   })
 
-  const crmFull = filterInsightsToContextOnly(
-    insights
-      .map((line) => line.replace(/^[.!?]+\s*$/, '').trim())
-      .filter(Boolean)
-      .map((line) => normalizePendingInsightTense(line, langEs))
-      .map((line) =>
-        langEs ? line.replace(/\bde el\b/gi, 'del').replace(/\s+/g, ' ').trim() : line,
-      ),
-  ).slice(0, 5)
+  const processedInsightLines = insights
+    .map((line) => line.replace(/^[.!?]+\s*$/, '').trim())
+    .filter(Boolean)
+    .map((line) => normalizePendingInsightTense(line, langEs))
+    .map((line) =>
+      langEs ? line.replace(/\bde el\b/gi, 'del').replace(/\s+/g, ' ').trim() : line,
+    )
+
+  const crmFull = ensureMinimumCrmFullInsights({
+    crmFull: filterInsightsToContextOnly(processedInsightLines).slice(0, 5),
+    rawInsightLines: processedInsightLines,
+    crmSummary,
+    note: rawNote?.trim() ?? '',
+    maxLines: 5,
+    langEs,
+  })
 
   /** More ambiguity flags → lower confidence; prompts only when low + critical gaps (see app/page.tsx). */
   const nextStepConfidence: 'high' | 'medium' | 'low' =

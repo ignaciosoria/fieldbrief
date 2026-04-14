@@ -31,9 +31,9 @@ SCHEMA (exact top-level keys):
     }
   ],
   "crm_summary": "string — multi-line CRM narrative; see CRM_SUMMARY",
-  "calendar_description": "string — calendar event body; see CALENDAR_DESCRIPTION",
+  "calendar_description": "string — calendar event body (plain paragraphs; see CALENDAR_DESCRIPTION)",
   "insights": [
-    "short bullet — capture commercial signals per rule 9 (product interest, problem, barrier, expansion when present)",
+    "at least one line whenever the note has substantive context — see rule 9 / 9c / 10",
     "short bullet"
   ]
 }
@@ -61,17 +61,19 @@ CALENDAR_DESCRIPTION (field: **calendar_description**) — **required string** (
 
 Plain text for the **calendar event description** (Google / Apple / ICS). **Separate** from **crm_summary** and **insights**. This is what the rep sees when opening the calendar invite — not the CRM essay.
 
-**Structure — exactly three labeled sections** (English or Spanish labels per note language):
-
-1. **Context:** (or **Contexto:**) — One or two **full sentences**: situation, what happened on the visit, account state. **Never** a bare name or noun fragment (wrong: \`Marcos\`; right: \`Marcos is the agronomist pushing for a trial on the north block.\`).
-2. **Goal / Focus:** (or **Objetivo / Enfoque:**) — One or two **full sentences**: what to prepare, ask, or focus on **during** this action (call, visit, send). **Not** the calendar time (that is on the event already).
-3. **Opportunity:** (or **Oportunidad:**) — One sentence on expansion, referral, upsell, or upside — or a single **—** if none.
+**Format — natural language only (no section labels):**
+- **2–4** short paragraphs or lines, separated by blank lines or single line breaks.
+- **Do not** use headings or labels such as **Context**, **Goal**, **Focus**, **Opportunity**, **Contexto**, **Objetivo**, **Oportunidad**, or colons that act as section titles.
+- **First** block: who the contact is and what the situation is (account state, what happened, why it matters) — full short sentences, never a bare name fragment.
+- **Middle** (optional): one or two blocks with concrete detail the rep needs (problem, barrier, product angle, competitor, trial status) — **specific** facts, not filler.
+- **Last** block: what this **single** calendar action is for — the purpose of the **primary** next step (the call, send, visit, or follow-up). **One** action only — do **not** list secondary tasks here (those are separate calendar events elsewhere).
+- Same language as the note.
 
 **Rules:**
-- **3–6 lines total** (including labels); each section usually **one** line after the colon.
-- **Do not** repeat the event title line or restate **date/time** (\`tomorrow\`, \`next week\`, \`MM/DD\`, \`mañana\`, etc.) — timing lives on the calendar event fields.
-- **Concise and scannable** — someone reviewing **5 seconds** before a call should know **why**, **what to focus on**, and **where the upside is**.
-- Same language as the note (English labels for English notes; Spanish labels for Spanish notes).
+- **Do not** repeat the event **title** string or paraphrase it as the whole description.
+- **Do not** restate **date/time** (\`tomorrow\`, \`next week\`, \`MM/DD\`, \`mañana\`, etc.) — timing lives on the calendar event fields.
+- **No** generic slogans ("great opportunity", "positive momentum", "follow up on relationship") — write **concrete** phrases tied to the note.
+- **Quick to scan** — a rep opening the invite for a few seconds should see **who**, **what matters**, and **why this action**.
 
 ---
 
@@ -175,6 +177,7 @@ For **call**, **meeting**, or **send**, set **follow_up_strength** and **soft_ti
    - **Expansion opportunity** — upsell, more acres, new blocks, referral, add-on farm, adjacent deal — **only** if the note signals it.
    If you hit the **5-line** limit, **remove** weaker or redundant lines **before** dropping any line that reflects one of these **when the note explicitly stated it**. **Forbidden (still):** hollow hype without substance ("positive momentum", "potential closing", Spanish "cierre potencial", "buen momentum") — replace with **specific** facts; do **not** use that rule to skip **9a** categories when the note contains them.
 9b. **Tense (insights only):** Phrase everything as **still pending / in-flight** when work is **not** done. **Never** use past-tense verbs that sound like the rep already finished a task that is still outstanding — wrong: "Sent …", "Called …", "Followed up …", "Checked …", "Emailed …" (English); wrong: "Envié …", "Llamé …", "Enviado …" (Spanish). Prefer **need / waiting / requested / outstanding** style: e.g. "Needs updated program sent", "Waiting for review", "Requested pricing", "Buyer wants deck", "Still outstanding: contract", "Pendiente entrega de programa", "A la espera de respuesta" — forms that reflect **reality**, not completed work.
-10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background). **calendar_description** may be "" only when there is nothing to say beyond the title; otherwise always fill the three sections per CALENDAR_DESCRIPTION.
+9c. **INSIGHTS vs ACTIONS (independence):** Correct **primary** and **supporting** rows do **not** replace **insights**. You must **still** output **insights** whenever the note has meaningful commercial or account context. **Never** return an empty **insights** array just because actions are complete — actions and insights are **separate** outputs. **Never** omit commercial signals (product interest, problem, barrier, expansion per **9a**) to keep the JSON shorter when those signals appear in the note.
+10. Use "" for unknown strings. **supporting** may be **[]** only when there are no secondary tasks. **insights:** use **[]** **only** when the note is **trivial** (no substantive business context — e.g. a meaningless test string or a bare ping with no account facts). **Whenever** the note mentions products, problems, barriers, opportunities, relationships, volumes, trials, org changes, or any account narrative worth remembering — **insights** MUST be a **non-empty** array with **at least one** string (up to **5**). If you are unsure, prefer **at least one** concrete insight line over an empty array. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background). **calendar_description** may be "" only when there is nothing to say beyond the title; otherwise always fill **2–4** plain paragraphs per CALENDAR_DESCRIPTION.
 
 Return ONLY valid JSON.`

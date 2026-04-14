@@ -1,6 +1,6 @@
 /**
  * Plain-text bodies for calendar export (Google / Apple / ICS).
- * Structured as three scannable sections: Context, Goal / Focus, Opportunity.
+ * Short natural paragraphs: no section labels; see CALENDAR_DESCRIPTION in structuredAiPrompt.
  */
 
 import { detectNoteLanguage } from './detectNoteLanguage'
@@ -11,8 +11,8 @@ import {
 } from './filterInsightLines'
 
 export const CALENDAR_EVENT_DESC_LINE_MAX = 72
-/** Total lines in the event description (3 section headers + up to 3 content lines). */
-export const CALENDAR_BODY_MAX_LINES = 6
+/** Max paragraphs when building or normalizing the event description body. */
+export const CALENDAR_BODY_MAX_PARAGRAPHS = 4
 
 export type CalendarEventDescriptionFields = {
   customer: string
@@ -137,19 +137,9 @@ function productDisplayItems(crop: string, productCsv: string): string[] {
 
 type SectionKey = 'context' | 'goal' | 'opportunity'
 
-function sectionLabel(langEs: boolean, key: SectionKey): string {
-  if (langEs) {
-    if (key === 'context') return 'Contexto:'
-    if (key === 'goal') return 'Objetivo / Enfoque:'
-    return 'Oportunidad:'
-  }
-  if (key === 'context') return 'Context:'
-  if (key === 'goal') return 'Goal / Focus:'
-  return 'Opportunity:'
-}
-
 /**
- * Parse model output with labeled sections (EN or ES).
+ * Parse legacy model output with labeled sections (EN or ES).
+ * Rendered as plain paragraphs without labels (see {@link formatStructuredSections}).
  */
 export function parseStructuredCalendarSections(
   raw: string,
@@ -187,6 +177,33 @@ export function parseStructuredCalendarSections(
   }
   if (!out.context && !out.goal && !out.opportunity) return null
   return out
+}
+
+function splitPlainCalendarBlocks(raw: string): string[] {
+  const t = raw.replace(/\r\n/g, '\n').trim()
+  if (!t) return []
+  if (/\n\n/.test(t)) {
+    return t.split(/\n\n+/).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  }
+  return t.split('\n').map((s) => s.trim()).filter(Boolean)
+}
+
+/**
+ * Natural-language calendar body from the model (no Context / Goal / Opportunity headers).
+ */
+function normalizePlainCalendarDescription(
+  raw: string,
+  options: BuildCalendarEventDescriptionOptions,
+): string {
+  const phrases = options.excludeActionPhrases.map((p) => stripEmojisForCalendar(p)).filter(Boolean)
+  const picked = new Set<string>()
+  const out: string[] = []
+  for (const block of splitPlainCalendarBlocks(raw)) {
+    if (out.length >= CALENDAR_BODY_MAX_PARAGRAPHS) break
+    const line = sanitizeSectionBody(block, phrases, picked, options.eventTitle)
+    if (line) out.push(line)
+  }
+  return out.join('\n\n').trim()
 }
 
 function isLooseFragment(s: string): boolean {
@@ -271,8 +288,8 @@ function buildFallbackSections(
     ? 'Situación de cuenta a revisar en la visita.'
     : 'Account situation to review from the visit.'
   const looseGoal = langEs
-    ? 'Preparar el enfoque comercial según el contexto del cliente.'
-    : 'Prepare the commercial angle using the account context above.'
+    ? 'Dirigir la conversación según la situación descrita primero.'
+    : 'Steer the conversation using the situation described first.'
   const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
 
   let context = ''
@@ -351,12 +368,7 @@ function buildFallbackSections(
   goal = ensureSentenceOrDash(goal, langEs, looseGoal)
   opportunity = ensureSentenceOrDash(opportunity, langEs, looseOpp)
 
-  const lines = [
-    `${sectionLabel(langEs, 'context')} ${context}`,
-    `${sectionLabel(langEs, 'goal')} ${goal}`,
-    `${sectionLabel(langEs, 'opportunity')} ${opportunity}`,
-  ]
-  return lines.join('\n').trim()
+  return [context, goal, opportunity].join('\n\n').trim()
 }
 
 function crmTextChunks(raw: string): string[] {
@@ -381,8 +393,8 @@ function formatStructuredSections(
     ? 'Situación de cuenta a revisar en la visita.'
     : 'Account situation to review from the visit.'
   const looseGoal = langEs
-    ? 'Preparar el enfoque comercial según el contexto del cliente.'
-    : 'Prepare the commercial angle using the account context above.'
+    ? 'Dirigir la conversación según la situación descrita primero.'
+    : 'Steer the conversation using the situation described first.'
   const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
 
   let context = sanitizeSectionBody(
@@ -408,23 +420,17 @@ function formatStructuredSections(
   goal = ensureSentenceOrDash(goal, langEs, looseGoal)
   opportunity = ensureSentenceOrDash(opportunity, langEs, looseOpp)
 
-  const lines = [
-    `${sectionLabel(langEs, 'context')} ${context}`,
-    `${sectionLabel(langEs, 'goal')} ${goal}`,
-    `${sectionLabel(langEs, 'opportunity')} ${opportunity}`,
-  ]
-  return lines.slice(0, CALENDAR_BODY_MAX_LINES).join('\n').trim()
+  return [context, goal, opportunity].join('\n\n').trim()
 }
 
 /**
- * Calendar event body: three labeled sections (Context, Goal / Focus, Opportunity).
+ * Calendar event body: 2–4 short plain paragraphs (no section labels).
  * Does not repeat the event title or timing; concise and scannable.
  */
 export function buildCalendarEventDescriptionBody(
   data: CalendarEventDescriptionFields,
   options: BuildCalendarEventDescriptionOptions,
 ): string {
-  const { eventTitle } = options
   const langHint = detectNoteLanguage(
     [
       data.calendarDescription,
@@ -435,9 +441,15 @@ export function buildCalendarEventDescriptionBody(
   )
   const langEs = langHint === 'spanish'
 
-  const parsed = parseStructuredCalendarSections((data.calendarDescription || '').trim())
+  const raw = (data.calendarDescription || '').trim()
+  const parsed = parseStructuredCalendarSections(raw)
   if (parsed && (parsed.context || parsed.goal || parsed.opportunity)) {
     return formatStructuredSections(parsed, langEs, options)
+  }
+
+  if (raw) {
+    const plain = normalizePlainCalendarDescription(raw, options)
+    if (plain.trim()) return plain
   }
 
   return buildFallbackSections(data, options)

@@ -562,7 +562,7 @@ function stripEmojisForCalendar(s: string): string {
 }
 
 /**
- * Calendar export body: Context / Goal / Opportunity (see `buildCalendarEventDescriptionBody`).
+ * Calendar export body: short plain paragraphs (see `buildCalendarEventDescriptionBody`).
  * Does not repeat the event title; timing lives on the event fields.
  */
 function buildCalendarDescription(data: StructureResult): string {
