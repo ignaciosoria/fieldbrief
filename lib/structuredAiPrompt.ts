@@ -28,11 +28,27 @@ SCHEMA (exact top-level keys):
       "time": "HH:mm or empty string"
     }
   ],
+  "crm_summary": "string — multi-line CRM narrative; see CRM_SUMMARY",
   "insights": [
     "short bullet",
     "short bullet"
   ]
 }
+
+---
+
+CRM_SUMMARY (field: **crm_summary**) — required string (use "" only when the note has no substantive business context beyond a bare action)
+
+This is the **account narrative** for the CRM record. It is **separate** from action rows (**primary** / **supporting**) and from **insights** (do not duplicate the insights list here).
+
+**Quality bar**
+- Include **all** relevant business information from the note. **Do not drop** important names, numbers, orgs, constraints, or history to save space.
+- Prioritize: **relationships** (who knows whom, reporting lines, intros); **changes** (role moves, territory, policy, farm/operation changes); **sales activity** (who is pushing what, traction, volumes, trials); **strategic angle** (why this matters, competitive position, risk, upside).
+- **People movements:** who joined, left, moved from/to — when the note mentions them.
+- Write in clear, professional prose in the **same language as the note** (see the language line in the user message).
+- **Length:** **5–8 lines maximum**, separated by newline characters inside the string. Use **fewer lines** if the note is genuinely thin; **never** pad with generic filler. If the note is rich, use the full 5–8 lines before omitting material — **completeness beats shortness** when both conflict.
+
+**Style:** Full sentences or short paragraphs. No markdown bullets or leading \`-\` / \`*\` in **crm_summary**.
 
 ---
 
@@ -63,7 +79,7 @@ This field is **not optional** when the action is send or email. You must extrac
 
 STRICT RULES:
 
-1. NO full sentences, NO narrative summaries, NO explanations, NO "I will / we agreed / he said" phrasing.
+1. **primary**, **supporting**, **label**, and action **object** fields: telegraphic extraction only — NO full sentences, NO narrative, NO "I will / we agreed / he said" phrasing. **Exception:** **crm_summary** MUST be narrative prose per CRM_SUMMARY above.
 2. NO prose outside the JSON.
 3. primary.type must be exactly one of: call, send, meeting, follow_up (use underscores as shown).
 4. contact = name of the person the rep spoke with (counterparty), or "" if not clear. Never put the **thing being sent** in **contact** — use **object** for that. Never duplicate the deliverable string into **contact**.
@@ -73,8 +89,8 @@ STRICT RULES:
 7. supporting: at most **2** objects. For **send** or **email** rows, **object** is mandatory whenever the note names what is sent (same rules as primary). Prefer **object** (send/email) or **contact** (calls) over **label**. **label** = max 4–5 words fallback only, never a sentence.
 8. supporting.type: use **call** for a phone call (set **contact** = who to call; **object** = ""). Use **send** / **email** for things to send — and **always** set **object** to the deliverable when stated. Use **other** only when the action is not clearly send/email/call.
 8b. **primary.type = meeting** only when the note expresses a **future** meeting to schedule or attend (e.g. "let's meet Thursday", "schedule a meeting", "meet with Sarah", "site visit Tuesday"). **Never** use **meeting** for past scene-setting: "left the meeting", "after the meeting", "had a meeting", "in the meeting", "discussion about", "we talked", "spoke with", "review" as background — those are context, not a meeting task. For those, use **follow_up**, or **call** / **send** only when those verbs are explicit in the note. Do **not** invent a meeting from the words "meeting" or "discussion" alone.
-9. insights: max **4** strings. **Concrete situational context only** — what happened, what is blocked, volume, competitor facts, or what the buyer expects — in short telegraphic phrases (no narrative). **Forbidden:** vague labels like "interest in …", "positive momentum", "potential closing", or Spanish equivalents ("interés en …", "cierre potencial", "buen momentum") — prefer specifics (e.g. "Waiting on contract from legal", "Extra 80 ha farm in same deal"). **Context only:** never tasks. **Forbidden inside insights** (omit the line if it would contain): **send**, **call**, **follow up**, **meeting**, or Spanish equivalents (**enviar**, **llamar**, **seguimiento**, **reunión**). Insights must **never** describe actions.
+9. insights: max **5** strings (use fewer only if fewer distinct important facts exist). **Key insights** — each line must carry a **specific, non-obvious** fact or implication; omit lines that would be generic ("good relationship", "strong potential", "positive visit"). **Concrete situational context only** — blockers, competitor moves, buyer expectations, acreage/volume, pricing pressure — in short telegraphic phrases (not full paragraphs; that belongs in **crm_summary**). **Forbidden:** vague labels like "interest in …", "positive momentum", "potential closing", or Spanish equivalents ("interés en …", "cierre potencial", "buen momentum") — prefer specifics (e.g. "Waiting on contract from legal", "Extra 80 ha farm in same deal"). **Context only:** never tasks. **Forbidden inside insights** (omit the line if it would contain): **send**, **call**, **follow up**, **meeting**, or Spanish equivalents (**enviar**, **llamar**, **seguimiento**, **reunión**). Insights must **never** describe actions.
 9b. **Tense (insights only):** Phrase everything as **still pending / in-flight** when work is **not** done. **Never** use past-tense verbs that sound like the rep already finished a task that is still outstanding — wrong: "Sent …", "Called …", "Followed up …", "Checked …", "Emailed …" (English); wrong: "Envié …", "Llamé …", "Enviado …" (Spanish). Prefer **need / waiting / requested / outstanding** style: e.g. "Needs updated program sent", "Waiting for review", "Requested pricing", "Buyer wants deck", "Still outstanding: contract", "Pendiente entrega de programa", "A la espera de respuesta" — forms that reflect **reality**, not completed work.
-10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies.
+10. Use "" for unknown strings, [] for empty supporting or insights when nothing applies. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background).
 
 Return ONLY valid JSON.`

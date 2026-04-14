@@ -857,7 +857,7 @@ export async function POST(request: Request) {
     const detectedLanguage = detectNoteLanguage(note)
     const languageEnforcement =
       `The input note is in ${detectedLanguage}. ` +
-      `ALL string values in the JSON (primary, supporting, insights) MUST be in ${detectedLanguage} — the same language as the input note — with no exceptions.`
+      `ALL string values in the JSON (primary, supporting, crm_summary, insights) MUST be in ${detectedLanguage} — the same language as the input note — with no exceptions.`
     const systemContent = `${languageEnforcement}\n\n${STRUCTURED_AI_SYSTEM_PROMPT}`
 
     console.log('[structure] detected language:', detectedLanguage)

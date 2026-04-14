@@ -392,7 +392,7 @@ export type SanitizeAdditionalStepsResult = {
 export function mergePromotedInsightsIntoCrmFull(
   crmFull: string[],
   promoted: string[],
-  maxLines = 4,
+  maxLines = 5,
 ): string[] {
   const p = promoted.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean)
   if (!p.length) return crmFull.slice(0, maxLines)

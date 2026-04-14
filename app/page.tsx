@@ -371,7 +371,7 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
     crop: '',
     crmFull: filterInsightsToContextOnly(
       crmFullMerged.map((l) => normalizePendingInsightTense(l, langEsInsights)),
-    ).slice(0, 4),
+    ).slice(0, 5),
     crmText: stripDealerClosingFromCrmText(base.crmText),
     calendarDescription: (base.calendarDescription || '').trim(),
     nextStepTitle: dedupeConsecutiveRepeatedWords(capitalizeNextStepTitleFirst(base.nextStepTitle)),
@@ -767,6 +767,11 @@ function hasReliabilityFlag(r: StructureResult, id: string): boolean {
   return (r.ambiguityFlags || []).some((x) => x.toLowerCase().includes(idl))
 }
 
+/** Only show clarification sheets when the pipeline marked the extraction as uncertain. */
+function confidenceLow(r: StructureResult): boolean {
+  return (r.nextStepConfidence || '').toLowerCase() === 'low'
+}
+
 function namesRoughlyMatch(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
@@ -778,26 +783,26 @@ function contactTargetMismatch(r: StructureResult): boolean {
   return !namesRoughlyMatch(c, t)
 }
 
-/** Only when no date was extracted; never re-prompt because of unclear_date if a date string exists. */
+/** Date sheet only when no date and extraction confidence is low (otherwise defaults apply). */
 function needsNextStepDatePick(r: StructureResult): boolean {
-  return !(r.nextStepDate || '').trim()
+  return !(r.nextStepDate || '').trim() && confidenceLow(r)
 }
 
-/** Only prompt when no contact after processing; never block on unclear_contact if a name is present. */
+/** Contact sheet only when missing and confidence is low. */
 function needsContactPick(r: StructureResult): boolean {
-  return !(r.contact || '').trim()
+  return !(r.contact || '').trim() && confidenceLow(r)
 }
 
 /**
- * Follow-up target sheet: only when **contact** and **nextStepTarget** disagree after processing.
- * Do not use ambiguity flags or entity count alone — those fire on most real notes (org + person + context).
+ * Follow-up target sheet: contact vs target disagree — only when confidence is low
+ * (medium/high resolve by aligning target to contact without prompting).
  */
 function needsNextStepTargetPick(r: StructureResult): boolean {
-  return contactTargetMismatch(r)
+  return contactTargetMismatch(r) && confidenceLow(r)
 }
 
 function needsContactCompanyPick(r: StructureResult): boolean {
-  return !(r.contactCompany || '').trim()
+  return !(r.contactCompany || '').trim() && confidenceLow(r)
 }
 
 function stripAmbiguityFlagsAfterContactConfirm(r: StructureResult): StructureResult {
@@ -860,7 +865,8 @@ function hasVagueNextStepWording(line: string): boolean {
   return false
 }
 
-function needsNextStepClarifyPick(r: StructureResult): boolean {
+/** Heuristic for vague / wrong-perspective next step — only used when confidence is low. */
+function nextStepNeedsClarifyHeuristic(r: StructureResult): boolean {
   if (isNoClearFollowUpResult(r)) return false
   const step = (r.nextStep || '').trim()
   const title = (r.nextStepTitle || '').trim()
@@ -869,6 +875,10 @@ function needsNextStepClarifyPick(r: StructureResult): boolean {
   if (isClientApplyNextStepStart(step) || isClientApplyNextStepStart(title)) return true
   if (hasClarifyStrongActionVerb(line)) return false
   return hasVagueNextStepWording(line)
+}
+
+function needsNextStepClarifyPick(r: StructureResult): boolean {
+  return confidenceLow(r) && nextStepNeedsClarifyHeuristic(r)
 }
 
 function applyQuickNextStepClarify(
@@ -928,6 +938,32 @@ function dateOptionTomorrow(): string {
 /** Nearest upcoming Friday (today if Friday). */
 function dateOptionThisWeekFriday(): string {
   return formatLocalMmDdYyyy(getNextDayOfWeek(new Date(), 5))
+}
+
+/**
+ * When confidence is medium or high, do not prompt: align target to contact and default missing date
+ * to a sensible "this week" anchor (nearest Friday).
+ */
+function applyConfidenceDefaults(res: StructureResult): StructureResult {
+  if (isNoClearFollowUpResult(res)) return res
+  if (confidenceLow(res)) return res
+  let out: StructureResult = { ...res }
+  const contact = (out.contact || '').trim()
+  const target = (out.nextStepTarget || '').trim()
+  if (contact && target && !namesRoughlyMatch(contact, target)) {
+    out = { ...out, nextStepTarget: dedupeConsecutiveRepeatedWords(contact) }
+  }
+  if (!(out.nextStepDate || '').trim()) {
+    const defaultDate = dateOptionThisWeekFriday()
+    out = { ...out, nextStepDate: defaultDate }
+    if (out.primaryActionStructured) {
+      out = {
+        ...out,
+        primaryActionStructured: { ...out.primaryActionStructured, date: defaultDate },
+      }
+    }
+  }
+  return out
 }
 
 /** Monday that starts the calendar week after the current one (weeks start Monday). */
@@ -1565,7 +1601,10 @@ export default function Home() {
   const signInWithGoogle = useCallback(() => {
     void signIn('google', { callbackUrl: '/' })
   }, [])
-  /** Solo notas de Supabase / localStorage cuando hay sesión con email (sin fallback anónimo). */
+  /**
+   * Authenticated user key for notes: Google account email (matches `notes.user_id` in Supabase).
+   * See `supabase/migrations/*_add_notes_user_id.sql`.
+   */
   const sessionEmail = session?.user?.email?.trim() ?? null
   const notesStorageKey = sessionEmail ? `voicta-notes:${sessionEmail}` : ''
   const [mounted, setMounted] = useState(false)
@@ -1581,6 +1620,11 @@ export default function Home() {
   const [transcript, setTranscript] = useState('')
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
+  /** Internal save pipeline state (reserved for future UI; not shown yet). */
+  const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  /** Cleared when a new save starts; callback checks gen so stale timeouts cannot reset status after a later save. */
+  const savingIdleResetTimerRef = useRef<number | null>(null)
+  const savingIdleResetGenerationRef = useRef(0)
   const [noteSaved, setNoteSaved] = useState(false)
   const [showEditArea, setShowEditArea] = useState(false)
   const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
@@ -1689,8 +1733,6 @@ export default function Home() {
         return
       }
       try {
-        console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-        console.log('Supabase Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 20))
         const { data, error } = await supabase
           .from('notes')
           .select('*')
@@ -1831,33 +1873,57 @@ export default function Home() {
     if (pendingNextStepClarifyPick) setNextStepClarifyInput('')
   }, [pendingNextStepClarifyPick])
 
-  const saveNote = async (res: StructureResult, tx: string) => {
-    console.log('[saveNote] 1) función llamada')
+  const saveNote = async (res: StructureResult, tx: string): Promise<void> => {
+    if (savingIdleResetTimerRef.current !== null) {
+      clearTimeout(savingIdleResetTimerRef.current)
+      savingIdleResetTimerRef.current = null
+    }
+    savingIdleResetGenerationRef.current += 1
+    setSavingStatus('saving')
     const note: SavedNote = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
       result: res,
       transcript: tx,
     }
-    const updated = [note, ...savedNotes]
-    setSavedNotes(updated)
+
+    let localStorageFailed = false
+    setSavedNotes((prev) => {
+      const updated = [note, ...prev]
+      try {
+        if (sessionEmail && notesStorageKey) {
+          localStorage.setItem(notesStorageKey, JSON.stringify(updated))
+        }
+      } catch (e) {
+        localStorageFailed = true
+        console.error('Save error:', e)
+      }
+      return updated
+    })
     setNoteSaved(true)
     setTimeout(() => setNoteSaved(false), 2300)
-    try {
-      if (sessionEmail && notesStorageKey) {
-        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
-      }
-    } catch {}
+
+    if (localStorageFailed) {
+      setSavingStatus('error')
+      throw new Error('localStorage persist failed')
+    }
+
     if (!sessionEmail) {
-      console.log('[saveNote] sin email de sesión; no se llama a Supabase (esperando sesión)')
+      console.warn(
+        'No authenticated user (email); note kept in UI/history only. Supabase sync skipped.',
+      )
+      setSavingStatus('saved')
       return
     }
     if (!isSupabaseConfigured) {
-      console.error('[saveNote] Supabase no configurado: faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      console.error(
+        'Save error: Supabase not configured (missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY). Note saved locally only.',
+      )
+      setSavingStatus('saved')
       return
     }
+
     const rowUserId = sessionEmail
-    console.log('[saveNote] 2) user_id a insertar en Supabase:', rowUserId)
     const insertPayload = {
       id: note.id,
       date: note.date,
@@ -1876,27 +1942,83 @@ export default function Home() {
       crm_full: res.crmFull,
       calendar_description: res.calendarDescription,
     }
+
+    console.log('Saving note...')
     try {
-      const { data, error } = await supabase.from('notes').insert(insertPayload).select()
+      const attemptInsert = async () =>
+        supabase.from('notes').insert(insertPayload).select()
+
+      let { data, error } = await attemptInsert()
       if (error) {
-        console.log('[saveNote] 3) error devuelto por Supabase (insert falló):', error)
-        console.log('[saveNote]    → message:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint)
-      } else {
-        console.log('[saveNote] 3) insert OK en Supabase, filas:', data)
+        if (error.code === '23505') {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Note saved (row already exists for this id)')
+          }
+          setSavingStatus('saved')
+          return
+        }
+        console.error('Save error:', error)
+        await new Promise((r) => setTimeout(r, 400))
+        const retry = await attemptInsert()
+        data = retry.data
+        error = retry.error
+        if (error) {
+          if (error.code === '23505') {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Note saved (row already exists after retry)')
+            }
+            setSavingStatus('saved')
+            return
+          }
+          console.error('Save error:', error)
+          setSavingStatus('error')
+          throw new Error(error.message || 'Supabase insert failed after retry')
+        }
       }
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Note saved', data?.length ?? 0, 'row(s)')
+      }
+      setSavingStatus('saved')
     } catch (err) {
-      console.log('[saveNote] 3) excepción al insertar (no es respuesta de Supabase):', err)
+      console.error('Save error:', err)
+      setSavingStatus('error')
+      throw err
     }
   }
 
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    console.log('[savingStatus]', savingStatus)
+  }, [savingStatus])
+
+  useEffect(() => {
+    if (savingStatus !== 'saved' && savingStatus !== 'error') return
+    const gen = savingIdleResetGenerationRef.current
+    if (savingIdleResetTimerRef.current !== null) {
+      clearTimeout(savingIdleResetTimerRef.current)
+      savingIdleResetTimerRef.current = null
+    }
+    const t = window.setTimeout(() => {
+      savingIdleResetTimerRef.current = null
+      if (savingIdleResetGenerationRef.current !== gen) return
+      setSavingStatus('idle')
+    }, 4000)
+    savingIdleResetTimerRef.current = t
+    return () => {
+      clearTimeout(t)
+      if (savingIdleResetTimerRef.current === t) savingIdleResetTimerRef.current = null
+    }
+  }, [savingStatus])
+
   const commitPendingDatePick = (mmdd: string) => {
-    setPendingDatePick((p) => {
-      if (!p) return null
-      let merged: StructureResult = { ...p.result, nextStepDate: mmdd }
-      merged = stripAmbiguityFlagsAfterDateConfirm(merged)
-      setResult(merged)
-      saveNote(merged, p.transcript)
-      return null
+    const p = pendingDatePick
+    if (!p) return
+    let merged: StructureResult = { ...p.result, nextStepDate: mmdd }
+    merged = stripAmbiguityFlagsAfterDateConfirm(merged)
+    setPendingDatePick(null)
+    setResult(merged)
+    saveNote(merged, p.transcript).catch((err) => {
+      console.error('Save failed:', err)
     })
   }
 
@@ -1922,7 +2044,9 @@ export default function Home() {
       setPendingDatePick({ result: merged, transcript })
     } else {
       setResult(merged)
-      saveNote(merged, transcript)
+      saveNote(merged, transcript).catch((err) => {
+        console.error('Save failed:', err)
+      })
     }
   }
 
@@ -2064,12 +2188,17 @@ export default function Home() {
     if (selectedNote?.id === id) setSelectedNote(null)
     if (!sessionEmail || !isSupabaseConfigured) return
     try {
-      await supabase
+      const { error } = await supabase
         .from('notes')
         .delete()
         .eq('id', id)
         .eq('user_id', sessionEmail)
-    } catch {}
+      if (error) {
+        console.error('[deleteNote] Supabase delete failed:', error.message, error)
+      }
+    } catch (e) {
+      console.error('[deleteNote] Unexpected error:', e)
+    }
   }
 
   const updateNote = async (id: string, res: StructureResult, tx: string) => {
@@ -2086,7 +2215,7 @@ export default function Home() {
     if (result) setResult(res)
     if (!sessionEmail || !isSupabaseConfigured) return
     try {
-      await supabase
+      const { error } = await supabase
         .from('notes')
         .update({
           transcript: tx,
@@ -2105,7 +2234,12 @@ export default function Home() {
         })
         .eq('id', id)
         .eq('user_id', sessionEmail)
-    } catch {}
+      if (error) {
+        console.error('[updateNote] Supabase update failed:', error.message, error)
+      }
+    } catch (e) {
+      console.error('[updateNote] Unexpected error:', e)
+    }
   }
 
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
@@ -2162,6 +2296,7 @@ export default function Home() {
           let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
           final = inferMissingContact(final)
           final = finalizeNextStepFields(final, combined)
+          final = applyConfidenceDefaults(final)
           await awaitMinProcessingDisplay()
           updateNote(noteId, final, combined)
         } catch (err: any) {
@@ -2332,6 +2467,7 @@ export default function Home() {
 
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, tx)
+      final = applyConfidenceDefaults(final)
 
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
@@ -2346,7 +2482,9 @@ export default function Home() {
         setPendingDatePick({ result: final, transcript: tx })
       } else {
         setResult(final)
-        saveNote(final, tx)
+        await saveNote(final, tx).catch((err) => {
+          console.error('Save failed:', err)
+        })
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -2383,6 +2521,7 @@ export default function Home() {
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, input)
+      final = applyConfidenceDefaults(final)
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: input })
@@ -2396,7 +2535,9 @@ export default function Home() {
         setPendingDatePick({ result: final, transcript: input })
       } else {
         setResult(final)
-        saveNote(final, input)
+        await saveNote(final, input).catch((err) => {
+          console.error('Save failed:', err)
+        })
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
@@ -3894,8 +4035,13 @@ export default function Home() {
                 } catch {}
                 if (sessionEmail && isSupabaseConfigured) {
                   try {
-                    await supabase.from('notes').delete().eq('user_id', sessionEmail)
-                  } catch {}
+                    const { error } = await supabase.from('notes').delete().eq('user_id', sessionEmail)
+                    if (error) {
+                      console.error('[clearAllNotes] Supabase delete failed:', error.message, error)
+                    }
+                  } catch (e) {
+                    console.error('[clearAllNotes] Unexpected error:', e)
+                  }
                 }
               }}
               className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-600 transition-all hover:bg-red-100"

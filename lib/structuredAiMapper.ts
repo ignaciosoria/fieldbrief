@@ -41,8 +41,41 @@ export type StructuredSupporting = {
 export type StructuredAiPayload = {
   primary: StructuredPrimary
   supporting: StructuredSupporting[]
+  /** Multi-line CRM narrative (maps to StructureBody.crmText). */
+  crmSummary: string
   /** Short insight bullets — no action verbs, not full sentences */
   insights: string[]
+}
+
+const CRM_SUMMARY_MAX_LINES = 8
+const CRM_SUMMARY_MAX_CHARS = 4500
+
+/**
+ * Normalize model output: cap lines, preserve paragraph breaks where possible.
+ */
+function normalizeCrmSummaryLines(raw: string): string {
+  const t = typeof raw === 'string' ? raw.replace(/\r\n/g, '\n').trim() : ''
+  if (!t) return ''
+
+  let lines = t
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+
+  if (lines.length === 1 && lines[0].length > 280) {
+    const one = lines[0]
+    const sentences = one
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (sentences.length > 1) {
+      lines = sentences
+    }
+  }
+
+  const capped = lines.slice(0, CRM_SUMMARY_MAX_LINES).join('\n\n')
+  if (capped.length <= CRM_SUMMARY_MAX_CHARS) return capped
+  return capped.slice(0, CRM_SUMMARY_MAX_CHARS).trim()
 }
 
 function normPrimaryType(raw: string): StructuredPrimaryType | null {
@@ -104,12 +137,15 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     })
   }
 
+  const crmRaw = str(o.crm_summary || o.crmSummary)
+  const crmSummary = normalizeCrmSummaryLines(crmRaw)
+
   const insightsIn = Array.isArray(o.insights) ? o.insights : []
   const insights = insightsIn
     .filter((x): x is string => typeof x === 'string')
-    .map((x) => truncateWords(x.replace(/\s+/g, ' ').trim(), 14))
+    .map((x) => truncateWords(x.replace(/\s+/g, ' ').trim(), 18))
     .filter(Boolean)
-    .slice(0, 4)
+    .slice(0, 5)
 
   return {
     primary: {
@@ -121,6 +157,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
       time: str(pr.time),
     },
     supporting: supporting.slice(0, 2),
+    crmSummary,
     insights,
   }
 }
@@ -278,7 +315,7 @@ export function structuredPayloadToStructureBody(
     ? alignStructuredPayloadWithNote(rawNote, payload)
     : payload
   const langEs = isSpanish(noteLanguage)
-  const { primary, supporting, insights } = aligned
+  const { primary, supporting, insights, crmSummary } = aligned
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()
@@ -359,7 +396,11 @@ export function structuredPayloadToStructureBody(
       .map((line) =>
         langEs ? line.replace(/\bde el\b/gi, 'del').replace(/\s+/g, ' ').trim() : line,
       ),
-  ).slice(0, 4)
+  ).slice(0, 5)
+
+  /** More ambiguity flags → lower confidence; prompts only when low + critical gaps (see app/page.tsx). */
+  const nextStepConfidence: 'high' | 'medium' | 'low' =
+    ambiguityFlags.length >= 2 ? 'low' : ambiguityFlags.length === 1 ? 'medium' : 'high'
 
   return {
     customer: company,
@@ -373,7 +414,7 @@ export function structuredPayloadToStructureBody(
     nextStepDate,
     nextStepTimeReference: '',
     nextStepTimeHint,
-    nextStepConfidence: 'high',
+    nextStepConfidence,
     ambiguityFlags,
     mentionedEntities: [],
     notes: '',
@@ -381,7 +422,7 @@ export function structuredPayloadToStructureBody(
     product: '',
     location: '',
     acreage: '',
-    crmText: '',
+    crmText: crmSummary,
     crmFull,
     calendarDescription: '',
     additionalSteps,
