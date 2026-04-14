@@ -684,7 +684,10 @@ function buildCalendarDescription(data: StructureResult): string {
   ].filter(Boolean)
 
   // ✅ SAME path as supporting actions: derive from structured fields, not pre-written API string
-  const langEs = detectNoteLanguage(`${data.nextStep || ''} ${data.nextStepTitle || ''}`) === 'spanish'
+  const langEs =
+    detectNoteLanguage(
+      `${data.nextStep || ''} ${data.nextStepTitle || ''} ${data.crmText || ''} ${data.summary || ''} ${(data.crmFull || []).join('\n')}`,
+    ) === 'spanish'
   const primaryActionType = data.primaryActionStructured?.type || data.nextStepAction || 'other'
   const kind: CalendarFormatActionKind =
     primaryActionType === 'send' || primaryActionType === 'email'
