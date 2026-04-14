@@ -308,6 +308,84 @@ function normalizeAdditionalSteps(raw: unknown): AdditionalStep[] {
   return out
 }
 
+/** Full StructureResult snapshot for Supabase `structured_output` jsonb (single JSON blob, no flattened columns). */
+function buildStructuredOutputForSupabase(res: StructureResult): StructureResult {
+  return JSON.parse(JSON.stringify(res)) as StructureResult
+}
+
+/**
+ * Build a StructureResult-shaped object from a notes row: prefer `structured_output`, else legacy flat columns.
+ * Includes contact, company fields, actions, insights (crmFull), commercial_context, and all other structured fields.
+ */
+function rawStructureResultFromSupabaseRow(n: {
+  structured_output?: unknown
+  contact?: unknown
+  contact_company?: unknown
+  customer?: unknown
+  summary?: unknown
+  next_step?: unknown
+  next_step_title?: unknown
+  next_step_action?: unknown
+  next_step_target?: unknown
+  next_step_date?: unknown
+  next_step_time_reference?: unknown
+  next_step_time_hint?: unknown
+  next_step_confidence?: unknown
+  ambiguity_flags?: unknown
+  mentioned_entities?: unknown
+  notes?: unknown
+  crop?: unknown
+  product?: unknown
+  location?: unknown
+  acreage?: unknown
+  crm_text?: unknown
+  crm_full?: unknown
+  calendar_description?: unknown
+  next_step_soft_timing?: unknown
+  follow_up_strength?: unknown
+}): StructureResult {
+  const so = n.structured_output
+  if (so && typeof so === 'object' && !Array.isArray(so)) {
+    const partial = so as Partial<StructureResult>
+    return {
+      ...emptyResult,
+      ...partial,
+      crmFull: normalizeCrmFull(partial.crmFull ?? []),
+      actions: normalizeActions(partial.actions ?? []),
+      additionalSteps: normalizeAdditionalSteps(partial.additionalSteps ?? []),
+    }
+  }
+  return {
+    ...emptyResult,
+    contact: String(n.contact ?? ''),
+    contactCompany: String(n.contact_company ?? ''),
+    customer: String(n.customer ?? ''),
+    summary: String(n.summary ?? ''),
+    nextStep: String(n.next_step ?? ''),
+    nextStepTitle: String(n.next_step_title ?? ''),
+    nextStepAction: String(n.next_step_action ?? ''),
+    nextStepTarget: String(n.next_step_target ?? ''),
+    nextStepDate: String(n.next_step_date ?? ''),
+    nextStepTimeReference: String(n.next_step_time_reference ?? ''),
+    nextStepTimeHint: String(n.next_step_time_hint ?? ''),
+    nextStepConfidence: String(n.next_step_confidence ?? ''),
+    ambiguityFlags: Array.isArray(n.ambiguity_flags)
+      ? (n.ambiguity_flags as unknown[]).filter((x): x is string => typeof x === 'string')
+      : [],
+    mentionedEntities: normalizeMentionedEntities(n.mentioned_entities),
+    notes: String(n.notes ?? ''),
+    crop: String(n.crop ?? ''),
+    product: String(n.product ?? ''),
+    location: String(n.location ?? ''),
+    acreage: String(n.acreage ?? ''),
+    crmText: String(n.crm_text ?? ''),
+    crmFull: normalizeCrmFull(n.crm_full),
+    calendarDescription: String(n.calendar_description ?? ''),
+    nextStepSoftTiming: String(n.next_step_soft_timing ?? ''),
+    followUpStrength: String(n.follow_up_strength ?? ''),
+  }
+}
+
 function normalizeConfidence(raw: unknown): string {
   const s = String(raw ?? '')
     .trim()
@@ -1864,33 +1942,22 @@ export default function Home() {
           .from('notes')
           .select('*')
           .eq('user_id', sessionEmail)
-          .order('date', { ascending: false })
+          .order('id', { ascending: false })
         if (error) {
           console.error('[loadNotes] Supabase select error:', error.message, error)
         }
         if (!error && data && data.length > 0) {
           const mapped: SavedNote[] = data.map((n: any) => ({
-            id: n.id,
-            date: n.date,
-            transcript: n.transcript || '',
-            result: normalizeStructureResult({
-              ...emptyResult,
-              contact: n.contact || '',
-              contactCompany: n.contact_company || '',
-              customer: n.customer || '',
-              summary: n.summary || '',
-              nextStep: n.next_step || '',
-              notes: n.notes || '',
-              crop: n.crop || '',
-              product: n.product || '',
-              location: n.location || '',
-              acreage: n.acreage || '',
-              crmText: n.crm_text || '',
-              crmFull: normalizeCrmFull(n.crm_full),
-              calendarDescription: n.calendar_description || '',
-              nextStepSoftTiming: n.next_step_soft_timing || '',
-              followUpStrength: n.follow_up_strength || '',
-            }),
+            id: String(n.id),
+            date:
+              typeof n.created_at === 'string'
+                ? n.created_at
+                : typeof n.date === 'string'
+                  ? n.date
+                  : new Date().toISOString(),
+            transcript:
+              typeof n.raw_text === 'string' ? n.raw_text : typeof n.transcript === 'string' ? n.transcript : '',
+            result: normalizeStructureResult(rawStructureResultFromSupabaseRow(n)),
           }))
           setSavedNotes(mapped)
           try { localStorage.setItem(notesStorageKey, JSON.stringify(mapped)) } catch {}
@@ -2073,24 +2140,11 @@ export default function Home() {
     }
 
     const rowUserId = sessionEmail
+    const clientNoteId = note.id
     const insertPayload = {
-      id: note.id,
-      date: note.date,
-      transcript: tx,
       user_id: rowUserId,
-      contact: res.contact,
-      contact_company: res.contactCompany,
-      customer: res.customer,
-      summary: res.summary,
-      next_step: res.nextStep,
-      notes: res.notes,
-      crop: res.crop,
-      product: res.product,
-      location: res.location,
-      crm_text: res.crmText,
-      crm_full: res.crmFull,
-      next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
-      follow_up_strength: (res.followUpStrength || '').trim() || null,
+      raw_text: tx,
+      structured_output: buildStructuredOutputForSupabase(res),
     }
 
     console.log('[saveNote] path=supabase-insert (about to insert)', {
@@ -2098,7 +2152,7 @@ export default function Home() {
       validSession,
       sessionEmail,
       userIdForRow: rowUserId,
-      noteId: note.id,
+      noteId: clientNoteId,
     })
     logNotesTableRlsAssumptions({
       userIdForRow: rowUserId,
@@ -2106,15 +2160,15 @@ export default function Home() {
     })
     console.log('[saveNote] insert payload (exact)', insertPayload)
 
-    const verifyNoteRowVisible = async (phase: string) => {
+    const verifyNoteRowVisible = async (phase: string, noteId: string) => {
       const verifyRes = await supabase
         .from('notes')
         .select('id, user_id')
-        .eq('id', note.id)
+        .eq('id', noteId)
         .eq('user_id', rowUserId)
         .maybeSingle()
       console.log(`[saveNote] verify select (${phase})`, {
-        noteId: note.id,
+        noteId,
         userId: rowUserId,
         rowFound: !!verifyRes.data,
         data: verifyRes.data,
@@ -2128,7 +2182,7 @@ export default function Home() {
 
     try {
       const attemptInsert = async () => {
-        const res = await supabase.from('notes').insert(insertPayload).select()
+        const res = await supabase.from('notes').insert(insertPayload).select('id')
         console.log('[saveNote] insert response (full)', res)
         if (res.error) logPostgrestError('[saveNote] insert error', res.error)
         return res
@@ -2141,7 +2195,7 @@ export default function Home() {
             code: error.code,
             message: error.message,
           })
-          await verifyNoteRowVisible('after-23505')
+          await verifyNoteRowVisible('after-23505', clientNoteId)
           if (process.env.NODE_ENV === 'development') {
             console.log('Note saved (row already exists for this id)')
           }
@@ -2155,7 +2209,7 @@ export default function Home() {
         error = retry.error
         if (error) {
           if (error.code === '23505') {
-            await verifyNoteRowVisible('after-23505-retry')
+            await verifyNoteRowVisible('after-23505-retry', clientNoteId)
             if (process.env.NODE_ENV === 'development') {
               console.log('Note saved (row already exists after retry)')
             }
@@ -2172,7 +2226,12 @@ export default function Home() {
           '[saveNote] insert succeeded but returned no rows — check RLS SELECT policies or omit .select() behavior',
         )
       }
-      await verifyNoteRowVisible('after-successful-insert')
+      const serverId = data?.[0]?.id != null ? String(data[0].id) : null
+      if (serverId && serverId !== clientNoteId) {
+        setSavedNotes((prev) => prev.map((row) => (row.id === clientNoteId ? { ...row, id: serverId } : row)))
+        setSelectedNote((prev) => (prev && prev.id === clientNoteId ? { ...prev, id: serverId } : prev))
+      }
+      await verifyNoteRowVisible('after-successful-insert', serverId ?? clientNoteId)
       if (process.env.NODE_ENV === 'development') {
         console.log('Note saved', data?.length ?? 0, 'row(s)')
       }
@@ -2426,20 +2485,8 @@ export default function Home() {
       const { error } = await supabase
         .from('notes')
         .update({
-          transcript: tx,
-          contact: res.contact,
-          contact_company: res.contactCompany,
-          customer: res.customer,
-          summary: res.summary,
-          next_step: res.nextStep,
-          notes: res.notes,
-          crop: res.crop,
-          product: res.product,
-          location: res.location,
-          crm_text: res.crmText,
-          crm_full: res.crmFull,
-          next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
-          follow_up_strength: (res.followUpStrength || '').trim() || null,
+          raw_text: tx,
+          structured_output: buildStructuredOutputForSupabase(res),
         })
         .eq('id', id)
         .eq('user_id', sessionEmail)
