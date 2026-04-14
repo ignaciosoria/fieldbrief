@@ -71,26 +71,55 @@ function productLabelForSend(
 }
 
 /**
- * Línea 1: {contact} en {company}. {problem} (ES) / {contact} at {company}. {problem} (EN)
- * Solo cuenta + problema; sin barrera ni interés mezclados aquí.
+ * Línea 1 (oraciones completas):
+ * ES: {contact} en {company}. Problemas de {problem}.
+ * EN: {contact} at {company}. Issues with {problem}.
+ * La segunda oración siempre lleva verbo encabezado (Problemas de / Issues with); mayúscula tras el punto.
  */
 export function buildCalendarContext(input: BuildCalendarContextInput): string {
   const { contact, company, problem, langEs } = input
   const c = contact.replace(/\s+/g, ' ').trim()
   const co = company.replace(/\s+/g, ' ').trim()
-  const pr = (problem || '').replace(/\s+/g, ' ').trim()
+  let pr = (problem || '').replace(/\s+/g, ' ').trim()
+  if (pr) {
+    pr = langEs
+      ? pr.replace(/^problemas\s+de\s+/i, '').trim()
+      : pr.replace(/^(issues?|problems)\s+with\s+/i, '').trim()
+  }
 
   const who =
     c && co ? (langEs ? `${c} en ${co}` : `${c} at ${co}`) : c ? c : co ? co : ''
   if (!who && !pr) return ''
-  if (!pr) {
+
+  const secondSentence = (() => {
+    if (!pr) return ''
+    const body = pr.endsWith('.') ? pr.slice(0, -1).trim() : pr
+    if (!body) return ''
+    return langEs ? `Problemas de ${body}.` : `Issues with ${body}.`
+  })()
+
+  if (!secondSentence) {
     const w = who.endsWith('.') ? who.trim() : `${who}.`
-    return w.charAt(0).toUpperCase() + w.slice(1)
+    return (w.charAt(0).toUpperCase() + w.slice(1)).replace(
+      /\.\s+([a-záéíóúñü])/gi,
+      (_, letter: string) => `. ${letter.toUpperCase()}`,
+    )
   }
+
+  if (!who) {
+    const s = secondSentence
+    return (s.charAt(0).toUpperCase() + s.slice(1)).replace(
+      /\.\s+([a-záéíóúñü])/gi,
+      (_, letter: string) => `. ${letter.toUpperCase()}`,
+    )
+  }
+
   const whoPart = who.endsWith('.') ? who.slice(0, -1).trim() : who
-  const probPart = pr.endsWith('.') ? pr.trim() : `${pr}.`
-  const out = `${whoPart}. ${probPart}`.replace(/\s+/g, ' ').trim()
-  return out.charAt(0).toUpperCase() + out.slice(1)
+  const combined = `${whoPart}. ${secondSentence}`.replace(/\s+/g, ' ').trim()
+  return (combined.charAt(0).toUpperCase() + combined.slice(1)).replace(
+    /\.\s+([a-záéíóúñü])/gi,
+    (_, letter: string) => `. ${letter.toUpperCase()}`,
+  )
 }
 
 /** SEND — plantilla fija; producto si existe. */
