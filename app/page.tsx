@@ -1705,10 +1705,6 @@ Contact: ${result.contact || ''}
   return data.nextStep || result.nextStep || ''
 }
 
-const CALENDAR_ADDED_LS_KEY = 'folup-calendar-added-v1'
-
-type CalendarAddedBlob = Record<string, { p?: boolean; s?: string[] }>
-
 function calendarResultFingerprint(r: StructureResult): string {
   const steps = (r.additionalSteps || [])
     .map((s) => `${s.action}|${s.resolvedDate}|${s.timeHint}`)
@@ -1729,38 +1725,9 @@ function getCalendarStorageKey(r: StructureResult, noteId: string | null | undef
   return `fp:${calendarResultFingerprint(r)}`
 }
 
-function loadCalendarAddedBlob(): CalendarAddedBlob {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(CALENDAR_ADDED_LS_KEY)
-    if (!raw) return {}
-    const o = JSON.parse(raw) as CalendarAddedBlob
-    return o && typeof o === 'object' ? o : {}
-  } catch {
-    return {}
-  }
-}
-
 /** Stable id for a supporting row within a note (list order index). */
 function supportingCalendarStepId(index: number): string {
   return String(index)
-}
-
-function persistSupportingToCalendarAdded(key: string, stepId: string, added: boolean) {
-  const all = loadCalendarAddedBlob()
-  const prev = all[key] || {}
-  const raw = prev.s || []
-  const set = new Set(raw.map((x) => String(x)))
-  if (added) set.add(stepId)
-  else set.delete(stepId)
-  all[key] = {
-    ...prev,
-    p: prev.p,
-    s: [...set].sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b)),
-  }
-  try {
-    localStorage.setItem(CALENDAR_ADDED_LS_KEY, JSON.stringify(all))
-  } catch {}
 }
 
 export default function Home() {
@@ -1857,17 +1824,10 @@ export default function Home() {
     return null
   }, [activeTab, selectedNote, result])
 
+  /** Reset "+ Add" / primary calendar buttons when the note or result identity changes — never hydrate from storage (success state is click-only for this session). */
   useEffect(() => {
-    if (!calendarStorageKey) {
-      setPrimaryAdded(false)
-      setSupportingAdded({})
-      return
-    }
-    const blob = loadCalendarAddedBlob()[calendarStorageKey]
     setPrimaryAdded(false)
-    const next: Record<string, boolean> = {}
-    for (const id of blob?.s || []) next[String(id)] = true
-    setSupportingAdded(next)
+    setSupportingAdded({})
   }, [calendarStorageKey])
 
   useEffect(() => {
@@ -2129,7 +2089,6 @@ export default function Home() {
       location: res.location,
       crm_text: res.crmText,
       crm_full: res.crmFull,
-      calendar_description: res.calendarDescription,
       next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
       follow_up_strength: (res.followUpStrength || '').trim() || null,
     }
@@ -2479,7 +2438,6 @@ export default function Home() {
           location: res.location,
           crm_text: res.crmText,
           crm_full: res.crmFull,
-          calendar_description: res.calendarDescription,
           next_step_soft_timing: (res.nextStepSoftTiming || '').trim() || null,
           follow_up_strength: (res.followUpStrength || '').trim() || null,
         })
@@ -2866,10 +2824,8 @@ export default function Home() {
       setError('Could not build the event. Check date and time for this action.')
       return
     }
-    const key = getCalendarStorageKey(r, opts?.noteId ?? null)
     const stepId = supportingCalendarStepId(index)
     setSupportingAdded((prev) => ({ ...prev, [stepId]: true }))
-    persistSupportingToCalendarAdded(key, stepId, true)
 
     if (session?.user) {
       openGoogleCalendarWindow(calendarOpts)
@@ -2885,7 +2841,6 @@ export default function Home() {
         delete next[stepId]
         return next
       })
-      persistSupportingToCalendarAdded(key, stepId, false)
       setError('Could not create the calendar file.')
     }
   }
