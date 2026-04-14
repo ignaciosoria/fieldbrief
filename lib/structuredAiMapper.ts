@@ -13,6 +13,7 @@ import {
   normalizeSoftFollowUpTiming,
 } from './calendarSoftTiming'
 import { normalizeCalendarDescriptionField } from './calendarEventDescription'
+import { MAX_SUPPORTING_ACTIONS } from './sanitizeAdditionalSteps'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
@@ -131,7 +132,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
 
   const supportingIn = Array.isArray(o.supporting) ? o.supporting : []
   const supporting: StructuredSupporting[] = []
-  for (const item of supportingIn.slice(0, 4)) {
+  for (const item of supportingIn.slice(0, MAX_SUPPORTING_ACTIONS)) {
     if (!item || typeof item !== 'object') continue
     const s = item as Record<string, unknown>
     const st = normSupportingType(str(s.type))
@@ -179,7 +180,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
       softTiming,
       followUpStrength,
     },
-    supporting: supporting.slice(0, 2),
+    supporting: supporting.slice(0, MAX_SUPPORTING_ACTIONS),
     crmSummary,
     calendarDescription,
     insights,

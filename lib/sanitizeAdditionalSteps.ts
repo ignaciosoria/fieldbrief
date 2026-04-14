@@ -4,7 +4,11 @@ import {
   type ActionStructuredFields,
 } from './actionTitleContract'
 
-const MAX_SUPPORTING_STEPS = 2
+/**
+ * Max supporting rows after sanitize (primary is separate).
+ * Keep in sync with structured model output cap in `structuredAiMapper` / STRUCTURED_AI_SYSTEM_PROMPT.
+ */
+export const MAX_SUPPORTING_ACTIONS = 6
 const MAX_ACTION_WORDS = 8
 const EM = '\u2014'
 
@@ -449,7 +453,7 @@ export function sanitizeAdditionalSteps(
   const out: AdditionalStep[] = []
 
   for (const step of deduped) {
-    if (out.length >= MAX_SUPPORTING_STEPS) break
+    if (out.length >= MAX_SUPPORTING_ACTIONS) break
 
     let action = (step.action || '').replace(/\s+/g, ' ').trim()
     if (!action) continue
