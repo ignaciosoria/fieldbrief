@@ -93,7 +93,7 @@ export type PrimaryDisplayTitleInput = {
   /** follow_up soft window (no fixed MM/DD until calendar). */
   nextStepSoftTiming?: string
   /** When true, use Spanish labels for soft timing. */
-  spanish?: boolean
+  langEs?: boolean
 }
 
 /**
@@ -109,7 +109,7 @@ export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const hasDate = /^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)
   const softRaw = (r.nextStepSoftTiming || '').trim()
   if (!hasDate && isSoftFollowUpTiming(softRaw)) {
-    const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, !!r.spanish)
+    const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, !!r.langEs)
     const em = '\u2014'
     return formatRelativeDayWordsForDisplay(
       label ? `${base} ${em} ${label}` : base,

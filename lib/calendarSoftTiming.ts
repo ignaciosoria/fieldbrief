@@ -133,8 +133,8 @@ export function clampSoftTimingToStrength(
   return 'next_week'
 }
 
-export function softFollowUpLabel(soft: SoftFollowUpTiming, spanish: boolean): string {
-  if (spanish) {
+export function softFollowUpLabel(soft: SoftFollowUpTiming, langEs: boolean): string {
+  if (langEs) {
     switch (soft) {
       case 'this_week':
         return 'esta semana'

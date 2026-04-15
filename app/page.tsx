@@ -687,7 +687,7 @@ function buildCalendarDescription(data: StructureResult): string {
   const langEs =
     detectNoteLanguage(
       `${data.crmText || ''} ${data.summary || ''} ${(data.crmFull || []).join('\n')} ${data.nextStep || ''} ${data.nextStepTitle || ''}`,
-    ) === 'spanish'
+    ).toLowerCase() === 'spanish'
   const primaryActionType = data.primaryActionStructured?.type || data.nextStepAction || 'other'
   const kind: CalendarFormatActionKind =
     primaryActionType === 'send' || primaryActionType === 'email'
@@ -759,12 +759,12 @@ function buildCalendarOpenOptsFromResult(r: StructureResult): CalendarOpenOpts {
   const details = buildCalendarDescription(r)
   const loc = stripEmojisForCalendar((r.location || '').trim())
   if (!hintRaw) {
-    const adj = ensureCalendarDateTimeNotPast(mmddResolved, 12, 0)
+    const adj = ensureCalendarDateTimeNotPast(mmddResolved, 9, 0)
     return {
       title,
       dateMmddyyyy: adj.dateMmddyyyy,
       details,
-      time: { kind: 'allday' },
+      time: { kind: 'clock', hour: adj.hour, minute: adj.minute },
       ...(loc ? { location: loc } : {}),
     }
   }
@@ -883,7 +883,7 @@ function buildCalendarOpenOptsForSupportingStep(
   const langEs =
     detectNoteLanguage(
       `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''} ${step.action || ''}`,
-    ) === 'spanish'
+    ).toLowerCase() === 'spanish'
   let title: string
   if (step.supportingType && step.label?.trim()) {
     const base = stripEmojisForCalendar(
@@ -905,11 +905,9 @@ function buildCalendarOpenOptsForSupportingStep(
     ? mmddRaw
     : isoDateToMmddyyyy(todayIsoDate())
   const hintRaw = (step.structuredTime || step.timeHint || '').trim()
-  const resolved = hintRaw ? resolveTimeFromHint(hintRaw) : { hour: 12, minute: 0 }
+  const resolved = hintRaw ? resolveTimeFromHint(hintRaw) : { hour: 9, minute: 0 }
   const adj = ensureCalendarDateTimeNotPast(mmdd, resolved.hour, resolved.minute)
-  const timeOpts: CalendarTimeInput = hintRaw
-    ? { kind: 'clock', hour: adj.hour, minute: adj.minute }
-    : { kind: 'allday' }
+  const timeOpts: CalendarTimeInput = { kind: 'clock', hour: adj.hour, minute: adj.minute }
   const st = (step.supportingType || '').toLowerCase()
   const supportingDeliverable =
     st === 'send' || st === 'email'
@@ -974,13 +972,17 @@ function confidenceLow(r: StructureResult): boolean {
 }
 
 function primaryTitleForDisplay(r: StructureResult) {
+  const langEs =
+    detectNoteLanguage(
+      `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''}`,
+    ).toLowerCase() === 'spanish'
   return {
     nextStep: r.nextStep,
     nextStepTitle: r.nextStepTitle,
     nextStepDate: r.nextStepDate,
     nextStepTimeHint: r.nextStepTimeHint,
     nextStepSoftTiming: r.nextStepSoftTiming,
-    spanish: detectNoteLanguage(`${r.nextStep || ''} ${r.nextStepTitle || ''}`) === 'spanish',
+    langEs,
   }
 }
 
@@ -1583,7 +1585,10 @@ function resolveActionMiddleSlot(r: StructureResult): string {
   if (primary && (primary.type === 'send' || primary.type === 'email')) {
     const o = (primary.object || '').trim()
     const person = (r.nextStepTarget || r.contact || '').trim()
-    const langEs = detectNoteLanguage(`${r.nextStep || ''} ${r.nextStepTitle || ''}`) === 'spanish'
+    const langEs =
+      detectNoteLanguage(
+        `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''}`,
+      ).toLowerCase() === 'spanish'
     if (o && person) return langEs ? `${o} a ${person}` : `${o} to ${person}`
     if (o) return o
   }
