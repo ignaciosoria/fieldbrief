@@ -189,4 +189,11 @@ R3b. PAST DELIVERY KEYWORDS: If the note contains "dejé", "entregué", "di", "l
 "left", "dropped off", "gave", "handed" — that action is ALREADY DONE. 
 Never create a supporting send action for it. Context only.
 
+R4. DATE ASSIGNMENT: Only assign a date to an action when the note 
+explicitly anchors that specific action to a time. Do NOT transfer 
+a date from one action or person to another action. If the note 
+says "Robert comes next week" and separately "he wants a comparison 
+someday" — the comparison gets NO date. Each action's date must come 
+from its own explicit time reference in the note.
+
 Return ONLY valid JSON.`
