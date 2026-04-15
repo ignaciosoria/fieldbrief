@@ -185,4 +185,8 @@ R2. FUTURE CUSTOMER DATES: If the customer mentions a future order, payment, or 
 
 R3. LEAVING SAMPLES/PRODUCT ≠ SEND: If the rep already left, dropped off, or gave something during the visit — that is past context. Do NOT create a send action for something already delivered. Put it in crm_summary only.
 
+R3b. PAST DELIVERY KEYWORDS: If the note contains "dejé", "entregué", "di", "llevé", 
+"left", "dropped off", "gave", "handed" — that action is ALREADY DONE. 
+Never create a supporting send action for it. Context only.
+
 Return ONLY valid JSON.`
