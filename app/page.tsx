@@ -3821,7 +3821,17 @@ export default function Home() {
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
-                                    {buildSupportingDisplayTitle(s)}
+                                    {buildSupportingDisplayTitle({
+                                      action: s.action,
+                                      resolvedDate: s.resolvedDate,
+                                      timeHint: s.timeHint,
+                                      langEs:
+                                        detectNoteLanguage(
+                                          [result.nextStep, result.crmText, result.summary]
+                                            .filter(Boolean)
+                                            .join(' '),
+                                        ).toLowerCase() === 'spanish',
+                                    })}
                                   </span>
                                   <button
                                     type="button"
@@ -4104,7 +4114,21 @@ export default function Home() {
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
-                                    {buildSupportingDisplayTitle(s)}
+                                    {buildSupportingDisplayTitle({
+                                      action: s.action,
+                                      resolvedDate: s.resolvedDate,
+                                      timeHint: s.timeHint,
+                                      langEs:
+                                        detectNoteLanguage(
+                                          [
+                                            selectedNote.result.nextStep,
+                                            selectedNote.result.crmText,
+                                            selectedNote.result.summary,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(' '),
+                                        ).toLowerCase() === 'spanish',
+                                    })}
                                   </span>
                                   <button
                                     type="button"

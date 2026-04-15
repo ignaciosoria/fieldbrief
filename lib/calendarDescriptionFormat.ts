@@ -84,14 +84,14 @@ function stripProblemPrefix(raw: string): string {
  * La segunda oración siempre lleva verbo encabezado (Problemas de / Issues with); mayúscula tras el punto.
  */
 export function buildCalendarContext(fields: BuildCalendarContextInput): string {
-  const problem = stripProblemPrefix(fields.problem || '')
+  const problem = stripProblemPrefix((fields.problem || '').trim())
   const contact = (fields.contact || '').trim()
   const company = (fields.company || '').trim()
   const langEs = fields.langEs ?? false
 
   const c = contact.replace(/\s+/g, ' ').trim()
   const co = company.replace(/\s+/g, ' ').trim()
-  let pr = problem.replace(/\s+/g, ' ').trim()
+  let pr = stripProblemPrefix(problem.replace(/\s+/g, ' ').trim())
 
   const who =
     c && co ? (langEs ? `${c} en ${co}` : `${c} at ${co}`) : c ? c : co ? co : ''

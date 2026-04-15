@@ -135,6 +135,7 @@ export type SupportingDisplayTitleInput = {
   action: string
   resolvedDate: string
   timeHint: string
+  langEs?: boolean
 }
 
 /**
@@ -142,7 +143,7 @@ export type SupportingDisplayTitleInput = {
  * Example: `Send contract — GreenFields (Today · 4:00 PM)`
  */
 export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): string {
-  const langEs = false
+  const langEs = !!step.langEs
   const raw = (step.action || '').trim()
   if (!raw) return ''
   const base = cleanCalendarTitle(raw)
