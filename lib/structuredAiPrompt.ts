@@ -177,4 +177,12 @@ For **call**, **meeting**, or **send**, set **follow_up_strength** and **soft_ti
 9c. **INSIGHTS vs ACTIONS (independence):** Correct **primary** and **supporting** rows do **not** replace **insights**. You must **still** output **insights** whenever the note has meaningful commercial or account context. **Never** return an empty **insights** array just because actions are complete — actions and insights are **separate** outputs. **Never** omit commercial signals (product interest, problem, barrier, expansion per **9a**) to keep the JSON shorter when those signals appear in the note.
 10. Use "" for unknown strings. **supporting** may be **[]** only when there are no secondary tasks. **insights:** use **[]** **only** when the note is **trivial** (no substantive business context — e.g. a meaningless test string or a bare ping with no account facts). **Whenever** the note mentions products, problems, barriers, opportunities, relationships, volumes, trials, org changes, or any account narrative worth remembering — **insights** MUST be a **non-empty** array with **at least one** string (up to **5**). If you are unsure, prefer **at least one** concrete insight line over an empty array. **crm_summary** may be "" only when the note lacks any meaningful account context (e.g. a single trivial action with no background). Fill **commercial_context** fields whenever the note states problem, product interest, or barrier; otherwise use \`""\` for each missing slot.
 
+REASONING RULES (apply before outputting any action):
+
+R1. WHOSE ACTION: Only extract actions the REP must take. If another person will visit, call, or deliver — that is context, not a rep action. Put it in insights or crm_summary only.
+
+R2. FUTURE CUSTOMER DATES: If the customer mentions a future order, payment, or delivery date — do NOT create a send action for that date. Instead create a follow_up or call action 5-7 days before to coordinate. The customer's timeline is not the rep's action date.
+
+R3. LEAVING SAMPLES/PRODUCT ≠ SEND: If the rep already left, dropped off, or gave something during the visit — that is past context. Do NOT create a send action for something already delivered. Put it in crm_summary only.
+
 Return ONLY valid JSON.`

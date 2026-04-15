@@ -6,7 +6,7 @@ const client = new OpenAI({
 })
 
 const WHISPER_CONTEXT_PROMPT =
-  'Field sales rep voice note recorded after a client visit. May include: company names, contact names, product names, sales terminology, informal speech, filler words, pauses, repetitions. Rep may speak in English or Spanish. Common terms: follow-up, next step, quote, proposal, demo, distributor, ROI, pipeline, close the deal.'
+  'Field sales rep voice note after a client visit. May include: company names, grower names, product names like Quantum Flower, Quantum Engorde, Ferbloom Flower, Ferbloom 75, crop terms like fresa, arándano, frambuesa, strawberry, blueberry. Sales terms: seguimiento, visita, prueba, pedido, pallet, aplicación, cosecha, temporada, grower, PCA, distribuidor. Rep may speak in English or Spanish or mix both.'
 
 export async function POST(request: Request) {
   try {
