@@ -48,11 +48,14 @@ function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
 }
 
 /** UI display only — does not affect calendar payloads. */
-function formatRelativeDayWordsForDisplay(s: string): string {
+function formatRelativeDayWordsForDisplay(s: string, langEs?: boolean): string {
+  if (langEs) {
+    return s.replace(/\btoday\b/gi, 'Hoy').replace(/\btomorrow\b/gi, 'Mañana')
+  }
   return s.replace(/\btoday\b/gi, 'Today').replace(/\btomorrow\b/gi, 'Tomorrow')
 }
 
-function relativeDayLabelFromMmdd(mmdd: string): string {
+function relativeDayLabelFromMmdd(mmdd: string, langEs?: boolean): string {
   const t = (mmdd || '').trim()
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
   const [mm, dd, y] = t.split('/').map((x) => parseInt(x, 10))
@@ -62,18 +65,20 @@ function relativeDayLabelFromMmdd(mmdd: string): string {
   today.setHours(0, 0, 0, 0)
   d.setHours(0, 0, 0, 0)
   const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'Today'
-  if (diff === 1) return 'Tomorrow'
+  if (diff === 0) return langEs ? 'Hoy' : 'Today'
+  if (diff === 1) return langEs ? 'Mañana' : 'Tomorrow'
   return t
 }
 
-function formatDisplayDateLabelForPrimary(mmdd: string): string {
-  const rel = relativeDayLabelFromMmdd(mmdd)
-  if (rel === 'Today' || rel === 'Tomorrow') return rel
+function formatDisplayDateLabelForPrimary(mmdd: string, langEs?: boolean): string {
+  const rel = relativeDayLabelFromMmdd(mmdd, langEs)
+  const todayLabel = langEs ? 'Hoy' : 'Today'
+  const tomorrowLabel = langEs ? 'Mañana' : 'Tomorrow'
+  if (rel === todayLabel || rel === tomorrowLabel) return rel
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) {
     const [m, d, y] = mmdd.split('/').map((x) => parseInt(x, 10))
     const dt = new Date(y, m - 1, d)
-    return dt.toLocaleDateString('en-US', { weekday: 'long' })
+    return dt.toLocaleDateString(langEs ? 'es-ES' : 'en-US', { weekday: 'long' })
   }
   return rel
 }
@@ -103,25 +108,27 @@ export type PrimaryDisplayTitleInput = {
 export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const raw = (r.nextStepTitle || r.nextStep || '').trim()
   const base = cleanCalendarTitle(raw)
-  if (!base) return formatRelativeDayWordsForDisplay(raw)
+  const langEs = !!r.langEs
+  if (!base) return formatRelativeDayWordsForDisplay(raw, langEs)
   const mmdd = (r.nextStepDate || '').trim()
   const hint = (r.nextStepTimeHint || '').trim()
   const hasDate = /^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)
   const softRaw = (r.nextStepSoftTiming || '').trim()
   if (!hasDate && isSoftFollowUpTiming(softRaw)) {
-    const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, !!r.langEs)
+    const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, langEs)
     const em = '\u2014'
     return formatRelativeDayWordsForDisplay(
       label ? `${base} ${em} ${label}` : base,
+      langEs,
     )
   }
-  if (!hasDate && !hint) return formatRelativeDayWordsForDisplay(base)
+  if (!hasDate && !hint) return formatRelativeDayWordsForDisplay(base, langEs)
 
-  const dateLabel = hasDate ? formatDisplayDateLabelForPrimary(mmdd) : ''
+  const dateLabel = hasDate ? formatDisplayDateLabelForPrimary(mmdd, langEs) : ''
   const timeLabel = hint ? formatClock12FromHint(hint) : ''
   const inner = [dateLabel, timeLabel].filter(Boolean).join(' · ')
-  if (!inner) return formatRelativeDayWordsForDisplay(base)
-  return formatRelativeDayWordsForDisplay(`${base} (${inner})`)
+  if (!inner) return formatRelativeDayWordsForDisplay(base, langEs)
+  return formatRelativeDayWordsForDisplay(`${base} (${inner})`, langEs)
 }
 
 export type SupportingDisplayTitleInput = {
@@ -135,23 +142,24 @@ export type SupportingDisplayTitleInput = {
  * Example: `Send contract — GreenFields (Today · 4:00 PM)`
  */
 export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): string {
+  const langEs = false
   const raw = (step.action || '').trim()
   if (!raw) return ''
   const base = cleanCalendarTitle(raw)
-  if (!base) return formatRelativeDayWordsForDisplay(raw)
+  if (!base) return formatRelativeDayWordsForDisplay(raw, langEs)
 
   const dateRaw = (step.resolvedDate || '').trim()
   const hint = (step.timeHint || '').trim()
   const hasMmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(dateRaw)
-  if (!hasMmdd && !dateRaw && !hint) return formatRelativeDayWordsForDisplay(base)
+  if (!hasMmdd && !dateRaw && !hint) return formatRelativeDayWordsForDisplay(base, langEs)
 
   const dateLabel = hasMmdd
-    ? formatDisplayDateLabelForPrimary(dateRaw)
+    ? formatDisplayDateLabelForPrimary(dateRaw, langEs)
     : dateRaw
-      ? formatRelativeDayWordsForDisplay(dateRaw)
+      ? formatRelativeDayWordsForDisplay(dateRaw, langEs)
       : ''
   const timeLabel = hint ? formatClock12FromHint(hint) : ''
   const inner = [dateLabel, timeLabel].filter(Boolean).join(' · ')
-  if (!inner) return formatRelativeDayWordsForDisplay(base)
-  return formatRelativeDayWordsForDisplay(`${base} (${inner})`)
+  if (!inner) return formatRelativeDayWordsForDisplay(base, langEs)
+  return formatRelativeDayWordsForDisplay(`${base} (${inner})`, langEs)
 }
