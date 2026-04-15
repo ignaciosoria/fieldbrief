@@ -246,7 +246,7 @@ export async function POST(request: Request) {
     console.log('[structure] system prompt prefix (200 chars):', systemContent.slice(0, 200))
 
     const response = await client.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4.1',
       temperature: 0,
       messages: [
         { role: 'system', content: systemContent },
