@@ -1871,6 +1871,7 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [result, setResult] = useState<StructureResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingPhase, setLoadingPhase] = useState(0)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -2713,6 +2714,7 @@ export default function Home() {
   const processRecordedAudio = async (blob: Blob) => {
     processingStartedAtRef.current = Date.now()
     setLoading(true)
+    setLoadingPhase(0)
     setError('')
     setResult(null)
     setPendingDatePick(null)
@@ -2729,6 +2731,7 @@ export default function Home() {
       const transcribeRes = await fetch('/api/transcribe', { method: 'POST', body: formData })
       const transcribeData = await transcribeRes.json()
       if (!transcribeRes.ok) throw new Error(transcribeData.error || 'Failed to transcribe.')
+      setLoadingPhase(1)
 
       const tx = transcribeData.transcript || transcribeData.text || ''
       setTranscript(tx)
@@ -2748,7 +2751,8 @@ export default function Home() {
       if (!structureRes.ok) {
         throw new Error(structureData.error || 'Failed to structure.')
       }
-      
+      setLoadingPhase(2)
+
       let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
 
       if (
@@ -2784,6 +2788,8 @@ export default function Home() {
       } else if (needsNextStepDatePick(final)) {
         setPendingDatePick({ result: final, transcript: tx })
       } else {
+        setLoadingPhase(3)
+        await new Promise((r) => setTimeout(r, 550))
         setResult(final)
         await saveNote(final, tx).catch((err) => {
           console.error('Save failed:', err)
@@ -3044,31 +3050,60 @@ export default function Home() {
           aria-busy="true"
         >
           <div className="flex flex-col items-center gap-0">
-            <svg
-              className="text-[#4F46E5]"
-              width="52"
-              height="52"
-              viewBox="0 0 52 52"
-              fill="none"
-              aria-hidden
-            >
-              <circle cx="26" cy="26" r="21.5" stroke="currentColor" strokeOpacity="0.055" strokeWidth="1.05" />
-              <g style={{ transformOrigin: '26px 26px', animation: 'processingRingSpin 1.55s linear infinite' }}>
-                <circle
-                  cx="26"
-                  cy="26"
-                  r="21.5"
-                  stroke="currentColor"
-                  strokeOpacity="0.72"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                  strokeDasharray="29 106"
-                />
-              </g>
-            </svg>
-            <p className="mt-5 max-w-[17rem] text-center text-[14px] font-semibold leading-snug tracking-tight text-[#111111]">
-              Creating your follow-up
+            <div style={{position:'relative',width:68,height:68}}>
+              <svg width="68" height="68" viewBox="0 0 68 68" style={{position:'absolute',top:0,left:0}}>
+                <circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.2"/>
+              </svg>
+              <svg width="68" height="68" viewBox="0 0 68 68" style={{position:'absolute',top:0,left:0,transformOrigin:'34px 34px',animation:'processingRingSpin 1.6s linear infinite'}}>
+                <circle cx="34" cy="34" r="26" fill="none"
+                  stroke={
+                    loadingPhase === 0 ? '#818cf8' :
+                    loadingPhase === 1 ? '#34d399' :
+                    loadingPhase === 2 ? '#fb923c' :
+                    '#10b981'
+                  }
+                  strokeWidth="1.4" strokeLinecap="round" strokeDasharray="32 132"
+                  style={{transition:'stroke 0.6s ease'}}/>
+              </svg>
+              <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="rgba(255,255,255,0.7)">
+                  <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                  <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
+                </svg>
+              </div>
+            </div>
+
+            <p style={{
+              marginTop:28,
+              fontSize:15,
+              fontWeight:500,
+              color:'rgba(255,255,255,0.88)',
+              letterSpacing:'-0.01em',
+              transition:'opacity 0.35s ease',
+              textAlign:'center'
+            }}>
+              {loadingPhase === 0 ? 'One moment…' :
+               loadingPhase === 1 ? 'Reading your note…' :
+               loadingPhase === 2 ? 'Ready in seconds…' : '✓'}
             </p>
+
+            <div style={{display:'flex',gap:7,marginTop:18}}>
+              {[0,1,2].map(i => (
+                <span key={i} style={{
+                  width:5,
+                  height:5,
+                  borderRadius:'50%',
+                  display:'inline-block',
+                  transition:'background 0.5s ease, transform 0.3s ease',
+                  transform: i === loadingPhase ? 'scale(1.4)' : 'scale(1)',
+                  background: loadingPhase === 3
+                    ? '#10b981'
+                    : i === loadingPhase
+                      ? (loadingPhase===0 ? '#818cf8' : loadingPhase===1 ? '#34d399' : '#fb923c')
+                      : 'rgba(255,255,255,0.18)'
+                }}/>
+              ))}
+            </div>
           </div>
         </div>
       )}
