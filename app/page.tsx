@@ -3044,7 +3044,12 @@ export default function Home() {
       {loading && (
         <div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-zinc-900/45 px-8 backdrop-blur-[3px]"
-          style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          style={{
+            animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+            backgroundColor: 'rgba(255,255,255,0.96)',
+            WebkitBackdropFilter: 'blur(8px)',
+            backdropFilter: 'blur(8px)',
+          }}
           role="status"
           aria-live="polite"
           aria-busy="true"
@@ -3052,7 +3057,7 @@ export default function Home() {
           <div className="flex flex-col items-center gap-0">
             <div style={{position:'relative',width:68,height:68}}>
               <svg width="68" height="68" viewBox="0 0 68 68" style={{position:'absolute',top:0,left:0}}>
-                <circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.2"/>
+                <circle cx="34" cy="34" r="26" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="1.2"/>
               </svg>
               <svg width="68" height="68" viewBox="0 0 68 68" style={{position:'absolute',top:0,left:0,transformOrigin:'34px 34px',animation:'processingRingSpin 1.6s linear infinite'}}>
                 <circle cx="34" cy="34" r="26" fill="none"
@@ -3066,7 +3071,7 @@ export default function Home() {
                   style={{transition:'stroke 0.6s ease'}}/>
               </svg>
               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="rgba(255,255,255,0.7)">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="rgba(0,0,0,0.6)">
                   <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
                   <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
                 </svg>
@@ -3077,7 +3082,7 @@ export default function Home() {
               marginTop:28,
               fontSize:15,
               fontWeight:500,
-              color:'rgba(255,255,255,0.88)',
+              color:'#111111',
               letterSpacing:'-0.01em',
               transition:'opacity 0.35s ease',
               textAlign:'center'
@@ -3100,7 +3105,7 @@ export default function Home() {
                     ? '#10b981'
                     : i === loadingPhase
                       ? (loadingPhase===0 ? '#818cf8' : loadingPhase===1 ? '#34d399' : '#fb923c')
-                      : 'rgba(255,255,255,0.18)'
+                      : 'rgba(0,0,0,0.15)'
                 }}/>
               ))}
             </div>
