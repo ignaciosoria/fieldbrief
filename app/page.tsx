@@ -2999,7 +2999,8 @@ export default function Home() {
     )
   }
 
-  if (status === 'unauthenticated') {
+  const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/demo')
+  if (status === 'unauthenticated' && !isDemo) {
     return (
       <main className="flex min-h-[100dvh] flex-col bg-white px-6 pb-10 text-[#111111] antialiased sm:px-8 sm:pb-12">
         <div className="mx-auto w-full max-w-[19rem] pt-[4.25rem] pb-[min(7.5rem,22vh)] sm:max-w-[20rem] sm:pt-[4.75rem]">
