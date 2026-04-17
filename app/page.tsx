@@ -3014,7 +3014,7 @@ export default function Home() {
               />
             </div>
             <h1 className="max-w-[16rem] text-balance text-[1.375rem] font-bold leading-snug tracking-[-0.012em] text-zinc-950 sm:max-w-[17rem] sm:text-[1.5rem] sm:leading-tight">
-              Just left a showing?
+              Just left a client visit?
             </h1>
             <p className="mt-2.5 max-w-[18rem] text-pretty text-[0.875rem] font-medium leading-relaxed text-zinc-600 sm:text-[0.9375rem]">
               Record 30 seconds. Get your follow-up, calendar event, and CRM note — automatically.
