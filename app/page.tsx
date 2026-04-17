@@ -3017,7 +3017,7 @@ export default function Home() {
               Just left a client visit?
             </h1>
             <p className="mt-2.5 max-w-[18rem] text-pretty text-[0.875rem] font-medium leading-relaxed text-zinc-600 sm:text-[0.9375rem]">
-              Record 30 seconds. Get your follow-up, calendar event, and CRM note — automatically.
+              Record 30 seconds and never forget a follow-up again. Get your next step, calendar event, and CRM note — ready to use.
             </p>
             <button
               type="button"
@@ -3691,11 +3691,8 @@ export default function Home() {
             >
               <div className="mb-6 max-w-[20rem] text-center">
                 <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
-                  Record your visit
+                  Tap to record your visit
                 </h2>
-                <p className="mt-2 text-sm leading-snug text-[#6b7280] sm:text-[15px]">
-                  We&apos;ll turn it into a follow-up
-                </p>
               </div>
               {/* Mic button */}
               <button
