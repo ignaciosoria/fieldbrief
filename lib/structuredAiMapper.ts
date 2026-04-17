@@ -440,20 +440,21 @@ export function structuredPayloadToStructureBody(
       s.type === 'send' || s.type === 'email'
         ? normalizePrimarySendObjectField(rawObj, s.contact.trim(), sv, noteLanguage)
         : rawObj
-    const contactPart = s.type === 'call' || s.type === 'other' ? s.contact.trim() : ''
+    const contactPart = s.contact.trim() || (s.type === 'call' || s.type === 'other' ? contact : '')
+    const stepCompany = company
     const actionStructured: ActionStructuredFields = {
       type: s.type,
       verb: sv,
       object: objectPart,
       contact: contactPart,
-      company,
+      company: stepCompany,
       date: sd,
       time: st,
     }
     return {
       action: buildSupportingBaseTitle(actionStructured, noteLanguage),
-      contact: contact || '',
-      company: company || '',
+      contact: contactPart || contact || '',
+      company: stepCompany || '',
       resolvedDate: sd,
       timeHint: st,
       supportingType: s.type,
