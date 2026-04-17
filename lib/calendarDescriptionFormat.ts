@@ -129,20 +129,20 @@ export function buildCalendarContext(fields: BuildCalendarContextInput): string 
 }
 
 /** SEND — plantilla fija; producto si existe. */
-function closingSendEs(product: string, deliverable?: string): string {
-  const d = (deliverable || '').replace(/\s+/g, ' ').trim()
-  if (d) return `Enviar ${d}.`
-  const p = product.replace(/\s+/g, ' ').trim()
-  if (p) return `Enviar ${p}.`
-  return 'Enviar información pendiente.'
-}
-
 function closingSendEn(product: string, deliverable?: string): string {
   const d = (deliverable || '').replace(/\s+/g, ' ').trim()
   if (d) return `Send ${d}.`
   const p = product.replace(/\s+/g, ' ').trim()
   if (p) return `Send ${p}.`
-  return 'Send pending information.'
+  return 'Send pending materials.'
+}
+
+function closingSendEs(product: string, deliverable?: string): string {
+  const d = (deliverable || '').replace(/\s+/g, ' ').trim()
+  if (d) return `Enviar ${d}.`
+  const p = product.replace(/\s+/g, ' ').trim()
+  if (p) return `Enviar ${p}.`
+  return 'Enviar materiales pendientes.'
 }
 
 /** CALL — plantilla fija. */
@@ -183,11 +183,12 @@ export function buildActionClosingLine(
   >,
 ): string {
   const langEs = input.langEs
-  const product = productLabelForSend(input)
 
   switch (kind) {
     case 'send':
-      return langEs ? closingSendEs(product, input.deliverable) : closingSendEn(product, input.deliverable)
+      return langEs
+        ? closingSendEs('', input.deliverable)
+        : closingSendEn('', input.deliverable)
     case 'call':
       return langEs ? closingCallEs() : closingCallEn()
     case 'follow_up':
@@ -219,6 +220,7 @@ export function formatForCalendar(
     product: structured.product,
     productInterest: structured.productInterest,
     productCsv: structured.productCsv,
+    deliverable: structured.deliverable,
   })
   if (!line1) return closing
   return `${line1}\n\n${closing}`.trim()

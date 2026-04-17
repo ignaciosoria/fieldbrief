@@ -913,6 +913,21 @@ function buildCalendarOpenOptsForSupportingStep(
     st === 'send' || st === 'email'
       ? (step.actionStructured?.object || step.label || '').trim()
       : (step.actionStructured?.object || '').trim()
+
+  // For send steps, ensure contact appears in title
+  if ((st === 'send' || st === 'email') && step.actionStructured?.contact) {
+    const existingTitle = title
+    if (!existingTitle.toLowerCase().includes(step.actionStructured.contact.toLowerCase())) {
+      const contactName = step.actionStructured.contact.trim()
+      const company = (step.company || step.actionStructured.company || '').trim()
+      const companyStr = company ? ` — ${company}` : ''
+      const verb = step.actionStructured.verb || 'Send'
+      const obj = supportingDeliverable
+      title = obj
+        ? `${verb} ${obj} to ${contactName}${companyStr}`
+        : `${verb} to ${contactName}${companyStr}`
+    }
+  }
   const stepContact = (step.actionStructured?.contact || step.contact || r.contact || '').trim()
   const stepCompany = (step.actionStructured?.company || step.company || r.contactCompany || r.customer || '').trim()
   const supportingDetails = formatForCalendar(supportingCalendarFormatKind(step), {
