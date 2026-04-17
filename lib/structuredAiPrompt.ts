@@ -65,9 +65,9 @@ COMMERCIAL_CONTEXT (field: **commercial_context**) — **required object** (each
 
 Short **structured** commercial facts for the app to build the calendar description. **Do not** write calendar invite prose, action closings, or phrases like **Goal**, **Focus**, **review the comparison**, **discuss results**, or **Context** — the app formats the final text from **primary.type** + this object.
 
-- **problem** — the focal agronomic or operational issue (specific; not generic "challenges").
-- **product_interest** — what they are evaluating, trialing, or asking about (product, program, crop line).
-- **barrier** — what blocks or slows purchase (trial results, budget, approval, risk, competitor still in play).
+- **problem** — the focal pain or issue driving the visit. For field sales: agronomic or operational issue (fruit size, yield, pest pressure). For real estate: buyer constraint or concern (price too high, needs partner approval, timeline pressure, location requirement not met). Specific — never generic "challenges".
+- **product_interest** — what they are evaluating or asking about. For field sales: product, program, crop line. For real estate: property type, price range, neighborhood, features (e.g. "3-bed under $2M in Santa Monica", "open floor plan", "good school district"). Use "" if unknown.
+- **barrier** — what blocks or slows the decision. For field sales: trial results pending, budget, competitor. For real estate: partner/spouse needs to see it, waiting for other offers, financing not confirmed, price concern. Use "" if unknown.
 
 Same language as the note. Use \`""\` when the note does not state that slot. **Contact/company** for calendar copy come from **primary.contact** / **primary.company**, not from this object.
 
@@ -167,11 +167,11 @@ For **call**, **meeting**, or **send**, set **follow_up_strength** and **soft_ti
 
 9. **insights**: max **5** strings (use fewer only when the note truly has fewer distinct facts). **Key insights** — each line must carry a **specific** fact or implication; **omit** empty generic praise ("good relationship", "strong potential", "positive visit" with no substance). **Do not omit** core commercial signals when the note states them — follow **9a** before trimming. **Concrete situational context** — blockers, competitor moves, buyer expectations, acreage/volume, pricing pressure — in short telegraphic phrases (not full paragraphs; that belongs in **crm_summary**). **Context only:** never tasks. **Forbidden inside insights** (omit the line if it would contain): **send**, **call**, **follow up**, **meeting**, or Spanish equivalents (**enviar**, **llamar**, **seguimiento**, **reunión**). Insights must **never** describe actions.
 9a. **COMMERCIAL SIGNALS (do not omit when present):** When the note mentions any of the following, **include a dedicated line** (one category per line when possible; concrete nouns and specifics — not hollow slogans):
-   - **Product interest** — what they are evaluating, trialing, or asking about (product, program, crop line, brand). **Never** use vague "interest in …" **without naming the thing** — always tie to specifics (e.g. "Evaluating foliar program on table grapes", "Asked about trial on north block").
-   - **Main problem / pain** — the focal agronomic or operational issue (e.g. fruit size, uniformity, stress, yield, quality, pest pressure, logistics). **Not** generic "challenges" — name the **specific** issue from the note. **Hard rule:** when the note states a concrete problem, it **must** appear as its **own** insight line — **one short line** naming the issue only. **Never** merge the problem into the same string as product interest, barrier, or opportunity (no compound sentences that mix problem + other 9a categories).
-   - **Decision barrier** — what blocks or slows the purchase (e.g. needs trial results, budget pending, partner approval, risk concerns, competitor still in evaluation). **Own line** when present — do not merge with problem or product lines.
-   - **Expansion opportunity** — upsell, more acres, new blocks, referral, add-on farm, adjacent deal — **only** if the note signals it. **Own line** when present.
-   - **Volume / scale signals** — acreage, number of pallets, hectares, field size, production scale — whenever the note states a concrete number. Own line. Example: "400 acres de fresa — oportunidad significativa de volumen"
+   - **Product or property interest** — what they are evaluating or asking about. Field sales: product, program, crop line (e.g. "Evaluating foliar program on table grapes"). Real estate: property type, features, price range, neighborhood (e.g. "Looking for 3-bed under $2M", "Preferred Elm Street property for open floor plan"). Never vague — always name the specific thing.
+   - **Main problem / pain** — the focal issue. Field sales: agronomic (fruit size, yield, pest pressure). Real estate: buyer constraint or concern (price too high, timeline mismatch, partner needs to approve, financing gap). Name the specific issue — never generic. Own line when present — never merge with other categories.
+   - **Decision barrier** — what blocks or slows the decision. Field sales: trial results, budget, competitor. Real estate: partner/spouse approval needed, waiting on other offers, financing not confirmed, price concern. Own line when present.
+   - **Expansion or referral opportunity** — upsell, more acres, new blocks, referral, add-on property, adjacent deal — only if the note signals it. Own line when present.
+   - **Volume / scale signals** — acreage, hectares, field size (field sales) or number of properties seen, budget range, timeline to buy (real estate) — whenever the note states a concrete number or timeframe. Own line. Examples: "400 acres de fresa — volumen significativo", "Budget under $2M, wants to decide within 30 days"
    **commercial_context.problem** must echo the same specific problem string as this insight line when the note states a problem (so the app can enforce a standalone problem line).
    If you hit the **5-line** limit, **remove** weaker or redundant lines **before** dropping any line that reflects one of these **when the note explicitly stated it**. **Forbidden (still):** hollow hype without substance ("positive momentum", "potential closing", Spanish "cierre potencial", "buen momentum") — replace with **specific** facts; do **not** use that rule to skip **9a** categories when the note contains them.
 9b. **Tense (insights only):** Phrase everything as **still pending / in-flight** when work is **not** done. **Never** use past-tense verbs that sound like the rep already finished a task that is still outstanding — wrong: "Sent …", "Called …", "Followed up …", "Checked …", "Emailed …" (English); wrong: "Envié …", "Llamé …", "Enviado …" (Spanish). Prefer **need / waiting / requested / outstanding** style: e.g. "Needs updated program sent", "Waiting for review", "Requested pricing", "Buyer wants deck", "Still outstanding: contract", "Pendiente entrega de programa", "A la espera de respuesta" — forms that reflect **reality**, not completed work.
@@ -196,5 +196,26 @@ a date from one action or person to another action. If the note
 says "Robert comes next week" and separately "he wants a comparison 
 someday" — the comparison gets NO date. Each action's date must come 
 from its own explicit time reference in the note.
+
+PRIMARY TITLE QUALITY (apply before outputting primary):
+
+The app builds the calendar event title as: [verb] + [contact or object] + " — " + [company].
+Your job is to make that title specific and immediately actionable. Before outputting, check:
+
+- primary.contact: must be the person's actual name when stated ("Maria", "David") — never empty when the note names who the action is for.
+- primary.object: for send/email, must be the specific thing ("comps for the area", "virtual tour link", "updated program", "proposal PDF") — never vague ("information", "stuff", "it", "things").
+- primary.company: must match the organization name from the note — never empty when stated.
+
+WEAK OUTPUT (never produce these):
+- contact: "" when the note names a person
+- object: "information" / "details" / "follow up" / "material"
+- type: follow_up when an explicit send/call verb exists in the note
+
+STRONG OUTPUT examples:
+- Send + object "comps for the area" + contact "David" + company "Sunrise Realty" → "Send comps for the area to David — Sunrise Realty"
+- Call + contact "Maria" + company "Pacific Properties" → "Call Maria — Pacific Properties"
+- Send + object "virtual tour link" + contact "Maria" + company "Pacific Properties" → "Send virtual tour link to Maria — Pacific Properties"
+
+If you cannot identify a specific object for a send action, extract the closest noun phrase from the note rather than leaving object empty or generic.
 
 Return ONLY valid JSON.`

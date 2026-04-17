@@ -588,8 +588,8 @@ function ensureCalendarDateTimeNotPast(
   const event = new Date(yyyy, mm - 1, dd, hour, minute, 0, 0)
   const now = new Date()
   let guard = 0
-  while (event.getTime() < now.getTime() && guard < 104) {
-    event.setDate(event.getDate() + 7)
+  while (event.getTime() < now.getTime() && guard < 365) {
+    event.setDate(event.getDate() + 1)
     guard++
   }
   return {

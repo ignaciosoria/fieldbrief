@@ -47,35 +47,57 @@ function parseUserLocalInstant(body: Record<string, unknown>): Date {
 /**
  * Rich calendar anchors (EN + ES) so the model can resolve "jueves", "próxima semana", etc.
  * Uses the **user's** request-time instant in their IANA zone (not server local clock).
- * Weekday offsets: **nearest** calendar occurrence of that weekday (0–6 days ahead), with
- * late-night / "next weekday" rules applied in post-processing, not here.
+ * Weekday anchors: always the **next** occurrence (never today, even if today matches).
  */
 function buildStructureUserDateContext(timeZone: string, userNow: Date): string {
   const z = timeZone.trim() || 'America/Los_Angeles'
   const now = toUserAnchorDateTime(userNow, z)
+
   const fmtPair = (dt: DateTime) => {
     const en = dt.setLocale('en').toFormat('EEEE, MMMM d, yyyy')
     const es = dt.setLocale('es').toFormat("EEEE, d 'de' MMMM 'de' yyyy")
     return `${en} / ${es}`
   }
-  const todayEN = now.setLocale('en').toFormat('EEEE, MMMM d, yyyy')
-  const todayES = now.setLocale('es').toFormat("EEEE, d 'de' MMMM 'de' yyyy")
+
+  // Always go forward — if today is that weekday, go +7
+  const daysUntil = (target: number) => {
+    const diff = (target - now.weekday + 7) % 7
+    return diff === 0 ? 7 : diff
+  }
+
   const tomorrow = now.plus({ days: 1 })
-  const nextThursday = now.plus({ days: (4 - now.weekday + 7) % 7 })
-  const nextFriday = now.plus({ days: (5 - now.weekday + 7) % 7 })
-  const nextMonday = now.plus({ days: (1 - now.weekday + 7) % 7 })
-  const upcomingMonday = now.plus({ days: (1 - now.weekday + 7) % 7 })
-  const nextWeekMonday = upcomingMonday.plus({ days: 7 })
+  const days: Record<string, DateTime> = {
+    Monday: now.plus({ days: daysUntil(1) }),
+    Tuesday: now.plus({ days: daysUntil(2) }),
+    Wednesday: now.plus({ days: daysUntil(3) }),
+    Thursday: now.plus({ days: daysUntil(4) }),
+    Friday: now.plus({ days: daysUntil(5) }),
+    Saturday: now.plus({ days: daysUntil(6) }),
+    Sunday: now.plus({ days: daysUntil(7) }),
+  }
+
+  const nextWeekMonday = days.Monday.plus({ days: 7 })
+  const currentHour = now.toFormat('HH:mm')
+  const currentPeriod = now.hour < 12 ? 'morning' : now.hour < 17 ? 'afternoon' : 'evening'
 
   return [
-    `User calendar timezone for this request: ${z}. The user's local "now" for this note is anchored to their device clock at send time — all relative dates ("today", "tomorrow", weekdays) use that instant in this timezone (not server time or UTC date alone).`,
-    'Calendar context (use for relative dates in the note):',
-    `Today: ${todayEN} / ${todayES}`,
+    `User calendar timezone: ${z}. Anchor all relative dates to the user's local clock below — never use server time or UTC.`,
+    `Today: ${fmtPair(now)}`,
+    `Current local time: ${currentHour} (${currentPeriod})`,
+    `Time rule: if the user says "tomorrow morning" = tomorrow at 09:00; "this afternoon" = today at 15:00; "tonight" = today at 19:00; "end of day" = today at 17:00. Never assign a past time to today's date.`,
     `Tomorrow: ${fmtPair(tomorrow)}`,
-    `This upcoming Thursday: ${fmtPair(nextThursday)}`,
-    `This upcoming Friday: ${fmtPair(nextFriday)}`,
-    `Upcoming Monday (next calendar Monday): ${fmtPair(nextMonday)}`,
-    `Monday in the following week (+7 days after that — aligns with "la próxima semana" when the note means the week after): ${fmtPair(nextWeekMonday)}`,
+    '',
+    'Upcoming weekdays (always the NEXT occurrence, never today even if today matches):',
+    ...Object.entries(days).map(([name, dt]) => `  Next ${name}: ${fmtPair(dt)}`),
+    '',
+    `Next week Monday (week after the upcoming Monday): ${fmtPair(nextWeekMonday)}`,
+    '',
+    'Rules:',
+    '- "tomorrow morning" = tomorrow at 9:00 AM',
+    '- "Thursday at 2pm" = next Thursday date above at 14:00',
+    '- "next week" without a day = Monday of next week',
+    '- "this week" = before Sunday of the current week',
+    '- Never assign a date that is already past',
   ].join('\n')
 }
 
@@ -381,8 +403,24 @@ export async function POST(request: Request) {
     )
 
     const langEsInsights = /spanish/i.test(detectedLanguage)
-    let crmFullFinal = stripDealerLinesFromCrmFull(
-      normalizeInsightEmojis(afterProduct.crmFull),
+
+    function dedupeInsights(lines: string[]): string[] {
+      const words = (s: string) =>
+        new Set(s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => w.length > 3))
+      return lines.filter((line, i) => {
+        const lineWords = words(line)
+        return !lines.slice(0, i).some((prev) => {
+          const prevWords = words(prev)
+          const intersection = [...lineWords].filter((w) => prevWords.has(w))
+          return intersection.length / Math.max(lineWords.size, prevWords.size) > 0.6
+        })
+      })
+    }
+
+    let crmFullFinal = dedupeInsights(
+      stripDealerLinesFromCrmFull(
+        normalizeInsightEmojis(afterProduct.crmFull),
+      )
     ).slice(0, 4)
     if (crmFullFinal.length === 0) {
       crmFullFinal = ensureMinimumCrmFullInsights({
