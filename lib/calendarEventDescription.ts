@@ -450,8 +450,11 @@ export function buildCalendarEventDescriptionBody(
   if (raw) {
     const plain = normalizePlainCalendarDescription(raw, options)
     if (plain.trim()) return plain
+    // Even if filtered, return the raw calendarDescription if it's meaningful
+    // — it contains the specific deliverable for this event, which is more
+    // useful than a generic fallback built from shared CRM context.
     const rawClean = raw.replace(/\s+/g, ' ').trim()
-    if (rawClean) return rawClean
+    if (rawClean && rawClean.length > 10) return rawClean
   }
 
   return buildFallbackSections(data, options)

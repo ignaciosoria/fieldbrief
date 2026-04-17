@@ -913,19 +913,21 @@ function buildCalendarOpenOptsForSupportingStep(
     st === 'send' || st === 'email'
       ? (step.actionStructured?.object || step.label || '').trim()
       : (step.actionStructured?.object || '').trim()
+  const stepContact = (step.actionStructured?.contact || step.contact || r.contact || '').trim()
+  const stepCompany = (step.actionStructured?.company || step.company || r.contactCompany || r.customer || '').trim()
   const supportingDetails = formatForCalendar(supportingCalendarFormatKind(step), {
     contextParagraph: buildCalendarContext({
-      contact: r.contact,
-      company: r.contactCompany || r.customer,
+      contact: stepContact,
+      company: stepCompany,
       problem: r.commercialContext?.problem,
-      productInterest: r.commercialContext?.productInterest,
-      barrier: r.commercialContext?.barrier,
+      productInterest: undefined,
+      barrier: undefined,
       langEs,
     }),
     langEs,
     deliverable: supportingDeliverable,
-    productInterest: r.commercialContext?.productInterest,
-    productCsv: (r.product || '').trim(),
+    productInterest: undefined,
+    productCsv: '',
   })
   const details = buildCalendarEventDescriptionBody(
     {
