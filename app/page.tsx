@@ -3001,7 +3001,7 @@ export default function Home() {
 
   if (status === 'unauthenticated') {
     return (
-      <main className="flex min-h-[100dvh] flex-col bg-white px-6 pb-10 text-[#111111] antialiased sm:px-8 sm:pb-12 sm:max-w-[390px] sm:mx-auto sm:min-h-screen sm:shadow-[0_0_40px_rgba(0,0,0,0.08)] sm:border-x sm:border-[#e5e7eb]">
+      <main className="flex min-h-[100dvh] flex-col bg-white px-6 pb-10 text-[#111111] antialiased sm:px-8 sm:pb-12">
         <div className="mx-auto w-full max-w-[19rem] pt-[4.25rem] pb-[min(7.5rem,22vh)] sm:max-w-[20rem] sm:pt-[4.75rem]">
           <div className="flex flex-col items-center text-center">
             <div className="mb-8 flex w-full justify-center">
@@ -3055,7 +3055,7 @@ export default function Home() {
   const userInitial = (session?.user?.name?.trim()?.[0] || session?.user?.email?.[0] || '?').toUpperCase()
 
   return (
-    <main className="flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none sm:max-w-[390px] sm:mx-auto sm:min-h-screen sm:shadow-[0_0_40px_rgba(0,0,0,0.08)] sm:border-x sm:border-[#e5e7eb]">
+    <main className="flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none">
 
       {/* Header */}
       <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
@@ -3690,7 +3690,7 @@ export default function Home() {
               }}
             >
               <div className="mb-6 max-w-[20rem] text-center">
-                <h2 className="text-xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.1rem]">
+                <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
                   Tap to record your visit
                 </h2>
               </div>
