@@ -993,11 +993,21 @@ function primaryTitleForDisplay(r: StructureResult) {
     detectNoteLanguage(
       `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''}`,
     ).toLowerCase() === 'spanish'
+  const resolvedForDisplay = r.nextStepTimeHint
+    ? ensureCalendarDateTimeNotPast(
+        r.nextStepDate || isoDateToMmddyyyy(todayIsoDate()),
+        resolveTimeFromHint(r.nextStepTimeHint).hour,
+        resolveTimeFromHint(r.nextStepTimeHint).minute,
+      )
+    : null
+
   return {
     nextStep: r.nextStep,
     nextStepTitle: r.nextStepTitle,
-    nextStepDate: r.nextStepDate,
-    nextStepTimeHint: r.nextStepTimeHint,
+    nextStepDate: resolvedForDisplay?.dateMmddyyyy || r.nextStepDate,
+    nextStepTimeHint: resolvedForDisplay
+      ? `${String(resolvedForDisplay.hour).padStart(2,'0')}:${String(resolvedForDisplay.minute).padStart(2,'0')}`
+      : r.nextStepTimeHint,
     nextStepSoftTiming: r.nextStepSoftTiming,
     langEs,
   }
