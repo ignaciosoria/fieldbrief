@@ -1,8 +1,7 @@
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { getMetadataBase } from "../lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,44 +13,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteDescription =
-  "Record your visit. We turn it into a follow-up.";
-
-export const metadata: Metadata = {
-  metadataBase: getMetadataBase(),
+export const metadata = {
   title: "Folup",
-  description: siteDescription,
-  manifest: "/manifest.json",
-  icons: {
-    icon: [{ url: "/favicon.png", sizes: "32x32", type: "image/png" }],
-    apple: [{ url: "/icon_128.png", sizes: "128x128", type: "image/png" }],
-    shortcut: "/favicon.png",
-  },
+  description: "Never forget a follow-up after a client visit.",
   openGraph: {
-    title: "Folup",
-    description: siteDescription,
+    title: "Folup — Voice note → next steps + calendar in seconds",
+    description: "Never forget a follow-up after a client visit.",
+    url: "https://folup.app",
     siteName: "Folup",
-    type: "website",
-    locale: "en_US",
-    images: [
-      {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Folup",
-      },
-    ],
+    images: [{ url: "https://folup.app/og_image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Folup",
-    description: siteDescription,
-    images: ["/og.png"],
-  },
-  appleWebApp: {
-    capable: true,
-    title: "Folup",
-    statusBarStyle: "default",
+    title: "Folup — Voice note → next steps + calendar in seconds",
+    description: "Never forget a follow-up after a client visit.",
+    images: ["https://folup.app/og_image.png"],
   },
 };
 
