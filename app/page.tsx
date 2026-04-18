@@ -2839,7 +2839,7 @@ export default function Home() {
       final = finalizeNextStepFields(final, tx)
       final = applyConfidenceDefaults(final)
 
-      if (hasActiveSubscription === false && savedNotes.length >= 1) {
+      if (hasActiveSubscription === false && savedNotes.length >= 0) {
         setShowPaywall(true)
         setLoading(false)
         return
