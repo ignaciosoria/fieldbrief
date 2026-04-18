@@ -1956,6 +1956,17 @@ export default function Home() {
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [primaryAdded, setPrimaryAdded] = useState(false)
   const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
+  const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    fetch('/api/subscription')
+      .then((r) => r.json())
+      .then((data) => setHasActiveSubscription(data.active))
+      .catch(() => setHasActiveSubscription(false))
+  }, [status])
+
+  const [showPaywall, setShowPaywall] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -2820,6 +2831,12 @@ export default function Home() {
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, tx)
       final = applyConfidenceDefaults(final)
+
+      if (!hasActiveSubscription && savedNotes.length >= 10) {
+        setShowPaywall(true)
+        setLoading(false)
+        return
+      }
 
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
@@ -4536,6 +4553,37 @@ export default function Home() {
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
+      {showPaywall && (
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/50 px-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
+              You've used your 10 free notes
+            </h2>
+            <p className="mb-6 text-center text-[14px] text-[#6b7280]">
+              Subscribe to Folup Pro to keep recording and never forget a follow-up again.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await fetch('/api/stripe/checkout', { method: 'POST' })
+                const data = await res.json()
+                if (data.url) window.location.href = data.url
+              }}
+              className="w-full rounded-xl py-4 text-[15px] font-bold text-white"
+              style={{ backgroundColor: '#4F46E5' }}
+            >
+              Subscribe — $19/month
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPaywall(false)}
+              className="mt-3 w-full rounded-xl py-3 text-[13px] font-medium text-[#6b7280]"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
