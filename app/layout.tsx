@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Folup",
   description: "Never forget a follow-up after a client visit.",
+  icons: {
+    icon: [{ url: "/favicon.png", sizes: "32x32", type: "image/png" }],
+    apple: [{ url: "/icon_128.png", sizes: "128x128", type: "image/png" }],
+    shortcut: "/favicon.png",
+  },
   openGraph: {
     title: "Folup — Voice note → next steps + calendar in seconds",
     description: "Never forget a follow-up after a client visit.",
