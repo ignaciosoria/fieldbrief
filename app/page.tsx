@@ -2839,7 +2839,9 @@ export default function Home() {
       final = finalizeNextStepFields(final, tx)
       final = applyConfidenceDefaults(final)
 
-      if (hasActiveSubscription === false && savedNotes.length >= 0) {
+      const subRes = await fetch('/api/subscription')
+      const subData = await subRes.json()
+      if (subData.active === false) {
         setShowPaywall(true)
         setLoading(false)
         return
