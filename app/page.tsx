@@ -2779,11 +2779,15 @@ export default function Home() {
 
   const processRecordedAudio = async (blob: Blob) => {
     // Check subscription FIRST before any processing
-    const subRes = await fetch('/api/subscription')
-    const subData = await subRes.json()
-    if (subData.active === false) {
-      setShowPaywall(true)
-      return
+    const EXEMPT_EMAILS = ['ignacio.isk@gmail.com']
+    const userEmail = session?.user?.email || ''
+    if (!EXEMPT_EMAILS.includes(userEmail)) {
+      const subRes = await fetch('/api/subscription')
+      const subData = await subRes.json()
+      if (subData.active === false && savedNotes.length >= 10) {
+        setShowPaywall(true)
+        return
+      }
     }
 
     processingStartedAtRef.current = Date.now()
