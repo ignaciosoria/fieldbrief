@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { supabase } from "../../../lib/supabase"
+import { createServiceRoleClient } from "../../../lib/supabase"
 
 export async function GET() {
   try {
@@ -9,17 +9,24 @@ export async function GET() {
       return NextResponse.json({ active: false })
     }
 
+    const supabase = createServiceRoleClient()
     const { data, error } = await supabase
       .from("subscriptions")
       .select("status")
       .eq("user_id", session.user.email)
       .maybeSingle()
 
-    if (error || !data) {
+    if (error) {
       return NextResponse.json({ active: false })
     }
 
-    return NextResponse.json({ active: data.status === "active" })
+    if (!data) {
+      return NextResponse.json({ active: false })
+    }
+
+    return NextResponse.json({
+      active: data.status === "active",
+    })
   } catch {
     return NextResponse.json({ active: false })
   }

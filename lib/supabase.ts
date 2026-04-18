@@ -13,6 +13,13 @@ export const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 )
 
+export function createServiceRoleClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.error(
