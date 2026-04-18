@@ -1960,10 +1960,17 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
+    console.log('[subscription] checking...')
     fetch('/api/subscription')
       .then((r) => r.json())
-      .then((data) => setHasActiveSubscription(data.active))
-      .catch(() => setHasActiveSubscription(false))
+      .then((data) => {
+        console.log('[subscription] result:', data)
+        setHasActiveSubscription(data.active)
+      })
+      .catch((err) => {
+        console.log('[subscription] error:', err)
+        setHasActiveSubscription(false)
+      })
   }, [status])
 
   const [showPaywall, setShowPaywall] = useState(false)
