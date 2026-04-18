@@ -2778,6 +2778,14 @@ export default function Home() {
   }
 
   const processRecordedAudio = async (blob: Blob) => {
+    // Check subscription FIRST before any processing
+    const subRes = await fetch('/api/subscription')
+    const subData = await subRes.json()
+    if (subData.active === false) {
+      setShowPaywall(true)
+      return
+    }
+
     processingStartedAtRef.current = Date.now()
     setLoading(true)
     setError('')
@@ -2838,14 +2846,6 @@ export default function Home() {
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, tx)
       final = applyConfidenceDefaults(final)
-
-      const subRes = await fetch('/api/subscription')
-      const subData = await subRes.json()
-      if (subData.active === false) {
-        setShowPaywall(true)
-        setLoading(false)
-        return
-      }
 
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
