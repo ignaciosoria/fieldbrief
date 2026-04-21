@@ -145,36 +145,39 @@ function closingSendEs(product: string, deliverable?: string): string {
   return 'Enviar materiales pendientes.'
 }
 
-/** CALL — plantilla con tema opcional. */
+function truncateTopic(topic: string, maxWords = 5): string {
+  const words = topic.trim().split(/\s+/).filter(Boolean)
+  if (words.length <= maxWords) return words.join(' ')
+  return words.slice(0, maxWords).join(' ')
+}
+
 function closingCallEs(topic?: string): string {
-  if (topic) return `Llamar para hablar sobre ${topic}.`
+  if (topic) return `Llamar para hablar sobre ${truncateTopic(topic)}.`
   return 'Llamar para ver próximos pasos.'
 }
 
 function closingCallEn(topic?: string): string {
-  if (topic) return `Call to discuss ${topic}.`
+  if (topic) return `Call to discuss ${truncateTopic(topic)}.`
   return 'Call to follow up.'
 }
 
-/** FOLLOW_UP — plantilla con tema opcional. */
 function closingFollowUpEs(topic?: string): string {
-  if (topic) return `Dar seguimiento sobre ${topic}.`
+  if (topic) return `Dar seguimiento sobre ${truncateTopic(topic)}.`
   return 'Dar seguimiento y ver próximos pasos.'
 }
 
 function closingFollowUpEn(topic?: string): string {
-  if (topic) return `Follow up on ${topic}.`
+  if (topic) return `Follow up on ${truncateTopic(topic)}.`
   return 'Follow up on next steps.'
 }
 
-/** MEETING — plantilla con tema opcional. */
 function closingMeetingEs(topic?: string): string {
-  if (topic) return `Reunirse para revisar ${topic}.`
+  if (topic) return `Reunirse para revisar ${truncateTopic(topic)}.`
   return 'Reunirse para ver próximos pasos.'
 }
 
 function closingMeetingEn(topic?: string): string {
-  if (topic) return `Meet to review ${topic}.`
+  if (topic) return `Meet to review ${truncateTopic(topic)}.`
   return 'Meet to discuss next steps.'
 }
 

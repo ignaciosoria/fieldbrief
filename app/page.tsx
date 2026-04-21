@@ -914,7 +914,7 @@ function buildCalendarOpenOptsForSupportingStep(
   const st = (step.supportingType || '').toLowerCase()
   const supportingDeliverable =
     st === 'send' || st === 'email'
-      ? (step.actionStructured?.object || step.label || '').trim()
+      ? (step.actionStructured?.object || step.label || step.action || '').trim()
       : (step.actionStructured?.object || '').trim()
 
   // For send steps, ensure contact appears in title

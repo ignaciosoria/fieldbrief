@@ -77,6 +77,17 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
   }
 
   const nextWeekMonday = days.Monday.plus({ days: 7 })
+
+  // "Próximo [weekday]" anchors — always the weekday of NEXT week, not the upcoming one
+  const proximoDays: Record<string, DateTime> = {
+    Monday: days.Monday.plus({ days: 7 }),
+    Tuesday: days.Tuesday.plus({ days: 7 }),
+    Wednesday: days.Wednesday.plus({ days: 7 }),
+    Thursday: days.Thursday.plus({ days: 7 }),
+    Friday: days.Friday.plus({ days: 7 }),
+    Saturday: days.Saturday.plus({ days: 7 }),
+    Sunday: days.Sunday.plus({ days: 7 }),
+  }
   const currentHour = now.toFormat('HH:mm')
   const currentPeriod = now.hour < 12 ? 'morning' : now.hour < 17 ? 'afternoon' : 'evening'
 
@@ -101,6 +112,9 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
     '- Spanish "próximo/próxima [weekday]" (e.g. "próximo miércoles", "próxima semana") = ALWAYS the weekday of NEXT week, never the closest upcoming day. "Próximo miércoles" said on a Tuesday means the Wednesday of next week, not tomorrow.',
     '- Spanish "este/esta [weekday]" (e.g. "este miércoles", "esta semana") = the closest upcoming occurrence of that day within the current week.',
     '- English "next [weekday]" follows the same rule as "próximo" — always the weekday of next week.',
+    '',
+    '"Próximo/próxima [weekday]" date anchors (ALWAYS use these — never the "Next" dates above):',
+    ...Object.entries(proximoDays).map(([name, dt]) => `  Próximo ${name}: ${fmtPair(dt)}`),
   ].join('\n')
 }
 

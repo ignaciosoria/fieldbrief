@@ -292,7 +292,7 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean, object?: s
         return 'Llamar a'
       case 'send': {
         const obj = (object || '').toLowerCase()
-        const isPhysical = /\b(entregar|entrega|llevar|traer|dejar|coche|carro|vehiculo|vehículo|pallet|pallets|muestra|muestras|producto|productos|pedido|paquete)\b/.test(obj)
+        const isPhysical = /\b(entregar|entrega|llevar|traer|dejar|coche|carro|vehiculo|veh[íi]culo|pallet|pallets|muestra|muestras|producto|productos|pedido|paquete|f[íi]sico|deliver|delivery|drop.?off|handover)\b/.test(obj)
         return isPhysical ? 'Entregar' : 'Enviar'
       }
       case 'meeting':
@@ -392,7 +392,7 @@ export function structuredPayloadToStructureBody(
   const company = primary.company.trim()
   const contact = primary.contact.trim()
   const objectRaw = primary.object.trim()
-  const verb = verbForPrimary(primary.type, langEs, primary.object)
+  const verb = verbForPrimary(primary.type, langEs, `${primary.object} ${objectRaw} ${primary.contact}`)
   const nextStepDate = normalizeDateMmdd(primary.date)
   const nextStepTimeHint = normalizeTimeHint(primary.time)
   const softTimingRaw = normalizeSoftFollowUpTiming(primary.softTiming)
