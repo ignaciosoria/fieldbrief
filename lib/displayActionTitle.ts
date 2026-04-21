@@ -83,7 +83,10 @@ function formatDisplayDateLabelForPrimary(mmdd: string, langEs?: boolean): strin
     const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1)
     const dayNum = d
     const monthShort = dt.toLocaleDateString(langEs ? 'es-ES' : 'en-US', { month: 'short' })
-    return langEs ? `${capitalized} ${dayNum}` : `${capitalized} ${monthShort} ${dayNum}`
+    const monthCapitalized = monthShort.charAt(0).toUpperCase() + monthShort.slice(1)
+    return langEs
+      ? `${capitalized} ${dayNum} ${monthCapitalized}`
+      : `${capitalized} ${monthCapitalized} ${dayNum}`
   }
   return rel
 }

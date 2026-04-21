@@ -145,10 +145,16 @@ function closingSendEs(product: string, deliverable?: string): string {
   return 'Enviar materiales pendientes.'
 }
 
-function truncateTopic(topic: string, maxWords = 5): string {
+function truncateTopic(topic: string, maxWords = 4): string {
   const words = topic.trim().split(/\s+/).filter(Boolean)
   if (words.length <= maxWords) return words.join(' ')
-  return words.slice(0, maxWords).join(' ')
+  // Cut at maxWords but avoid ending with a preposition or article
+  const stopWords = new Set(['para', 'de', 'en', 'con', 'por', 'a', 'la', 'el', 'los', 'las', 'un', 'una', 'y', 'o', 'the', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with'])
+  let cutAt = maxWords
+  while (cutAt > 1 && stopWords.has(words[cutAt - 1].toLowerCase())) {
+    cutAt--
+  }
+  return words.slice(0, cutAt).join(' ')
 }
 
 function closingCallEs(topic?: string): string {
