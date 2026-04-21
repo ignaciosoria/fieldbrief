@@ -529,11 +529,12 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
 /** Structured calendar: derive wall-clock time from AI hint (no default when empty — use all-day). */
 function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   const value = (hint || '').toLowerCase().trim()
-  if (value === 'morning') return { hour: 9, minute: 0 }
-  if (value === 'afternoon') return { hour: 15, minute: 0 }
-  if (value === 'evening') return { hour: 18, minute: 0 }
-  if (value === 'first thing') return { hour: 8, minute: 0 }
-  if (value === 'noon') return { hour: 12, minute: 0 }
+  if (value === 'morning' || value === 'por la mañana' || value === 'mañana') return { hour: 9, minute: 0 }
+  if (value === 'afternoon' || value === 'por la tarde' || value === 'tarde') return { hour: 15, minute: 0 }
+  if (value === 'evening' || value === 'por la noche' || value === 'noche') return { hour: 19, minute: 0 }
+  if (value === 'first thing' || value === 'primera hora') return { hour: 8, minute: 0 }
+  if (value === 'noon' || value === 'mediodía' || value === 'mediodia') return { hour: 12, minute: 0 }
+  if (value === 'end of day' || value === 'fin del día' || value === 'fin de día') return { hour: 17, minute: 0 }
   if (!value) return { hour: 9, minute: 0 }
 
   const h24 = hint.trim().match(/^(\d{1,2}):(\d{2})$/)
@@ -695,8 +696,10 @@ function buildCalendarDescription(data: StructureResult): string {
       : primaryActionType === 'call'
         ? 'call'
         : primaryActionType === 'follow_up'
-          ? 'other'
-          : 'other'
+          ? 'follow_up'
+          : primaryActionType === 'meeting'
+            ? 'meeting'
+            : 'other'
 
   const derivedDescription = formatForCalendar(kind, {
     contextParagraph: buildCalendarContext({
@@ -1704,20 +1707,32 @@ function forceLanguage(nextStep: string, originalText: string) {
 
   if (inputIsSpanish && !outputIsSpanish) {
     return nextStep
-      .replace(/^call/i, 'Llamar')
-      .replace(/^send/i, 'Enviar')
-      .replace(/^follow up with/i, 'Seguimiento con')
-      .replace(/^follow up/i, 'Seguimiento con')
-      .replace(/^schedule/i, 'Agendar')
+      .replace(/^call\s+/i, 'Llamar a ')
+      .replace(/^call$/i, 'Llamar')
+      .replace(/^send\s+/i, 'Enviar ')
+      .replace(/^send$/i, 'Enviar')
+      .replace(/^deliver\s+/i, 'Entregar ')
+      .replace(/^deliver$/i, 'Entregar')
+      .replace(/^follow up with\s+/i, 'Seguimiento con ')
+      .replace(/^follow up\s+/i, 'Seguimiento con ')
+      .replace(/^follow up$/i, 'Seguimiento con')
+      .replace(/^schedule\s+/i, 'Agendar ')
+      .replace(/^meet\s+/i, 'Reunirse con ')
   }
 
   if (!inputIsSpanish && outputIsSpanish) {
     return nextStep
-      .replace(/^llamar/i, 'Call')
-      .replace(/^enviar/i, 'Send')
-      .replace(/^seguimiento con/i, 'Follow up with')
-      .replace(/^hacer seguimiento/i, 'Follow up with')
-      .replace(/^agendar/i, 'Schedule')
+      .replace(/^llamar a\s+/i, 'Call ')
+      .replace(/^llamar\s+/i, 'Call ')
+      .replace(/^llamar$/i, 'Call')
+      .replace(/^enviar\s+/i, 'Send ')
+      .replace(/^enviar$/i, 'Send')
+      .replace(/^entregar\s+/i, 'Deliver ')
+      .replace(/^entregar$/i, 'Deliver')
+      .replace(/^seguimiento con\s+/i, 'Follow up with ')
+      .replace(/^hacer seguimiento\s+/i, 'Follow up with ')
+      .replace(/^agendar\s+/i, 'Schedule ')
+      .replace(/^reunirse con\s+/i, 'Meet ')
   }
 
   return nextStep
