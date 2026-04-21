@@ -292,7 +292,7 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean, object?: s
         return 'Llamar a'
       case 'send': {
         const obj = (object || '').toLowerCase()
-        const isPhysical = /\b(entregar|entrega|llevar|traer|dejar|coche|carro|vehiculo|veh[íi]culo|pallet|pallets|muestra|muestras|producto|productos|pedido|paquete|f[íi]sico|deliver|delivery|drop.?off|handover)\b/.test(obj)
+        const isPhysical = /\b(entregar|entrega|llevar|traer|coche|carro|veh[íi]culo|pallet|pallets)\b/.test(obj)
         return isPhysical ? 'Entregar' : 'Enviar'
       }
       case 'meeting':

@@ -933,6 +933,11 @@ function buildCalendarOpenOptsForSupportingStep(
   }
   const stepContact = (step.actionStructured?.contact || step.contact || r.contact || '').trim()
   const stepCompany = (step.actionStructured?.company || step.company || r.contactCompany || r.customer || '').trim()
+  const callTopic =
+    st === 'call'
+      ? (r.commercialContext?.productInterest || r.commercialContext?.problem || step.label || '').trim()
+      : undefined
+
   const supportingDetails = formatForCalendar(supportingCalendarFormatKind(step), {
     contextParagraph: buildCalendarContext({
       contact: stepContact,
@@ -944,7 +949,7 @@ function buildCalendarOpenOptsForSupportingStep(
     }),
     langEs,
     deliverable: supportingDeliverable,
-    productInterest: r.commercialContext?.productInterest || undefined,
+    productInterest: callTopic || r.commercialContext?.productInterest || undefined,
     productCsv: (r.product || '').trim(),
   })
   const details = buildCalendarEventDescriptionBody(
