@@ -98,6 +98,9 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
     '- "next week" without a day = Monday of next week',
     '- "this week" = before Sunday of the current week',
     '- Never assign a date that is already past',
+    '- Spanish "próximo/próxima [weekday]" (e.g. "próximo miércoles", "próxima semana") = ALWAYS the weekday of NEXT week, never the closest upcoming day. "Próximo miércoles" said on a Tuesday means the Wednesday of next week, not tomorrow.',
+    '- Spanish "este/esta [weekday]" (e.g. "este miércoles", "esta semana") = the closest upcoming occurrence of that day within the current week.',
+    '- English "next [weekday]" follows the same rule as "próximo" — always the weekday of next week.',
   ].join('\n')
 }
 
