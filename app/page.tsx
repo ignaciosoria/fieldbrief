@@ -941,8 +941,8 @@ function buildCalendarOpenOptsForSupportingStep(
     }),
     langEs,
     deliverable: supportingDeliverable,
-    productInterest: undefined,
-    productCsv: '',
+    productInterest: r.commercialContext?.productInterest || undefined,
+    productCsv: (r.product || '').trim(),
   })
   const details = buildCalendarEventDescriptionBody(
     {
