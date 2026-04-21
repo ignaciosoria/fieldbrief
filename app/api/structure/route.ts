@@ -84,7 +84,7 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
     `User calendar timezone: ${z}. Anchor all relative dates to the user's local clock below — never use server time or UTC.`,
     `Today: ${fmtPair(now)}`,
     `Current local time: ${currentHour} (${currentPeriod})`,
-    `Time rule: if the user says "tomorrow morning" = tomorrow at 09:00; "this afternoon" = today at 15:00; "tonight" = today at 19:00; "end of day" = today at 17:00. Never assign a past time to today's date.`,
+    `Time rule: if the user says "tomorrow morning" = tomorrow at 09:00; "this afternoon" = today at 15:00; "tonight" = today at 19:00; "end of day" = today at 17:00. Never assign a past time to today's date. If no time is mentioned at all, default to 09:00.`,
     `Tomorrow: ${fmtPair(tomorrow)}`,
     '',
     'Upcoming weekdays (always the NEXT occurrence, never today even if today matches):',

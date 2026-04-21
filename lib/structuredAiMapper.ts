@@ -291,7 +291,7 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean): string {
       case 'call':
         return 'Llamar'
       case 'send':
-        return 'Enviar'
+        return 'Enviar/Entregar'
       case 'meeting':
         return 'Reunirse'
       case 'follow_up':

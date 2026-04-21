@@ -1973,6 +1973,20 @@ export default function Home() {
       })
   }, [status])
 
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const pending = localStorage.getItem('folup_pending_result')
+    if (pending) {
+      try {
+        const parsed = JSON.parse(pending)
+        setResult(parsed)
+        localStorage.removeItem('folup_pending_result')
+      } catch {
+        localStorage.removeItem('folup_pending_result')
+      }
+    }
+  }, [status])
+
   const [showPaywall, setShowPaywall] = useState(false)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -2963,6 +2977,9 @@ export default function Home() {
   const addResultToCalendar = (r: StructureResult, opts?: { noteId?: string | null }) => {
     // If user is not authenticated, show login prompt instead
     if (!session?.user) {
+      if (result) {
+        localStorage.setItem('folup_pending_result', JSON.stringify(result))
+      }
       setShowLoginPrompt(true)
       return
     }
