@@ -71,22 +71,23 @@ function languageFromHeuristics(text: string): string | null {
   return null
 }
 
-/**
- * Best-effort spoken-language label for prompts. Uses franc, then heuristics for short/ambiguous text.
- */
 export function detectNoteLanguage(note: string): string {
   const trimmed = note.trim()
   if (!trimmed) return 'English'
 
-  const code = franc(trimmed, { minLength: 3 })
-  if (code !== 'und') {
-    const name = ISO_639_3_ENGLISH_NAME[code]
-    if (name) return name
-    return code.toUpperCase()
-  }
-
+  // Check heuristics first — most reliable for short notes
   const fromSignals = languageFromHeuristics(trimmed)
   if (fromSignals) return fromSignals
+
+  // Use franc for longer text
+  const code = franc(trimmed, { minLength: 3 })
+  if (code !== 'und') {
+    // Only support English or Spanish — everything else defaults to Spanish
+    if (code === 'eng') return 'English'
+    if (code === 'spa') return 'Spanish'
+    // Non-English detected — default to Spanish
+    return 'Spanish'
+  }
 
   return 'English'
 }
