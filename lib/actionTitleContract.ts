@@ -170,6 +170,7 @@ export function verbForSupportingStructuredType(
   if (langEs) {
     if (type === 'email') return 'Email'
     if (type === 'send') return 'Enviar/Entregar'
+    if (type === 'call') return 'Llamar a'
     return 'Llamar'
   }
   if (type === 'email') return 'Email'
