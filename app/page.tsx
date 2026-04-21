@@ -1974,6 +1974,7 @@ export default function Home() {
   }, [status])
 
   const [showPaywall, setShowPaywall] = useState(false)
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -2960,6 +2961,11 @@ export default function Home() {
 
   /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
   const addResultToCalendar = (r: StructureResult, opts?: { noteId?: string | null }) => {
+    // If user is not authenticated, show login prompt instead
+    if (!session?.user) {
+      setShowLoginPrompt(true)
+      return
+    }
     if (isNoClearFollowUpResult(r)) return
     if (navigator.vibrate) navigator.vibrate(10)
     const calendarOpts = buildCalendarOpenOptsFromResult(r)
@@ -4590,6 +4596,33 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowPaywall(false)}
+              className="mt-3 w-full rounded-xl py-3 text-[13px] font-medium text-[#6b7280]"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
+      {showLoginPrompt && (
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/50 px-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
+              Add to your calendar
+            </h2>
+            <p className="mb-6 text-center text-[14px] text-[#6b7280]">
+              Sign in with Google to add this event directly to your calendar and save your notes.
+            </p>
+            <button
+              type="button"
+              onClick={() => signIn('google')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[15px] font-bold text-white"
+              style={{ backgroundColor: '#4F46E5' }}
+            >
+              Continue with Google
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLoginPrompt(false)}
               className="mt-3 w-full rounded-xl py-3 text-[13px] font-medium text-[#6b7280]"
             >
               Maybe later
