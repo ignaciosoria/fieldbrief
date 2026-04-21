@@ -12,11 +12,12 @@ function pad2(n: number) {
 /** Same wall-clock resolution as app calendar (`app/page.tsx` `resolveTimeFromHint`). */
 function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   const value = (hint || '').toLowerCase().trim()
-  if (value === 'morning') return { hour: 9, minute: 0 }
-  if (value === 'afternoon') return { hour: 15, minute: 0 }
-  if (value === 'evening') return { hour: 18, minute: 0 }
-  if (value === 'first thing') return { hour: 8, minute: 0 }
-  if (value === 'noon') return { hour: 12, minute: 0 }
+  if (value === 'morning' || value === 'por la mañana' || value === 'mañana') return { hour: 9, minute: 0 }
+  if (value === 'afternoon' || value === 'por la tarde' || value === 'tarde') return { hour: 15, minute: 0 }
+  if (value === 'evening' || value === 'por la noche' || value === 'noche') return { hour: 19, minute: 0 }
+  if (value === 'first thing' || value === 'primera hora') return { hour: 8, minute: 0 }
+  if (value === 'noon' || value === 'mediodía' || value === 'mediodia') return { hour: 12, minute: 0 }
+  if (value === 'end of day' || value === 'fin del día' || value === 'fin de día') return { hour: 17, minute: 0 }
   if (!value) return { hour: 9, minute: 0 }
 
   const h24 = hint.trim().match(/^(\d{1,2}):(\d{2})$/)
@@ -78,7 +79,11 @@ function formatDisplayDateLabelForPrimary(mmdd: string, langEs?: boolean): strin
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(mmdd)) {
     const [m, d, y] = mmdd.split('/').map((x) => parseInt(x, 10))
     const dt = new Date(y, m - 1, d)
-    return dt.toLocaleDateString(langEs ? 'es-ES' : 'en-US', { weekday: 'long' })
+    const weekday = dt.toLocaleDateString(langEs ? 'es-ES' : 'en-US', { weekday: 'long' })
+    const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1)
+    const dayNum = d
+    const monthShort = dt.toLocaleDateString(langEs ? 'es-ES' : 'en-US', { month: 'short' })
+    return langEs ? `${capitalized} ${dayNum}` : `${capitalized} ${monthShort} ${dayNum}`
   }
   return rel
 }
@@ -135,6 +140,7 @@ export type SupportingDisplayTitleInput = {
   action: string
   resolvedDate: string
   timeHint: string
+  softTiming?: string
   langEs?: boolean
 }
 
@@ -151,8 +157,19 @@ export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): 
 
   const dateRaw = (step.resolvedDate || '').trim()
   const hint = (step.timeHint || '').trim()
+  const softRaw = (step.softTiming || '').trim()
   const hasMmdd = /^\d{2}\/\d{2}\/\d{4}$/.test(dateRaw)
-  if (!hasMmdd && !dateRaw && !hint) return formatRelativeDayWordsForDisplay(base, langEs)
+  if (!hasMmdd && !dateRaw && !hint) {
+    if (isSoftFollowUpTiming(softRaw)) {
+      const label = softFollowUpLabel(softRaw as SoftFollowUpTiming, langEs)
+      const em = '\u2014'
+      return formatRelativeDayWordsForDisplay(
+        label ? `${base} ${em} ${label}` : base,
+        langEs,
+      )
+    }
+    return formatRelativeDayWordsForDisplay(base, langEs)
+  }
 
   const dateLabel = hasMmdd
     ? formatDisplayDateLabelForPrimary(dateRaw, langEs)

@@ -145,31 +145,37 @@ function closingSendEs(product: string, deliverable?: string): string {
   return 'Enviar materiales pendientes.'
 }
 
-/** CALL — plantilla fija. */
-function closingCallEs(): string {
-  return 'Llamar para revisar la comparativa y ver próximos pasos.'
+/** CALL — plantilla con tema opcional. */
+function closingCallEs(topic?: string): string {
+  if (topic) return `Llamar para hablar sobre ${topic}.`
+  return 'Llamar para ver próximos pasos.'
 }
 
-function closingCallEn(): string {
-  return 'Call to review the comparison and see next steps.'
+function closingCallEn(topic?: string): string {
+  if (topic) return `Call to discuss ${topic}.`
+  return 'Call to follow up.'
 }
 
-/** FOLLOW_UP — plantilla fija. */
-function closingFollowUpEs(): string {
-  return 'Dar seguimiento para ver interés y próximos pasos.'
+/** FOLLOW_UP — plantilla con tema opcional. */
+function closingFollowUpEs(topic?: string): string {
+  if (topic) return `Dar seguimiento sobre ${topic}.`
+  return 'Dar seguimiento y ver próximos pasos.'
 }
 
-function closingFollowUpEn(): string {
-  return 'Follow up to gauge interest and next steps.'
+function closingFollowUpEn(topic?: string): string {
+  if (topic) return `Follow up on ${topic}.`
+  return 'Follow up on next steps.'
 }
 
-/** MEETING — concreto, sin términos abstractos. */
-function closingMeetingEs(): string {
-  return 'Reunirse para ver la visita y próximos pasos.'
+/** MEETING — plantilla con tema opcional. */
+function closingMeetingEs(topic?: string): string {
+  if (topic) return `Reunirse para revisar ${topic}.`
+  return 'Reunirse para ver próximos pasos.'
 }
 
-function closingMeetingEn(): string {
-  return 'Meet on site to review next steps.'
+function closingMeetingEn(topic?: string): string {
+  if (topic) return `Meet to review ${topic}.`
+  return 'Meet to discuss next steps.'
 }
 
 /**
@@ -189,12 +195,18 @@ export function buildActionClosingLine(
       return langEs
         ? closingSendEs('', input.deliverable)
         : closingSendEn('', input.deliverable)
-    case 'call':
-      return langEs ? closingCallEs() : closingCallEn()
-    case 'follow_up':
-      return langEs ? closingFollowUpEs() : closingFollowUpEn()
-    case 'meeting':
-      return langEs ? closingMeetingEs() : closingMeetingEn()
+    case 'call': {
+      const callTopic = (input.productInterest || input.deliverable || '').trim()
+      return langEs ? closingCallEs(callTopic || undefined) : closingCallEn(callTopic || undefined)
+    }
+    case 'follow_up': {
+      const fuTopic = (input.productInterest || '').trim()
+      return langEs ? closingFollowUpEs(fuTopic || undefined) : closingFollowUpEn(fuTopic || undefined)
+    }
+    case 'meeting': {
+      const meetTopic = (input.productInterest || '').trim()
+      return langEs ? closingMeetingEs(meetTopic || undefined) : closingMeetingEn(meetTopic || undefined)
+    }
   }
 }
 

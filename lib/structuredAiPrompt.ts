@@ -83,7 +83,7 @@ This field is **not optional** when the action is send or email. You must extrac
 
 **unless** the note truly names no deliverable at all (only then use "").
 
-**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable. Spanish delivery verbs: enviar / mandar / entregar / llevar / traer / dejar / compartir — all map to type **send**.
+**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable. Spanish delivery verbs: enviar / mandar / compartir — map to type **send** (digital). Physical delivery verbs: entregar / llevar / traer / dejar — map to type **send** but set object to include the word "entrega" if no specific object is named (e.g. "entrega de Opel Corsa"). When the note uses entregar/llevar/traer, the verb displayed should reflect delivery, not sending.
 
 **Examples (English):**
 - "send her the updated program today before 5pm" → **object** = "updated program" (NOT empty, NOT her name)
