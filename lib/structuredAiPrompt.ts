@@ -83,7 +83,7 @@ This field is **not optional** when the action is send or email. You must extrac
 
 **unless** the note truly names no deliverable at all (only then use "").
 
-**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable.
+**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable. Spanish delivery verbs: enviar / mandar / entregar / llevar / traer / dejar / compartir — all map to type **send**.
 
 **Examples (English):**
 - "send her the updated program today before 5pm" → **object** = "updated program" (NOT empty, NOT her name)
@@ -127,7 +127,7 @@ Use **follow_up** (not call) when the note is mainly:
 - **No urgency** and **no** explicit phone or meeting action,
 - A **check-in** or **touch base** style situation (“stay in touch”, “keep the conversation going”, “revisit next season”) — **unless** the note explicitly says to call or meet.
 
-**8c-send — SEND vs follow_up (hard rule):** If the note contains **any** explicit send/share language — English **send**, **share** (as a verb), **forward**, **email** (verb); Spanish **enviar**, **mandar**, **compartir**, or similar — **primary.type** MUST be **send**, **never** **follow_up**. **follow_up** is only for **exploratory** next steps with **no** concrete send, call, or meeting action. If both a vague check-in and a send appear, **send** wins.
+**8c-send — SEND vs follow_up (hard rule):** If the note contains **any** explicit send/share language — English **send**, **share** (as a verb), **forward**, **email** (verb); Spanish **enviar**, **mandar**, **compartir**, **entregar**, **llevar**, **traer**, **dejar** — **primary.type** MUST be **send**, **never** **follow_up**. **follow_up** is only for **exploratory** next steps with **no** concrete send, call, or meeting action. If both a vague check-in and a send appear, **send** wins.
 
 **Do not** choose **call** just because the rep **visited**, **met**, or **spoke with** someone; that background alone is **not** a call trigger. In those exploratory cases use **follow_up**.
 
