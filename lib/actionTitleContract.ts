@@ -115,7 +115,7 @@ export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLangua
     if (object && company) return `${verb} ${object} ${EM} ${company}`
     if (object) return `${verb} ${object}`
     if (company) return `${verb} ${EM} ${company}`
-    return verb || (langEs ? 'Enviar' : 'Send')
+    return verb || (langEs ? 'Enviar/Entregar' : 'Send')
   }
 
   if (usesContactForPrimary(t)) {
@@ -169,7 +169,7 @@ export function verbForSupportingStructuredType(
 ): string {
   if (langEs) {
     if (type === 'email') return 'Email'
-    if (type === 'send') return 'Enviar'
+    if (type === 'send') return 'Enviar/Entregar'
     return 'Llamar'
   }
   if (type === 'email') return 'Email'
