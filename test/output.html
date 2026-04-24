@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Structure API test output</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #fafafa; color: #111; }
+    h1 { font-size: 1.25rem; }
+    p.meta { color: #6b7280; font-size: 0.9rem; }
+    table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    th, td { border: 1px solid #e5e7eb; padding: 0.5rem 0.6rem; vertical-align: top; font-size: 0.8rem; }
+    th { background: #f4f4f5; text-align: left; font-weight: 600; }
+    pre.note { white-space: pre-wrap; margin: 0.35rem 0 0; font-size: 0.75rem; line-height: 1.4; }
+    pre.json { margin: 0; font-size: 0.7rem; white-space: pre-wrap; max-width: 28rem; }
+    .tag { display: inline-block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: #4f46e5; font-weight: 700; margin-bottom: 0.25rem; }
+    tr.row-warn { background: #fef2f2; }
+    tr.row-warn td { border-color: #fecaca; }
+    td.err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Structure API — <code>test/run-notes.mjs</code></h1>
+  <p class="meta">Generated at 2026-04-24T19:34:53.463Z · POST http://localhost:3000/api/structure</p>
+  <p class="meta">Rows with empty <code>nextStep</code> or <code>nextStepConfidence: low</code> are highlighted in red.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Original note</th>
+        <th>contact</th>
+        <th>customer</th>
+        <th>nextStep</th>
+        <th>nextStepTitle</th>
+        <th>nextStepDate</th>
+        <th>nextStepSoftTiming</th>
+        <th>additionalSteps</th>
+        <th>confidence</th>
+        <th>ambiguityFlags</th>
+      </tr>
+    </thead>
+    <tbody>
+<tr>
+  <td><span class="tag">no clear follow-up</span><pre class="note">Walked the north block today. Ground is firming up but still soft in the low spots. Might need another pass on drainage before spring.</pre></td>
+  <td></td>
+  <td></td>
+  <td>Follow up with</td>
+  <td>Follow up with</td>
+  <td></td>
+  <td>next_week</td>
+  <td><pre class="json">—</pre></td>
+  <td>medium</td>
+  <td>unclear_contact</td>
+</tr>
+<tr>
+  <td><span class="tag">date mentioned (Friday)</span><pre class="note">Met with Mike at GreenFields. He wants us to call him Friday morning about the starter rate on corn, before he talks to the co-op board.</pre></td>
+  <td>Mike</td>
+  <td>GreenFields</td>
+  <td>Call Mike — GreenFields</td>
+  <td>Call Mike — GreenFields</td>
+  <td>05/01/2026</td>
+  <td></td>
+  <td><pre class="json">—</pre></td>
+  <td>high</td>
+  <td></td>
+</tr>
+<tr>
+  <td><span class="tag">multiple people</span><pre class="note">Sara and Tom both asked about the same 40-acre south parcel. I told them we would get pricing to Jennifer by Wednesday and then loop back to Tom with numbers before Sara’s trip next week.</pre></td>
+  <td>Jennifer</td>
+  <td></td>
+  <td>Send pricing for 40-acre south parcel to Jennifer</td>
+  <td>Send pricing for 40-acre south parcel to Jennifer</td>
+  <td>04/29/2026</td>
+  <td></td>
+  <td><pre class="json">[{&quot;action&quot;:&quot;Send pricing for 40-acre south parcel to Tom&quot;,&quot;contact&quot;:&quot;Jennifer&quot;,&quot;company&quot;:&quot;&quot;,&quot;resolvedDate&quot;:&quot;&quot;,&quot;timeHint&quot;:&quot;&quot;,&quot;supportingType&quot;:&quot;send&quot;,&quot;label&quot;:&quot;Send pricing to Tom&quot;,&quot;actionStructured&quot;:{&quot;type&quot;:&quot;send&quot;,&quot;verb&quot;:&quot;Send&quot;,&quot;object&quot;:&quot;pricing for 40-acre south parcel&quot;,&quot;contact&quot;:&quot;Tom&quot;,&quot;company&quot;:&quot;&quot;,&quot;date&quot;:&quot;&quot;,&quot;time&quot;:&quot;&quot;}}]</pre></td>
+  <td>high</td>
+  <td></td>
+</tr>
+<tr>
+  <td><span class="tag">Spanish</span><pre class="note">Hablé con el señor Ramírez en el campo. Quiere el presupuesto del herbicida para el viernes a primera hora y que le mandemos el PDF por email la próxima semana.</pre></td>
+  <td>Señor Ramírez</td>
+  <td></td>
+  <td>Enviar presupuesto del herbicida a señor Ramírez</td>
+  <td>Enviar presupuesto del herbicida a señor Ramírez</td>
+  <td>05/01/2026</td>
+  <td></td>
+  <td><pre class="json">[{&quot;action&quot;:&quot;Email PDF del presupuesto del herbicida&quot;,&quot;contact&quot;:&quot;Señor Ramírez&quot;,&quot;company&quot;:&quot;&quot;,&quot;resolvedDate&quot;:&quot;05/04/2026&quot;,&quot;timeHint&quot;:&quot;09:00&quot;,&quot;supportingType&quot;:&quot;email&quot;,&quot;label&quot;:&quot;PDF del presupuesto del herbicida&quot;,&quot;structuredDate&quot;:&quot;05/04/2026&quot;,&quot;structuredTime&quot;:&quot;09:00&quot;,&quot;actionStructured&quot;:{&quot;type&quot;:&quot;email&quot;,&quot;verb&quot;:&quot;Email&quot;,&quot;object&quot;:&quot;PDF del presupuesto del herbicida&quot;,&quot;contact&quot;:&quot;&quot;,&quot;company&quot;:&quot;&quot;,&quot;date&quot;:&quot;05/04/2026&quot;,&quot;time&quot;:&quot;09:00&quot;}}]</pre></td>
+  <td>high</td>
+  <td></td>
+</tr>
+<tr>
+  <td><span class="tag">no contact name</span><pre class="note">Drove past the new pivot on the east 80. Looks good, no obvious leaks. Flagged one tire rut for the crew. No one was home to sign off.</pre></td>
+  <td></td>
+  <td></td>
+  <td>Follow up with</td>
+  <td>Follow up with</td>
+  <td></td>
+  <td>next_week</td>
+  <td><pre class="json">—</pre></td>
+  <td>medium</td>
+  <td>unclear_contact</td>
+</tr>
+<tr>
+  <td><span class="tag">send / email</span><pre class="note">Call Lisa first, then email her the spec sheet and CC her purchasing manager. She needs the contract draft before close of business Thursday.</pre></td>
+  <td>Lisa</td>
+  <td></td>
+  <td>Send contract draft to Lisa</td>
+  <td>Send contract draft to Lisa</td>
+  <td>04/30/2026</td>
+  <td></td>
+  <td><pre class="json">[{&quot;action&quot;:&quot;Call Lisa&quot;,&quot;contact&quot;:&quot;Lisa&quot;,&quot;company&quot;:&quot;&quot;,&quot;resolvedDate&quot;:&quot;&quot;,&quot;timeHint&quot;:&quot;&quot;,&quot;actionStructured&quot;:{&quot;type&quot;:&quot;call&quot;,&quot;verb&quot;:&quot;Call&quot;,&quot;object&quot;:&quot;&quot;,&quot;contact&quot;:&quot;Lisa&quot;,&quot;company&quot;:&quot;&quot;,&quot;date&quot;:&quot;&quot;,&quot;time&quot;:&quot;&quot;}},{&quot;action&quot;:&quot;Email spec sheet to Lisa&quot;,&quot;contact&quot;:&quot;Lisa&quot;,&quot;company&quot;:&quot;&quot;,&quot;resolvedDate&quot;:&quot;&quot;,&quot;timeHint&quot;:&quot;&quot;,&quot;supportingType&quot;:&quot;email&quot;,&quot;label&quot;:&quot;spec sheet&quot;,&quot;actionStructured&quot;:{&quot;type&quot;:&quot;email&quot;,&quot;verb&quot;:&quot;Email&quot;,&quot;object&quot;:&quot;spec sheet&quot;,&quot;contact&quot;:&quot;Lisa&quot;,&quot;company&quot;:&quot;&quot;,&quot;date&quot;:&quot;&quot;,&quot;time&quot;:&quot;&quot;}}]</pre></td>
+  <td>medium</td>
+  <td>unclear_date</td>
+</tr>
+<tr>
+  <td><span class="tag">ambiguity: vague timing</span><pre class="note">The buyer might swing by the shop sometime. Follow up on chemical pricing if you remember.</pre></td>
+  <td></td>
+  <td></td>
+  <td>Follow up with</td>
+  <td>Follow up with</td>
+  <td></td>
+  <td>next_week</td>
+  <td><pre class="json">—</pre></td>
+  <td>medium</td>
+  <td>unclear_contact</td>
+</tr>
+<tr>
+  <td><span class="tag">mixed: competitive note</span><pre class="note">James said Brand X undercut us on soybeans. Log that and schedule a call with our rep—don't commit to a price on the call.</pre></td>
+  <td>Our Rep</td>
+  <td></td>
+  <td>Call our rep</td>
+  <td>Call our rep</td>
+  <td></td>
+  <td></td>
+  <td><pre class="json">—</pre></td>
+  <td>medium</td>
+  <td>unclear_date</td>
+</tr>
+    </tbody>
+  </table>
+</body>
+</html>
