@@ -2889,6 +2889,18 @@ export default function Home() {
 
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, tx)
+      // Force low confidence when contact is missing or nextStep is incomplete
+      // so the clarification modals fire and the user can fill in the gap.
+      if (
+        !isNoClearFollowUpResult(final) &&
+        (
+          !(final.contact || '').trim() ||
+          /^follow up with\s*$/i.test((final.nextStep || '').trim()) ||
+          /^seguimiento con\s*$/i.test((final.nextStep || '').trim())
+        )
+      ) {
+        final = { ...final, nextStepConfidence: 'low' }
+      }
       final = applyConfidenceDefaults(final)
 
       await awaitMinProcessingDisplay()
@@ -2944,6 +2956,16 @@ export default function Home() {
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, input)
+      if (
+        !isNoClearFollowUpResult(final) &&
+        (
+          !(final.contact || '').trim() ||
+          /^follow up with\s*$/i.test((final.nextStep || '').trim()) ||
+          /^seguimiento con\s*$/i.test((final.nextStep || '').trim())
+        )
+      ) {
+        final = { ...final, nextStepConfidence: 'low' }
+      }
       final = applyConfidenceDefaults(final)
       await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
