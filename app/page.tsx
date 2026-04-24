@@ -2009,6 +2009,7 @@ export default function Home() {
 
   const [showPaywall, setShowPaywall] = useState(false)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -4329,7 +4330,7 @@ export default function Home() {
                       </svg>
                     </button>
                     <button
-                      onClick={() => deleteNote(selectedNote.id)}
+                      onClick={() => setPendingDeleteNoteId(selectedNote.id)}
                       className="rounded-2xl border border-red-200 bg-red-50 px-4 text-[13px] text-red-600 transition-all hover:bg-red-100 active:scale-[0.98]"
                     >
                       Delete
@@ -4382,7 +4383,23 @@ export default function Home() {
                   />
                 </div>
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
-                  {savedNotes.length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
+                  {savedNotes.filter((note) => {
+                    if (!searchQuery.trim()) return true
+                    const q = searchQuery.toLowerCase()
+                    return (
+                      note.result.contact?.toLowerCase().includes(q) ||
+                      note.result.contactCompany?.toLowerCase().includes(q) ||
+                      note.result.customer?.toLowerCase().includes(q) ||
+                      note.result.product?.toLowerCase().includes(q) ||
+                      note.result.crop?.toLowerCase().includes(q) ||
+                      note.result.location?.toLowerCase().includes(q) ||
+                      note.result.nextStep?.toLowerCase().includes(q) ||
+                      note.result.nextStepTitle?.toLowerCase().includes(q) ||
+                      note.result.crmFull.some((line) => line.toLowerCase().includes(q)) ||
+                      note.result.crmText?.toLowerCase().includes(q) ||
+                      note.result.calendarDescription?.toLowerCase().includes(q)
+                    )
+                  }).length} {savedNotes.length === 1 ? 'note' : 'notes'} saved
                 </p>
                 {savedNotes.length === 0 ? (
                   <div className="flex flex-col items-center justify-center pt-12 text-center">
@@ -4393,6 +4410,27 @@ export default function Home() {
                     </div>
                     <p className="text-[13px] text-[#6b7280]">No notes yet</p>
                     <p className="mt-1 text-[11px] text-[#111111]">Record your first visit to get started</p>
+                  </div>
+                ) : savedNotes.filter((note) => {
+                    if (!searchQuery.trim()) return true
+                    const q = searchQuery.toLowerCase()
+                    return (
+                      note.result.contact?.toLowerCase().includes(q) ||
+                      note.result.contactCompany?.toLowerCase().includes(q) ||
+                      note.result.customer?.toLowerCase().includes(q) ||
+                      note.result.product?.toLowerCase().includes(q) ||
+                      note.result.crop?.toLowerCase().includes(q) ||
+                      note.result.location?.toLowerCase().includes(q) ||
+                      note.result.nextStep?.toLowerCase().includes(q) ||
+                      note.result.nextStepTitle?.toLowerCase().includes(q) ||
+                      note.result.crmFull.some((line) => line.toLowerCase().includes(q)) ||
+                      note.result.crmText?.toLowerCase().includes(q) ||
+                      note.result.calendarDescription?.toLowerCase().includes(q)
+                    )
+                  }).length === 0 && searchQuery.trim() ? (
+                  <div className="flex flex-col items-center justify-center pt-12 text-center">
+                    <p className="text-[13px] text-[#6b7280]">No notes match your search</p>
+                    <p className="mt-1 text-[11px] text-[#111111]">Try a different keyword</p>
                   </div>
                 ) : (
                   <ul className="space-y-1.5">
@@ -4540,7 +4578,22 @@ export default function Home() {
           active={activeTab === 'history'}
           onClick={() => { setActiveTab('history'); setSelectedNote(null) }}
           label="History"
-          badge={savedNotes.length}
+          badge={activeTab === 'history' && searchQuery.trim() ? savedNotes.filter((note) => {
+            const q = searchQuery.toLowerCase()
+            return (
+              note.result.contact?.toLowerCase().includes(q) ||
+              note.result.contactCompany?.toLowerCase().includes(q) ||
+              note.result.customer?.toLowerCase().includes(q) ||
+              note.result.product?.toLowerCase().includes(q) ||
+              note.result.crop?.toLowerCase().includes(q) ||
+              note.result.location?.toLowerCase().includes(q) ||
+              note.result.nextStep?.toLowerCase().includes(q) ||
+              note.result.nextStepTitle?.toLowerCase().includes(q) ||
+              note.result.crmFull.some((line) => line.toLowerCase().includes(q)) ||
+              note.result.crmText?.toLowerCase().includes(q) ||
+              note.result.calendarDescription?.toLowerCase().includes(q)
+            )
+          }).length : savedNotes.length}
           activeColor="#4F46E5"
           icon={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -4613,6 +4666,39 @@ export default function Home() {
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
       `}</style>
+      {pendingDeleteNoteId && (
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setPendingDeleteNoteId(null)}
+          />
+          <div className="relative z-[1] mx-auto w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
+            <p className="mb-1 text-[15px] font-bold text-[#111111]">Delete this note?</p>
+            <p className="mb-4 text-[13px] text-[#6b7280]">This action cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteNoteId(null)}
+                className="flex-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] py-3.5 text-[14px] font-semibold text-[#111111] transition-colors hover:bg-zinc-100 active:scale-[0.99]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  deleteNote(pendingDeleteNoteId)
+                  setPendingDeleteNoteId(null)
+                }}
+                className="flex-1 rounded-xl border border-red-200 bg-red-500 py-3.5 text-[14px] font-bold text-white shadow-sm transition-[transform] active:scale-[0.99]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showPaywall && (
         <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/50 px-6 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
