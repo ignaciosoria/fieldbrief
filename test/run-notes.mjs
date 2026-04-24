@@ -14,45 +14,29 @@ const API = 'http://localhost:3000/api/structure'
 
 const TEST_NOTES = [
   {
-    label: 'no clear follow-up',
+    label: 'Maria / Maple comps / Tuesday 10am',
     text:
-      'Walked the north block today. Ground is firming up but still soft in the low spots. ' +
-      'Might need another pass on drainage before spring.',
+      "Just left Maria's office at Westside Realty. She's interested in the 3-bed on Maple but wants to see the numbers on two more comps before she commits. Said to call her Tuesday around 10am.",
   },
   {
-    label: 'date mentioned (Friday)',
+    label: 'David Chen / HOA / Thursday / Jake',
     text:
-      'Met with Mike at GreenFields. He wants us to call him Friday morning about the starter rate on corn, before he talks to the co-op board.',
+      "Met with David Chen at Pacific Brokers. He's got a buyer for the commercial unit on 5th but needs the HOA docs and last 2 years of financials by Thursday EOD. Also wants me to loop in his partner Jake on the email.",
   },
   {
-    label: 'multiple people',
+    label: 'Carlos / proposal / Monday',
     text:
-      'Sara and Tom both asked about the same 40-acre south parcel. I told them we would get pricing to Jennifer by Wednesday and then loop back to Tom with numbers before Sara’s trip next week.',
+      "Visited Carlos at his warehouse, Sunset Distributors. He's been using a competitor but said if we can beat their price by 5% he'll switch all 4 locations. Wants a formal proposal next Monday morning.",
   },
   {
-    label: 'Spanish',
+    label: 'Rachel / send listings / soft timing',
     text:
-      'Hablé con el señor Ramírez en el campo. Quiere el presupuesto del herbicida para el viernes a primera hora y que le mandemos el PDF por email la próxima semana.',
+      "Quick call with Rachel from NorCal Properties. She mentioned her client is pre-approved up to 800k and wants something in the hills. Send her the three listings I have in mind, no specific deadline but sooner the better.",
   },
   {
-    label: 'no contact name',
+    label: 'Fernando Gómez / ES / jueves',
     text:
-      'Drove past the new pivot on the east 80. Looks good, no obvious leaks. Flagged one tire rut for the crew. No one was home to sign off.',
-  },
-  {
-    label: 'send / email',
-    text:
-      'Call Lisa first, then email her the spec sheet and CC her purchasing manager. She needs the contract draft before close of business Thursday.',
-  },
-  {
-    label: 'ambiguity: vague timing',
-    text:
-      'The buyer might swing by the shop sometime. Follow up on chemical pricing if you remember.',
-  },
-  {
-    label: 'mixed: competitive note',
-    text:
-      "James said Brand X undercut us on soybeans. Log that and schedule a call with our rep—don't commit to a price on the call.",
+      'Hablé con Fernando Gómez de Inmobiliaria del Sur. Quiere visitar dos propiedades el jueves por la tarde y necesita que le mande el contrato de arrendamiento antes. También preguntó por opciones de financiamiento.',
   },
 ]
 
