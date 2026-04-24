@@ -107,6 +107,8 @@ export type PrimaryDisplayTitleInput = {
   nextStepSoftTiming?: string
   /** When true, use Spanish labels for soft timing. */
   langEs?: boolean
+  /** When true, omit date/time suffix — use in history view where timing is stale. */
+  hideTiming?: boolean
 }
 
 /**
@@ -117,6 +119,7 @@ export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const raw = (r.nextStepTitle || r.nextStep || '').trim()
   const base = cleanCalendarTitle(raw)
   const langEs = !!r.langEs
+  if (r.hideTiming) return formatRelativeDayWordsForDisplay(base || raw, langEs)
   if (!base) return formatRelativeDayWordsForDisplay(raw, langEs)
   const mmdd = (r.nextStepDate || '').trim()
   const hint = (r.nextStepTimeHint || '').trim()

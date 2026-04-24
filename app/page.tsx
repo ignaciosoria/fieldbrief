@@ -2069,14 +2069,16 @@ export default function Home() {
           if (stored) {
             const parsed = JSON.parse(stored) as SavedNote[]
             setSavedNotes(
-              parsed.map((n) => ({
-                ...n,
-                result: normalizeStructureResult({
-                  ...emptyResult,
-                  ...n.result,
-                  crmFull: normalizeCrmFull(n.result.crmFull),
-                }),
-              })),
+              parsed
+                .map((n) => ({
+                  ...n,
+                  result: normalizeStructureResult({
+                    ...emptyResult,
+                    ...n.result,
+                    crmFull: normalizeCrmFull(n.result.crmFull),
+                  }),
+                }))
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
             )
           } else {
             setSavedNotes([])
@@ -2091,7 +2093,7 @@ export default function Home() {
           .from('notes')
           .select('*')
           .eq('user_id', sessionEmail)
-          .order('id', { ascending: false })
+          .order('created_at', { ascending: false })
         if (error) {
           console.error('[loadNotes] Supabase select error:', error.message, error)
         }
@@ -2120,14 +2122,16 @@ export default function Home() {
         if (stored) {
           const parsed = JSON.parse(stored) as SavedNote[]
           setSavedNotes(
-            parsed.map((n) => ({
-              ...n,
-              result: normalizeStructureResult({
-                ...emptyResult,
-                ...n.result,
-                crmFull: normalizeCrmFull(n.result.crmFull),
-              }),
-            })),
+            parsed
+              .map((n) => ({
+                ...n,
+                result: normalizeStructureResult({
+                  ...emptyResult,
+                  ...n.result,
+                  crmFull: normalizeCrmFull(n.result.crmFull),
+                }),
+              }))
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
           )
         } else {
           setSavedNotes([])
@@ -4210,7 +4214,7 @@ export default function Home() {
                           </p>
                         </div>
                         <p className="text-[19px] font-bold leading-snug text-[#111111]">
-                          {buildPrimaryDisplayTitle(primaryTitleForDisplay(selectedNote.result))}
+                          {buildPrimaryDisplayTitle({ ...primaryTitleForDisplay(selectedNote.result), hideTiming: true })}
                         </p>
                       </div>
 
@@ -4414,7 +4418,7 @@ export default function Home() {
                         note.result.contact || note.result.customer || '—'
                       const stepLine =
                         note.result.nextStep || note.result.nextStepTitle
-                          ? buildPrimaryDisplayTitle(primaryTitleForDisplay(note.result))
+                          ? buildPrimaryDisplayTitle({ ...primaryTitleForDisplay(note.result), hideTiming: true })
                           : '—'
                       return (
                         <li key={note.id}>
