@@ -441,21 +441,45 @@ export function buildCalendarEventDescriptionBody(
   )
   const langEs = langHint === 'spanish'
 
-  const raw = (data.calendarDescription || '').trim()
-  const parsed = parseStructuredCalendarSections(raw)
-  if (parsed && (parsed.context || parsed.goal || parsed.opportunity)) {
-    return formatStructuredSections(parsed, langEs, options)
+  const contact = stripEmojisForCalendar((data.contact || '').trim())
+  const company = stripEmojisForCalendar((data.contactCompany || data.customer || '').trim())
+  const product = stripEmojisForCalendar((data.product || '').trim())
+  const location = stripEmojisForCalendar((data.location || '').trim())
+
+  const lines: string[] = []
+
+  const who = contact && company
+    ? `${contact} — ${company}`
+    : contact || company
+  if (who) lines.push(who)
+
+  const insight = (data.crmFull || []).find((l) => {
+    const c = stripEmojisForCalendar(l).replace(/^[\s\-•*→]+/, '').trim()
+    return c.length > 8 && !insightLineContainsActionLanguage(c) && !l.trimStart().startsWith('📅')
+  })
+  if (insight) {
+    const c = stripEmojisForCalendar(insight).replace(/^[\s\-•*→]+/, '').trim()
+    lines.push(c)
   }
 
+  const raw = (data.calendarDescription || '').trim()
   if (raw) {
-    const plain = normalizePlainCalendarDescription(raw, options)
-    if (plain.trim()) return plain
-    // Even if filtered, return the raw calendarDescription if it's meaningful
-    // — it contains the specific deliverable for this event, which is more
-    // useful than a generic fallback built from shared CRM context.
-    const rawClean = raw.replace(/\s+/g, ' ').trim()
-    if (rawClean && rawClean.length > 10) return rawClean
+    const agendaLine = raw.split('\n').find((l) => {
+      const t = l.replace(/\s+/g, ' ').trim()
+      return t.length > 4
+    })
+    if (agendaLine) {
+      const t = agendaLine.replace(/\s+/g, ' ').trim()
+      lines.push(`Agenda: ${t}`)
+    }
   }
+
+  const meta: string[] = []
+  if (product) meta.push(product)
+  if (location) meta.push(location)
+  if (meta.length) lines.push(meta.join(' · '))
+
+  if (lines.length) return lines.join('\n\n')
 
   return buildFallbackSections(data, options)
 }
