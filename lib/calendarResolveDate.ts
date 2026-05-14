@@ -131,7 +131,12 @@ function parseWeekdayToLuxonWeekday(raw: string): number | null {
   return null
 }
 
-/** "next Friday" / "próximo jueves" → when landing on *this* weekday, use the following week's occurrence. */
+/**
+ * True when the English/Spanish phrase uses "next …" / "próximo …" before a weekday.
+ * Used only when bare weekday math would land on **today** (`add === 0`): then bump +7 days so
+ * "next Monday" on a Monday means Monday next week. When today is another weekday, nearest Monday
+ * is computed without this flag (see weekday resolution loop).
+ */
 function isExplicitNextWeekdayPhrase(lower: string): boolean {
   if (/\bnext\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(lower))
     return true

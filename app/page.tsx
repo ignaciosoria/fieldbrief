@@ -1577,6 +1577,16 @@ type SavedNote = {
   transcript: string
 }
 
+function isSavedNoteDateLocalToday(noteDateIso: string, now: Date = new Date()): boolean {
+  const d = new Date(noteDateIso)
+  if (Number.isNaN(d.getTime())) return false
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  )
+}
+
 function isWeakNextStep(nextStep: string) {
   if (!nextStep || !nextStep.trim()) return true
 
@@ -3282,6 +3292,11 @@ export default function Home() {
   const processingWalkthrough = tryWalkthroughPhase === 'loading'
   const processingBusy = loading || processingWalkthrough
 
+  const visitsCapturedTodayCount = useMemo(() => {
+    const now = new Date()
+    return savedNotes.filter((n) => isSavedNoteDateLocalToday(n.date, now)).length
+  }, [savedNotes])
+
   const tryWtPrimaryComplete =
     !isTryWalkthroughPreview ||
     tryWalkthroughReveal.primaryLen >= TRY_WALKTHROUGH_PRIMARY_DISPLAY.length
@@ -4249,6 +4264,14 @@ export default function Home() {
                   <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
                 </svg>
               </button>
+
+              {status === 'authenticated' ? (
+                <p className="mt-1 mb-2 max-w-md px-3 text-center text-xs text-zinc-400">
+                  {visitsCapturedTodayCount === 0
+                    ? "No visits yet today — go get 'em"
+                    : `${visitsCapturedTodayCount} ${visitsCapturedTodayCount === 1 ? 'visit' : 'visits'} captured today`}
+                </p>
+              ) : null}
 
               {isDemo &&
                 status === 'unauthenticated' &&
@@ -5352,16 +5375,21 @@ export default function Home() {
       )}
       {homeScreenBannerVisible && (
         <div
-          className="fixed left-0 right-0 z-[85] mx-auto flex w-full items-start gap-2 border-t border-zinc-700 bg-zinc-900 px-4 pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2.5 text-[11px] font-medium leading-snug text-white shadow-[0_-4px_24px_rgba(0,0,0,0.2)] sm:text-[12px]"
+          className="fixed left-0 right-0 z-[85] mx-auto flex w-full items-center gap-3 border-t border-zinc-200 bg-white py-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] text-xs leading-snug text-zinc-500"
           role="banner"
           style={{ bottom: 'calc(3.75rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          <span className="min-w-0 flex-1 pr-2">
-            📱 Add Folup to your home screen: tap Share → Add to Home Screen
+          <span className="flex min-w-0 flex-1 items-start gap-2">
+            <span className="shrink-0" aria-hidden>
+              📱
+            </span>
+            <span className="min-w-0">
+              Add to home screen: tap Share → Add to Home Screen
+            </span>
           </span>
           <button
             type="button"
-            className="shrink-0 rounded-md p-1.5 text-white/90 outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/50"
+            className="shrink-0 rounded-md p-1 text-zinc-400 outline-none transition-colors hover:bg-zinc-100 hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-zinc-300"
             aria-label="Dismiss"
             onClick={() => {
               try {
