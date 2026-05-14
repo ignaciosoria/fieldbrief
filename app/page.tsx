@@ -2020,6 +2020,8 @@ export default function Home() {
   const [showPaywall, setShowPaywall] = useState<'limit' | 'upgrade' | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
+  const [homeScreenBannerVisible, setHomeScreenBannerVisible] = useState(false)
+  const homeBannerOfferDoneRef = useRef(false)
 
   /** After OAuth on /try, open upgrade modal from callback URL (?paywallUpgrade=1). */
   useEffect(() => {
@@ -2034,6 +2036,18 @@ export default function Home() {
     const clean = `${u.pathname}${search ? `?${search}` : ''}${u.hash}`
     window.history.replaceState(null, '', clean)
   }, [mounted, status])
+
+  /** First time structured output is ready: install hint until dismissed (`folup_home_banner_shown` in localStorage). */
+  useEffect(() => {
+    if (!mounted || typeof window === 'undefined') return
+    try {
+      if (localStorage.getItem('folup_home_banner_shown')) return
+    } catch {}
+    if (!result || loading) return
+    if (homeBannerOfferDoneRef.current) return
+    homeBannerOfferDoneRef.current = true
+    setHomeScreenBannerVisible(true)
+  }, [mounted, result, loading])
 
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -4866,6 +4880,32 @@ export default function Home() {
               Maybe later
             </button>
           </div>
+        </div>
+      )}
+      {homeScreenBannerVisible && (
+        <div
+          className="fixed left-0 right-0 z-[85] mx-auto flex w-full items-start gap-2 border-t border-zinc-700 bg-zinc-900 px-4 pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2.5 text-[11px] font-medium leading-snug text-white shadow-[0_-4px_24px_rgba(0,0,0,0.2)] sm:text-[12px]"
+          role="banner"
+          style={{ bottom: 'calc(3.75rem + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <span className="min-w-0 flex-1 pr-2">
+            📱 Add Folup to your home screen: tap Share → Add to Home Screen
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1.5 text-white/90 outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/50"
+            aria-label="Dismiss"
+            onClick={() => {
+              try {
+                localStorage.setItem('folup_home_banner_shown', '1')
+              } catch {}
+              setHomeScreenBannerVisible(false)
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
     </main>
