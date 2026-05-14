@@ -2010,6 +2010,8 @@ export default function Home() {
   const [showPaywall, setShowPaywall] = useState<'limit' | 'upgrade' | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const avatarMenuRef = useRef<HTMLDivElement>(null)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -2041,6 +2043,16 @@ export default function Home() {
   useEffect(() => {
     initPosthog()
   }, [])
+
+  useEffect(() => {
+    if (!avatarMenuOpen) return
+    const onDocMouseDown = (e: MouseEvent) => {
+      const el = avatarMenuRef.current
+      if (el && !el.contains(e.target as Node)) setAvatarMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [avatarMenuOpen])
 
   const calendarStorageKey = useMemo(() => {
     if (activeTab === 'history' && selectedNote) {
@@ -3174,24 +3186,61 @@ export default function Home() {
               Upgrade
             </button>
           )}
-        {userImage ? (
-          <img
-            src={userImage}
-            alt=""
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-full object-cover ring-2 ring-zinc-200 shadow-sm"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-            style={{ backgroundColor: '#4F46E5' }}
-            aria-hidden
-          >
-            {userInitial}
+          <div ref={avatarMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setAvatarMenuOpen((open) => !open)}
+              className="shrink-0 rounded-full outline-none ring-2 ring-zinc-200 shadow-sm transition-[transform,opacity] hover:opacity-95 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2 active:scale-[0.98]"
+              aria-expanded={avatarMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
+            >
+              {userImage ? (
+                <img
+                  src={userImage}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                  style={{ backgroundColor: '#4F46E5' }}
+                  aria-hidden
+                >
+                  {userInitial}
+                </div>
+              )}
+            </button>
+            {avatarMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-[120] mt-1.5 min-w-[13rem] rounded-xl border border-[#e5e7eb] bg-white px-3 py-3 shadow-lg"
+              >
+                <div
+                  role="presentation"
+                  className="border-b border-zinc-100 pb-2.5 text-[13px] font-medium leading-snug text-[#374151]"
+                >
+                  {hasActiveSubscription === true
+                    ? 'Pro plan'
+                    : `Free plan — ${savedNotes.length} ${savedNotes.length === 1 ? 'note' : 'notes'} used`}
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="mt-2 w-full rounded-lg py-2.5 text-center text-[13px] font-semibold text-[#111111] transition-colors hover:bg-zinc-50"
+                  onClick={() => {
+                    setAvatarMenuOpen(false)
+                    void signOut({ callbackUrl: '/' })
+                  }}
+                >
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
-        )}
         </div>
       </header>
 
