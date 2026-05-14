@@ -75,6 +75,10 @@ function filterKeyInsightsForDisplay(lines: string[]): string[] {
     .filter((line) => !line.trimStart().startsWith('📅'))
 }
 
+/** /try walkthrough: sample visit note (spinner hint + preview caption). */
+const TRY_DEMO_EXAMPLE_NOTE_TEXT =
+  "Visited Dr. Reynolds at St. Mary's, she's interested in the new catheter line, budget resets in October, need to send clinical data and follow up next Tuesday"
+
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
@@ -3433,6 +3437,14 @@ export default function Home() {
                 }}/>
               ))}
             </div>
+
+            {processingWalkthrough ? (
+              <p
+                className="mt-9 max-w-[min(22rem,90vw)] text-center text-[11px] italic leading-relaxed text-zinc-500"
+              >
+                {TRY_DEMO_EXAMPLE_NOTE_TEXT}
+              </p>
+            ) : null}
           </div>
         </div>
       )}
@@ -4036,7 +4048,7 @@ export default function Home() {
                       if (navigator.vibrate) navigator.vibrate(4)
                       startTryWalkthrough()
                     }}
-                    className="mt-1.5 text-[12px] font-medium leading-snug text-[#4F46E5] underline decoration-[#c7d2fe] underline-offset-2 transition-colors hover:text-[#4338CA] hover:decoration-[#a5b4fc] active:scale-[0.99]"
+                    className="mt-3 rounded-full border border-zinc-300 bg-white px-4 py-2 text-[11px] font-medium leading-none text-zinc-700 shadow-sm transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.98]"
                   >
                     See how it works →
                   </button>
@@ -4132,10 +4144,12 @@ export default function Home() {
                 }}
               >
                 {isTryWalkthroughPreview && (
-                  <p className="mb-2 px-0 text-[10px] leading-snug text-[#6b7280]">
-                    Example note: &apos;Visited Dr. Reynolds at St. Mary&apos;s, she&apos;s interested in
-                    the new catheter line, budget resets in October, need to send clinical data and follow
-                    up next Tuesday&apos;
+                  <p className="mb-2.5 max-w-full px-0.5 text-[8px] leading-relaxed tracking-[0.02em] text-zinc-400 sm:text-[9px]">
+                    <span className="italic text-zinc-400/70">Example note</span>
+                    <span className="mx-1 font-light text-zinc-300/90" aria-hidden>
+                      ·
+                    </span>
+                    <span className="font-light italic text-zinc-400/80">{TRY_DEMO_EXAMPLE_NOTE_TEXT}</span>
                   </p>
                 )}
                 {/* 1 — Next step + calendar (sticky) */}
