@@ -285,13 +285,9 @@ function buildFallbackSections(
   )
   const langEs = langHint === 'spanish'
 
-  const looseCtx = langEs
-    ? 'Situación de cuenta a revisar en la visita.'
-    : 'Account situation to review from the visit.'
-  const looseGoal = langEs
-    ? 'Dirigir la conversación según la situación descrita primero.'
-    : 'Steer the conversation using the situation described first.'
-  const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
+  const looseCtx = ''
+  const looseGoal = ''
+  const looseOpp = ''
 
   let context = ''
   for (const raw of crmTextChunks((data.crmText || '').trim())) {
@@ -390,13 +386,9 @@ function formatStructuredSections(
   const { eventTitle, excludeActionPhrases } = options
   const phrases = excludeActionPhrases.map((p) => stripEmojisForCalendar(p)).filter(Boolean)
   const picked = new Set<string>()
-  const looseCtx = langEs
-    ? 'Situación de cuenta a revisar en la visita.'
-    : 'Account situation to review from the visit.'
-  const looseGoal = langEs
-    ? 'Dirigir la conversación según la situación descrita primero.'
-    : 'Steer the conversation using the situation described first.'
-  const looseOpp = langEs ? 'Sin expansión adicional citada en la nota.' : 'No additional upside cited in the note.'
+  const looseCtx = ''
+  const looseGoal = ''
+  const looseOpp = ''
 
   let context = sanitizeSectionBody(
     (sections.context || '').replace(/\n/g, ' '),
@@ -431,55 +423,7 @@ export function buildCalendarEventDescriptionBody(
   data: CalendarEventDescriptionFields,
   options: BuildCalendarEventDescriptionOptions,
 ): string {
-  const langHint = detectNoteLanguage(
-    [
-      data.calendarDescription,
-      data.crmText,
-      data.summary,
-      (data.crmFull || []).join('\n'),
-    ].join('\n'),
-  )
-  const langEs = langHint === 'spanish'
-
-  const contact = stripEmojisForCalendar((data.contact || '').trim())
-  const company = stripEmojisForCalendar((data.contactCompany || data.customer || '').trim())
-  const product = stripEmojisForCalendar((data.product || '').trim())
-  const location = stripEmojisForCalendar((data.location || '').trim())
-
-  const lines: string[] = []
-
-  const who = contact && company
-    ? `${contact} — ${company}`
-    : contact || company
-  if (who) lines.push(who)
-
-  const insight = (data.crmFull || []).find((l) => {
-    const c = stripEmojisForCalendar(l).replace(/^[\s\-•*→]+/, '').trim()
-    return c.length > 8 && !insightLineContainsActionLanguage(c) && !l.trimStart().startsWith('📅')
-  })
-  if (insight) {
-    const c = stripEmojisForCalendar(insight).replace(/^[\s\-•*→]+/, '').trim()
-    lines.push(c)
-  }
-
   const raw = (data.calendarDescription || '').trim()
-  if (raw) {
-    const agendaLine = raw.split('\n').find((l) => {
-      const t = l.replace(/\s+/g, ' ').trim()
-      return t.length > 4
-    })
-    if (agendaLine) {
-      const t = agendaLine.replace(/\s+/g, ' ').trim()
-      lines.push(`Agenda: ${t}`)
-    }
-  }
-
-  const meta: string[] = []
-  if (product) meta.push(product)
-  if (location) meta.push(location)
-  if (meta.length) lines.push(meta.join(' · '))
-
-  if (lines.length) return lines.join('\n\n')
-
+  if (raw) return raw
   return buildFallbackSections(data, options)
 }

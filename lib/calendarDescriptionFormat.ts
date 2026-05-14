@@ -101,7 +101,8 @@ export function buildCalendarContext(fields: BuildCalendarContextInput): string 
     if (!pr) return ''
     const body = pr.endsWith('.') ? pr.slice(0, -1).trim() : pr
     if (!body) return ''
-    return langEs ? `Problemas de ${body}.` : `Issues with ${body}.`
+    const capitalized = body.charAt(0).toUpperCase() + body.slice(1)
+    return `${capitalized}.`
   })()
 
   if (!secondSentence) {
@@ -145,7 +146,7 @@ function closingSendEs(product: string, deliverable?: string): string {
   return 'Enviar materiales pendientes.'
 }
 
-function truncateTopic(topic: string, maxWords = 3): string {
+function truncateTopic(topic: string, maxWords = 6): string {
   const words = topic.trim().split(/\s+/).filter(Boolean)
   if (words.length <= maxWords) return words.join(' ')
   const stopWords = new Set(['para', 'de', 'en', 'con', 'por', 'a', 'la', 'el', 'los', 'las', 'un', 'una', 'y', 'o', 'the', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with'])
