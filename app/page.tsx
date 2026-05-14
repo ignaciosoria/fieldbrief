@@ -4260,15 +4260,15 @@ export default function Home() {
                       if (navigator.vibrate) navigator.vibrate(4)
                       startTryWalkthrough()
                     }}
-                    className="mt-4 flex w-full max-w-md items-center justify-center gap-2 bg-transparent px-2 py-1.5 text-[13px] font-medium leading-snug text-indigo-600 shadow-none outline-none ring-0 transition-colors hover:text-indigo-700 active:opacity-80 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2"
+                    className="mt-4 flex w-full max-w-md items-center justify-center gap-2 bg-transparent px-2 py-1.5 text-sm font-medium leading-snug text-indigo-600 shadow-none outline-none ring-0 transition-colors hover:text-indigo-700 active:opacity-80 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 sm:text-base"
                   >
                     <span
-                      className="inline-flex h-4 w-4 shrink-0 animate-pulse text-indigo-600"
+                      className="inline-flex h-[18px] w-[18px] shrink-0 animate-pulse text-indigo-600"
                       aria-hidden
                     >
                       <svg
                         viewBox="0 0 24 24"
-                        className="h-4 w-4 overflow-visible"
+                        className="h-[18px] w-[18px] overflow-visible"
                         aria-hidden
                       >
                         <circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.14" />
