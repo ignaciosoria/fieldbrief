@@ -3178,10 +3178,10 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setShowPaywall('upgrade')}
-              className="rounded-lg bg-[#4F46E5] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
-              aria-label="Upgrade subscription"
+              className="rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#15803d] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
+              aria-label="Upgrade to Pro subscription"
             >
-              Upgrade
+              Upgrade to Pro
             </button>
           )}
           <button
@@ -4789,8 +4789,7 @@ export default function Home() {
                 const data = await res.json()
                 if (data.url) window.location.href = data.url
               }}
-              className="w-full rounded-xl py-4 text-[15px] font-bold text-white"
-              style={{ backgroundColor: '#4F46E5' }}
+              className="w-full rounded-xl bg-[#16a34a] py-4 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-[#15803d]"
             >
               Subscribe — $19/month
             </button>
