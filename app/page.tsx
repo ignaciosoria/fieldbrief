@@ -2122,7 +2122,8 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (!loading) {
+    const processingOverlayActive = loading || tryWalkthroughPhase === 'loading'
+    if (!processingOverlayActive) {
       setLoadingMsgIndex(0)
       return
     }
@@ -2130,7 +2131,7 @@ export default function Home() {
       setLoadingMsgIndex((i) => (i + 1) % loadingMessages.length)
     }, 1500)
     return () => clearInterval(interval)
-  }, [loading])
+  }, [loading, tryWalkthroughPhase])
 
   useEffect(() => {
     initPosthog()
@@ -3432,8 +3433,8 @@ export default function Home() {
                 <span key={i} style={{
                   width:5, height:5, borderRadius:'50%', display:'inline-block',
                   transition:'background 0.4s ease, transform 0.3s ease',
-                  transform: i === (processingWalkthrough ? 0 : loadingMsgIndex % 3) ? 'scale(1.5)' : 'scale(1)',
-                  background: i === (processingWalkthrough ? 0 : loadingMsgIndex % 3) ? '#4F46E5' : 'rgba(0,0,0,0.15)'
+                  transform: i === loadingMsgIndex % 3 ? 'scale(1.5)' : 'scale(1)',
+                  background: i === loadingMsgIndex % 3 ? '#4F46E5' : 'rgba(0,0,0,0.15)'
                 }}/>
               ))}
             </div>
@@ -4048,9 +4049,12 @@ export default function Home() {
                       if (navigator.vibrate) navigator.vibrate(4)
                       startTryWalkthrough()
                     }}
-                    className="mt-3 rounded-full border border-zinc-300 bg-white px-4 py-2 text-[11px] font-medium leading-none text-zinc-700 shadow-sm transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.98]"
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-2.5 py-1.5 text-[10px] font-medium leading-none text-zinc-700 shadow-sm transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.98]"
                   >
-                    See how it works →
+                    <span className="translate-x-[0.5px] text-[9px] text-zinc-500" aria-hidden>
+                      ▶
+                    </span>
+                    Try a demo
                   </button>
                 )}
 
@@ -4144,13 +4148,15 @@ export default function Home() {
                 }}
               >
                 {isTryWalkthroughPreview && (
-                  <p className="mb-2.5 max-w-full px-0.5 text-[8px] leading-relaxed tracking-[0.02em] text-zinc-400 sm:text-[9px]">
-                    <span className="italic text-zinc-400/70">Example note</span>
-                    <span className="mx-1 font-light text-zinc-300/90" aria-hidden>
-                      ·
-                    </span>
-                    <span className="font-light italic text-zinc-400/80">{TRY_DEMO_EXAMPLE_NOTE_TEXT}</span>
-                  </p>
+                  <div className="mb-2.5 flex w-full justify-center px-2">
+                    <p className="mx-auto w-fit max-w-[min(100%,22rem)] rounded-full bg-zinc-100 px-3 py-1 text-center text-[8px] italic leading-relaxed tracking-[0.02em] text-zinc-500 sm:text-[9px]">
+                      <span className="text-zinc-500/85">Example note</span>
+                      <span className="mx-1 font-light text-zinc-300/90" aria-hidden>
+                        ·
+                      </span>
+                      <span className="font-light text-zinc-500/90">{TRY_DEMO_EXAMPLE_NOTE_TEXT}</span>
+                    </p>
+                  </div>
                 )}
                 {/* 1 — Next step + calendar (sticky) */}
                 <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-200/90 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
