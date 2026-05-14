@@ -14,29 +14,8 @@ const API = 'http://localhost:3000/api/structure'
 
 const TEST_NOTES = [
   {
-    label: 'Maria / Maple comps / Tuesday 10am',
-    text:
-      "Just left Maria's office at Westside Realty. She's interested in the 3-bed on Maple but wants to see the numbers on two more comps before she commits. Said to call her Tuesday around 10am.",
-  },
-  {
-    label: 'David Chen / HOA / Thursday / Jake',
-    text:
-      "Met with David Chen at Pacific Brokers. He's got a buyer for the commercial unit on 5th but needs the HOA docs and last 2 years of financials by Thursday EOD. Also wants me to loop in his partner Jake on the email.",
-  },
-  {
-    label: 'Carlos / proposal / Monday',
-    text:
-      "Visited Carlos at his warehouse, Sunset Distributors. He's been using a competitor but said if we can beat their price by 5% he'll switch all 4 locations. Wants a formal proposal next Monday morning.",
-  },
-  {
-    label: 'Rachel / send listings / soft timing',
-    text:
-      "Quick call with Rachel from NorCal Properties. She mentioned her client is pre-approved up to 800k and wants something in the hills. Send her the three listings I have in mind, no specific deadline but sooner the better.",
-  },
-  {
-    label: 'Fernando Gómez / ES / jueves',
-    text:
-      'Hablé con Fernando Gómez de Inmobiliaria del Sur. Quiere visitar dos propiedades el jueves por la tarde y necesita que le mande el contrato de arrendamiento antes. También preguntó por opciones de financiamiento.',
+    label: '9 / spanish / multiple actions / urgent',
+    text: "Estuve con Ramón en Agrícola del Norte, tiene como 400 hectáreas de fresa. Me dijo que necesita la cotización antes del viernes porque el jueves tiene reunión con su socio para decidir qué producto usar esta temporada. También quiere que le mande el registro del producto y los resultados de los ensayos que hicimos el año pasado en Baja.",
   },
 ]
 
@@ -96,7 +75,7 @@ async function run() {
       if (p.error) {
         return `<tr class="row-warn">
   <td><span class="tag">${esc(r.label)}</span><pre class="note">${esc(r.text)}</pre></td>
-  <td colspan="9" class="err">Error: ${esc(p.error)}${p.raw != null ? `<pre>${esc(String(p.raw).slice(0, 2000))}</pre>` : ''}</td>
+  <td colspan="11" class="err">Error: ${esc(p.error)}${p.raw != null ? `<pre>${esc(String(p.raw).slice(0, 2000))}</pre>` : ''}</td>
 </tr>`
       }
       const flags = Array.isArray(p.ambiguityFlags) ? p.ambiguityFlags.join(', ') : '—'
@@ -111,6 +90,8 @@ async function run() {
   <td><pre class="json">${esc(formatAdditionalSteps(p.additionalSteps))}</pre></td>
   <td>${esc(p.nextStepConfidence)}</td>
   <td>${esc(flags)}</td>
+  <td><pre class="json">${esc(p.calendarDescription ?? '')}</pre></td>
+  <td><pre class="json">${esc(JSON.stringify(p.commercialContext, null, 2))}</pre></td>
 </tr>`
     })
     .join('\n')
@@ -152,6 +133,8 @@ async function run() {
         <th>additionalSteps</th>
         <th>confidence</th>
         <th>ambiguityFlags</th>
+        <th>calendarDescription</th>
+        <th>commercialContext</th>
       </tr>
     </thead>
     <tbody>

@@ -83,7 +83,7 @@ This field is **not optional** when the action is send or email. You must extrac
 
 **unless** the note truly names no deliverable at all (only then use "").
 
-**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable. Spanish delivery verbs: enviar / mandar / compartir — map to type **send** (digital). Physical delivery verbs: entregar / llevar / traer / dejar — map to type **send** but set object to include the word "entrega" if no specific object is named (e.g. "entrega de Opel Corsa"). When the note uses entregar/llevar/traer, the verb displayed should reflect delivery, not sending.
+**How to extract:** Take the shortest clear noun phrase for the deliverable, after verbs like send / email / forward / share / deliver / ship / attach / “send her/him/them …”, or after “the” when it refers to that deliverable. Spanish delivery verbs: enviar / mandar / compartir — map to type **send** (digital). Physical delivery verbs: entregar / llevar / traer / dejar — map to type **send** but set object to include the word "entrega" if no specific object is named (e.g. "entrega de Opel Corsa"). When the note uses entregar/llevar/traer, the verb displayed should reflect delivery, not sending. NEVER use a slash-separated verb like "Enviar/Entregar" — pick exactly one verb that best fits the action. If the note uses both digital and physical delivery verbs for the same item, prefer "Enviar" for digital and "Entregar" for physical. Never combine two verbs with "/" in any field.
 
 **Examples (English):**
 - "send her the updated program today before 5pm" → **object** = "updated program" (NOT empty, NOT her name)
@@ -95,6 +95,9 @@ This field is **not optional** when the action is send or email. You must extrac
 - **NEVER** put the **contact’s name** (or "her", "him", "them" as the object) in **object**. Those belong in **contact** if named; pronouns alone do not fill **object**.
 - **NEVER** leave **object** as "" for send/email if the note names **any** concrete thing to send (document, program, quote, deck, contract, samples, link, sheet, analysis, etc.).
 - **object** is always the **deliverable / content**, not a person or company.
+- **NEVER** use a slash in any verb field. Pick exactly one verb. Wrong: "Enviar/Entregar". Right: "Enviar".
+- **NEVER** truncate the object mid-phrase. Wrong: "resultados de los ensayos de". Right: "resultados de los ensayos de Baja".
+- When a note mentions multiple deliverables (e.g. "send the quote, the registration doc, and the trial results"), each must be its own separate supporting row with its own complete object. Never merge into one row.
 
 ---
 
@@ -110,7 +113,7 @@ STRICT RULES:
 6. date / time = only when explicitly anchored in the note; otherwise "".
 6a. When no time is mentioned for a delivery or meeting, default to 09:00 AM.
 7. **supporting** array: at most **6** rows. For **send** or **email** rows, **object** is mandatory whenever the note names what is sent (same rules as primary). Prefer **object** (send/email) or **contact** (calls) over **label**. **label** = max 4–5 words fallback only, never a sentence.
-7a. **MULTIPLE EXPLICIT ACTIONS (do not drop tasks):** If the note names **more than one** distinct actionable task (e.g. **send** a deck **and** **call** the buyer, **email** a quote **and** **call** next week, two different sends), you MUST output **one primary** row (the **earliest** or most time-sensitive / urgent task) and **each** remaining task as **its own supporting row** — up to **7** total action rows (**1** primary + **6** supporting max). **Never** merge several tasks into one line, **never** omit a valid explicit action to shorten JSON, and **never** move actionable tasks into **insights** (insights are **context only**; see rule 9). The app ranks by date/urgency and may promote a different row to primary, but **every** task you output must appear in **primary** or **supporting**.
+7a. **MULTIPLE EXPLICIT ACTIONS (do not drop tasks):** If the note names **more than one** distinct actionable task (e.g. **send** a deck **and** **call** the buyer, **email** a quote **and** **call** next week, two different sends), you MUST output **one primary** row (the **earliest** or most time-sensitive / urgent task) and **each** remaining task as **its own supporting row**. When a note mentions multiple things to send (e.g. "send the quote, the technical sheet, and the trial results"), each deliverable gets its own supporting row with its own complete **object** field — never merge them into one row and never truncate the object mid-phrase. — up to **7** total action rows (**1** primary + **6** supporting max). **Never** merge several tasks into one line, **never** omit a valid explicit action to shorten JSON, and **never** move actionable tasks into **insights** (insights are **context only**; see rule 9). The app ranks by date/urgency and may promote a different row to primary, but **every** task you output must appear in **primary** or **supporting**.
 8. supporting.type: use **call** for a phone call (set **contact** = who to call; **object** = ""). Use **send** / **email** for things to send — and **always** set **object** to the deliverable when stated. Use **other** only when the action is not clearly send/email/call.
 8b. **primary.type = meeting** only when the note expresses a **future** meeting to schedule or attend (e.g. "let's meet Thursday", "schedule a meeting", "meet with Sarah", "site visit Tuesday"). **Never** use **meeting** for past scene-setting: "left the meeting", "after the meeting", "had a meeting", "in the meeting", "discussion about", "we talked", "spoke with", "review" as background — those are context, not a meeting task. For those, use **follow_up**, or **call** / **send** only when those verbs are explicit in the note. Do **not** invent a meeting from the words "meeting" or "discussion" alone.
 
@@ -183,6 +186,8 @@ REASONING RULES (apply before outputting any action):
 
 R1. WHOSE ACTION: Only extract actions the REP must take. If another person will visit, call, or deliver — that is context, not a rep action. Put it in insights or crm_summary only.
 
+R1b. THIRD-PARTY MEETING REQUEST: If a contact or their boss/colleague explicitly requests or schedules a meeting with the rep ("she wants a meeting", "he asked to meet", "they want to get together", "quiere reunirse") — that IS a rep action. Output it as primary.type = meeting with the date and time stated. The fact that the request comes through a third party (e.g. "Luis said Karen wants a meeting") does not make it context — the rep must attend, so it is a rep action.
+
 R2. FUTURE CUSTOMER DATES: If the customer mentions a future order, payment, or delivery date — do NOT create a send action for that date. Instead create a follow_up or call action 5-7 days before to coordinate. The customer's timeline is not the rep's action date.
 
 R3. LEAVING SAMPLES/PRODUCT ≠ SEND: If the rep already left, dropped off, or gave something during the visit — that is past context. Do NOT create a send action for something already delivered. Put it in crm_summary only.
@@ -216,6 +221,7 @@ STRONG OUTPUT examples:
 - Send + object "comps for the area" + contact "David" + company "Sunrise Realty" → "Send comps for the area to David — Sunrise Realty"
 - Call + contact "Maria" + company "Pacific Properties" → "Call Maria — Pacific Properties"
 - Send + object "virtual tour link" + contact "Maria" + company "Pacific Properties" → "Send virtual tour link to Maria — Pacific Properties"
+- Note says "mándale el registro del producto y los resultados de los ensayos de Baja" → TWO supporting rows: row 1 object "registro del producto", row 2 object "resultados de los ensayos de Baja". Never merge into one row, never truncate the object.
 
 If you cannot identify a specific object for a send action, extract the closest noun phrase from the note rather than leaving object empty or generic.
 

@@ -144,7 +144,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     const st = normSupportingType(str(s.type))
     if (!st) continue
     const label = truncateWords(str(s.label), 5)
-    const object = truncateWords(str(s.object), 5)
+    const object = truncateWords(str(s.object), 10)
     const contact = str(s.contact).trim()
     if (!label && !object && !contact) continue
     supporting.push({
@@ -437,7 +437,7 @@ export function structuredPayloadToStructureBody(
     const sd = normalizeDateMmdd(s.date)
     const st = normalizeTimeHint(s.time)
     const lab = truncateWords(s.label, 5)
-    const sv = verbForSupportingStructuredType(s.type, langEs)
+    const sv = verbForSupportingStructuredType(s.type, langEs).replace(/\/\S+/g, '').trim()
     const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 5)
     const objectPart =
       s.type === 'send' || s.type === 'email'
