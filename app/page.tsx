@@ -4302,12 +4302,13 @@ export default function Home() {
               >
                 {isTryWalkthroughPreview && (
                   <div className="mb-2.5 flex w-full justify-center px-2">
-                    <p className="mx-auto w-fit max-w-[min(100%,22rem)] rounded-full bg-zinc-100 px-3 py-1 text-center text-[8px] italic leading-relaxed tracking-[0.02em] text-zinc-500 sm:text-[9px]">
-                      <span className="text-zinc-500/85">Example note</span>
-                      <span className="mx-1 font-light text-zinc-300/90" aria-hidden>
-                        ·
+                    <p className="max-w-[min(100%,22rem)] text-center text-xs italic leading-relaxed text-zinc-400">
+                      <span className="block">
+                        ✦ Visited Dr. Reynolds at St. Mary&apos;s — interested in new catheter line,
                       </span>
-                      <span className="font-light text-zinc-500/90">{TRY_DEMO_EXAMPLE_NOTE_TEXT}</span>
+                      <span className="block">
+                        budget resets October, needs clinical data, follow up next Tuesday
+                      </span>
                     </p>
                   </div>
                 )}
@@ -4532,18 +4533,12 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         if (navigator.vibrate) navigator.vibrate(8)
-                        clearTryWalkthrough()
-                        window.requestAnimationFrame(() => {
-                          tryWalkthroughRecordTargetRef.current?.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'center',
-                          })
-                        })
+                        void toggleRecording()
                       }}
-                      className="w-full rounded-xl py-4 text-[15px] font-bold text-white shadow-sm transition-[transform,filter] hover:brightness-[1.03] active:scale-[0.99]"
-                      style={{ backgroundColor: '#16a34a' }}
+                      className="w-full rounded-xl py-4 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(79,70,229,0.25)] transition-[transform,filter] hover:brightness-[1.05] active:scale-[0.99]"
+                      style={{ backgroundColor: '#4F46E5' }}
                     >
-                      🎙️ Record your first visit
+                      Record your first visit
                     </button>
                   )}
 
