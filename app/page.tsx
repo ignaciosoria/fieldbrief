@@ -3163,7 +3163,17 @@ export default function Home() {
         <div className="relative z-10 flex min-w-0 flex-1 items-center">
           <FolupHeaderBrand />
         </div>
-        <div className="relative z-10 ml-auto shrink-0">
+        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
+          {hasActiveSubscription === false && (
+            <button
+              type="button"
+              onClick={() => setShowPaywall(true)}
+              className="rounded-lg bg-[#4F46E5] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
+              aria-label="Upgrade subscription"
+            >
+              Upgrade
+            </button>
+          )}
         {userImage ? (
           <img
             src={userImage}
