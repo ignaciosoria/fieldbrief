@@ -526,6 +526,41 @@ function normalizeStructureResult(m: StructureResult): StructureResult {
   }
 }
 
+function nextTuesdayMmddFrom(now: Date = new Date()): string {
+  const d = new Date(now)
+  const day = d.getDay()
+  let add = (2 - day + 7) % 7
+  if (add === 0) add = 7
+  d.setDate(d.getDate() + add)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const y = d.getFullYear()
+  return `${mm}/${dd}/${y}`
+}
+
+function buildTryWalkthroughStructureResult(): StructureResult {
+  return normalizeStructureResult({
+    ...emptyResult,
+    customer: "St. Mary's",
+    contact: 'Dr. Reynolds',
+    contactCompany: "St. Mary's",
+    summary: '',
+    nextStep: "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)",
+    nextStepTitle: "Send clinical data to Dr. Reynolds — St. Mary's",
+    nextStepAction: 'send',
+    nextStepTarget: 'Dr. Reynolds',
+    nextStepDate: nextTuesdayMmddFrom(),
+    nextStepTimeHint: '09:00',
+    nextStepConfidence: 'medium',
+    crmFull: [
+      'Budget resets in October',
+      'Interested in new catheter line',
+      'Needs clinical evidence before committing',
+    ],
+    crmText: 'Clinical hospital visit — catheter line interest; budget cycle October.',
+  })
+}
+
 /** Structured calendar: derive wall-clock time from AI hint (no default when empty — use all-day). */
 function resolveTimeFromHint(hint: string): { hour: number; minute: number } {
   const value = (hint || '').toLowerCase().trim()
@@ -1929,6 +1964,10 @@ export default function Home() {
   const [result, setResult] = useState<StructureResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0)
+  const [tryWalkthroughPhase, setTryWalkthroughPhase] = useState<'idle' | 'loading' | 'done'>(
+    'idle',
+  )
+  const tryWalkthroughTimerRef = useRef<number | null>(null)
   const loadingMessages = [
     'One moment…',
     'Reading your note…',
@@ -2819,6 +2858,7 @@ export default function Home() {
     try {
       setError('')
       setCopied(false)
+      clearTryWalkthrough()
       setResult(null)
       setPendingDatePick(null)
       setPendingContactPick(null)
@@ -2871,6 +2911,7 @@ export default function Home() {
 
     processingStartedAtRef.current = Date.now()
     setLoading(true)
+    clearTryWalkthrough()
     setError('')
     setResult(null)
     setPendingDatePick(null)
@@ -2972,6 +3013,7 @@ export default function Home() {
     if (!input.trim()) return
     processingStartedAtRef.current = Date.now()
     setLoading(true)
+    clearTryWalkthrough()
     setError('')
     setResult(null)
     setPendingDatePick(null)
@@ -3041,7 +3083,16 @@ export default function Home() {
     }
   }
 
+  const clearTryWalkthrough = useCallback(() => {
+    if (tryWalkthroughTimerRef.current) {
+      clearTimeout(tryWalkthroughTimerRef.current)
+      tryWalkthroughTimerRef.current = null
+    }
+    setTryWalkthroughPhase('idle')
+  }, [])
+
   const handleReset = () => {
+    clearTryWalkthrough()
     setInput('')
     setResult(null)
     setPendingDatePick(null)
@@ -3139,6 +3190,32 @@ export default function Home() {
   }
 
   const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/try')
+
+  const startTryWalkthrough = useCallback(() => {
+    if (!isDemo || status !== 'unauthenticated') return
+    if (tryWalkthroughTimerRef.current) {
+      clearTimeout(tryWalkthroughTimerRef.current)
+      tryWalkthroughTimerRef.current = null
+    }
+    setTryWalkthroughPhase('loading')
+    tryWalkthroughTimerRef.current = window.setTimeout(() => {
+      setTryWalkthroughPhase('done')
+      tryWalkthroughTimerRef.current = null
+    }, 2500)
+  }, [isDemo, status])
+
+  const tryWalkthroughPreviewActive =
+    isDemo && status === 'unauthenticated' && tryWalkthroughPhase === 'done'
+  const walkthroughDisplayResult = useMemo(
+    () => (tryWalkthroughPreviewActive ? buildTryWalkthroughStructureResult() : null),
+    [tryWalkthroughPreviewActive],
+  )
+  const recordDisplayResult = walkthroughDisplayResult ?? result
+  const recordHasResult = !!recordDisplayResult
+  const isTryWalkthroughPreview = !!walkthroughDisplayResult
+  const processingWalkthrough = tryWalkthroughPhase === 'loading'
+  const processingBusy = loading || processingWalkthrough
+
   if (status === 'unauthenticated' && !isDemo) {
     return (
       <main className="flex min-h-[100dvh] flex-col bg-white px-6 pb-10 text-[#111111] antialiased sm:px-8 sm:pb-12">
@@ -3290,7 +3367,7 @@ export default function Home() {
       </header>
 
       {/* Full-screen processing — single calm state */}
-      {loading && (
+      {processingBusy && (
         <div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-zinc-900/45 px-8 backdrop-blur-[3px]"
           style={{
@@ -3331,7 +3408,7 @@ export default function Home() {
               transition:'opacity 0.35s ease',
               textAlign:'center'
             }}>
-              {loadingMessages[loadingMsgIndex]}
+              {processingWalkthrough ? 'Processing your note...' : loadingMessages[loadingMsgIndex]}
             </p>
 
             <div style={{display:'flex',gap:7,marginTop:18}}>
@@ -3339,8 +3416,8 @@ export default function Home() {
                 <span key={i} style={{
                   width:5, height:5, borderRadius:'50%', display:'inline-block',
                   transition:'background 0.4s ease, transform 0.3s ease',
-                  transform: i === loadingMsgIndex % 3 ? 'scale(1.5)' : 'scale(1)',
-                  background: i === loadingMsgIndex % 3 ? '#4F46E5' : 'rgba(0,0,0,0.15)'
+                  transform: i === (processingWalkthrough ? 0 : loadingMsgIndex % 3) ? 'scale(1.5)' : 'scale(1)',
+                  background: i === (processingWalkthrough ? 0 : loadingMsgIndex % 3) ? '#4F46E5' : 'rgba(0,0,0,0.15)'
                 }}/>
               ))}
             </div>
@@ -3349,7 +3426,7 @@ export default function Home() {
       )}
 
       {/* Contact missing — same sheet pattern as date picker */}
-      {pendingContactPick && !loading && (
+      {pendingContactPick && !processingBusy && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
@@ -3438,7 +3515,7 @@ export default function Home() {
       )}
 
       {/* Follow-up target — direct contact only (reliability) */}
-      {pendingTargetPick && !loading && (
+      {pendingTargetPick && !processingBusy && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
@@ -3527,7 +3604,7 @@ export default function Home() {
       )}
 
       {/* contactCompany missing — after contact, before date */}
-      {pendingCompanyPick && !loading && (
+      {pendingCompanyPick && !processingBusy && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
@@ -3616,7 +3693,7 @@ export default function Home() {
       )}
 
       {/* Vague next step — after company, before date */}
-      {pendingNextStepClarifyPick && !loading && (
+      {pendingNextStepClarifyPick && !processingBusy && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
@@ -3746,7 +3823,7 @@ export default function Home() {
       )}
 
       {/* Quick date when model left nextStepDate empty */}
-      {pendingDatePick && !loading && (
+      {pendingDatePick && !processingBusy && (
         <div
           className="fixed inset-0 z-[99] flex flex-col justify-end bg-black/35 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 backdrop-blur-[2px]"
           style={{ animation: 'processingOverlayIn 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
@@ -3875,7 +3952,7 @@ export default function Home() {
           <div
             className="relative flex flex-col"
             style={
-              result || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
+              recordHasResult || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
                 ? undefined
                 : { minHeight: 'calc(100vh - 132px)' }
             }
@@ -3886,10 +3963,10 @@ export default function Home() {
               className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 opacity:
-                  result || loading || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick ? 0 : 1,
-                transform: result ? 'translateY(-16px)' : loading ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
+                  recordHasResult || processingBusy || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick ? 0 : 1,
+                transform: recordHasResult ? 'translateY(-16px)' : processingBusy ? 'translateY(-8px) scale(0.985)' : 'translateY(0)',
                 pointerEvents:
-                  result || loading || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
+                  recordHasResult || processingBusy || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
                     ? 'none'
                     : 'auto',
               }}
@@ -3902,7 +3979,7 @@ export default function Home() {
               {/* Mic button */}
               <button
                 onClick={toggleRecording}
-                disabled={loading}
+                disabled={processingBusy}
                 className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#4F46E5',
@@ -3912,7 +3989,7 @@ export default function Home() {
                   transform: isRecording ? 'scale(1.01)' : 'scale(1)',
                 }}
               >
-                {!isRecording && !loading && (
+                {!isRecording && !processingBusy && (
                   <span
                     className="pointer-events-none absolute inset-0 rounded-full"
                     style={{ animation: 'mic-idle-glow 3s ease-in-out infinite' }}
@@ -3936,6 +4013,22 @@ export default function Home() {
                   <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
                 </svg>
               </button>
+
+              {isDemo &&
+                status === 'unauthenticated' &&
+                tryWalkthroughPhase === 'idle' &&
+                !result && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.vibrate) navigator.vibrate(4)
+                      startTryWalkthrough()
+                    }}
+                    className="mt-1.5 text-[12px] font-medium leading-snug text-[#4F46E5] underline decoration-[#c7d2fe] underline-offset-2 transition-colors hover:text-[#4338CA] hover:decoration-[#a5b4fc] active:scale-[0.99]"
+                  >
+                    See how it works →
+                  </button>
+                )}
 
               {/* Timer / status */}
               <div className="mb-2 min-h-[44px] flex flex-col items-center justify-center">
@@ -3989,7 +4082,7 @@ export default function Home() {
               )}
 
               {/* Manual textarea */}
-              {!isRecording && !loading && (
+              {!isRecording && !processingBusy && (
                 <div className="mt-1.5 w-full max-w-md px-1">
                   <textarea
                     className="mb-3 w-full resize-none rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3 text-[13px] leading-relaxed text-[#111111] outline-none placeholder:text-[#6b7280]/40 min-h-[68px] shadow-inner shadow-zinc-200/50"
@@ -4000,7 +4093,7 @@ export default function Home() {
                   {input.trim() && (
                     <button
                       onClick={processTypedNote}
-                      disabled={loading}
+                      disabled={processingBusy}
                       className="w-full rounded-2xl py-4 text-[15px] font-semibold text-white transition-all active:scale-[0.98]"
                       style={{backgroundColor: '#4F46E5', boxShadow: '0 4px 16px rgba(79,70,229,0.25)'}}
                     >
@@ -4019,13 +4112,20 @@ export default function Home() {
             </div>
 
             {/* SCREEN 2 — Result (slides up when result exists) */}
-            {result && (
+            {recordHasResult && (
               <div
                 className="flex flex-col px-0 pt-1 pb-0"
                 style={{
                   animation: 'slideUp 0.68s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
                 }}
               >
+                {isTryWalkthroughPreview && (
+                  <p className="mb-2 px-0 text-[10px] leading-snug text-[#6b7280]">
+                    Example note: &apos;Visited Dr. Reynolds at St. Mary&apos;s, she&apos;s interested in
+                    the new catheter line, budget resets in October, need to send clinical data and follow
+                    up next Tuesday&apos;
+                  </p>
+                )}
                 {/* 1 — Next step + calendar (sticky) */}
                 <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-200/90 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
                   <div className="mb-1.5 flex justify-end">
@@ -4039,30 +4139,41 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {(result.nextStep || result.nextStepTitle) && (
+                  {(recordDisplayResult.nextStep || recordDisplayResult.nextStepTitle) && (
                     <>
                       <div
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
                         <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
-                          {isNoClearFollowUpResult(result) ? 'Follow-up' : 'NEXT STEP'}
+                          {isNoClearFollowUpResult(recordDisplayResult) ? 'Follow-up' : 'NEXT STEP'}
                         </p>
                         <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
-                          {buildPrimaryDisplayTitle(primaryTitleForDisplay(result))}
+                          {isTryWalkthroughPreview
+                            ? "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
+                            : buildPrimaryDisplayTitle(primaryTitleForDisplay(recordDisplayResult))}
                         </p>
                       </div>
 
-                      {!isNoClearFollowUpResult(result) ? (
+                      {!isNoClearFollowUpResult(recordDisplayResult) ? (
                         <button
-                          onClick={() => addResultToCalendar(result)}
+                          onClick={() => addResultToCalendar(recordDisplayResult)}
                           type="button"
-                          disabled={primaryAdded}
-                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased transition-[transform,box-shadow,filter] duration-200 ease-out ${
-                            primaryAdded
-                              ? 'cursor-default bg-emerald-600 shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
-                              : 'shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]'
+                          disabled={isTryWalkthroughPreview || primaryAdded}
+                          title={isTryWalkthroughPreview ? 'Sign in to save and sync' : undefined}
+                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none antialiased transition-[transform,box-shadow,filter] duration-200 ease-out ${
+                            isTryWalkthroughPreview
+                              ? 'cursor-not-allowed bg-zinc-200 text-zinc-500 shadow-none'
+                              : primaryAdded
+                                ? 'cursor-default bg-emerald-600 text-white shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
+                                : 'text-white shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]'
                           }`}
-                          style={primaryAdded ? undefined : { backgroundColor: '#4F46E5' }}
+                          style={
+                            isTryWalkthroughPreview
+                              ? undefined
+                              : primaryAdded
+                                ? undefined
+                                : { backgroundColor: '#4F46E5' }
+                          }
                         >
                           {primaryAdded ? (
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
@@ -4077,14 +4188,14 @@ export default function Home() {
                         </button>
                       ) : null}
 
-                      {!isNoClearFollowUpResult(result) &&
-                        (result.additionalSteps || []).length > 0 && (
+                      {!isNoClearFollowUpResult(recordDisplayResult) &&
+                        (recordDisplayResult.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 text-left ring-1 ring-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
                               OTHER ACTIONS
                             </p>
                             <ul className="list-none space-y-2.5 pl-0">
-                              {(result.additionalSteps || []).map((s, i) => {
+                              {(recordDisplayResult.additionalSteps || []).map((s, i) => {
                                 const sid = supportingCalendarStepId(i)
                                 return (
                                 <li
@@ -4099,7 +4210,11 @@ export default function Home() {
                                       timeHint: s.timeHint,
                                       langEs:
                                         detectNoteLanguage(
-                                          [result.nextStep, result.crmText, result.summary]
+                                          [
+                                            recordDisplayResult.nextStep,
+                                            recordDisplayResult.crmText,
+                                            recordDisplayResult.summary,
+                                          ]
                                             .filter(Boolean)
                                             .join(' '),
                                         ).toLowerCase() === 'spanish',
@@ -4107,7 +4222,7 @@ export default function Home() {
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => addSupportingStepToCalendar(result, s, i)}
+                                    onClick={() => addSupportingStepToCalendar(recordDisplayResult, s, i)}
                                     disabled={!!supportingAdded[sid]}
                                     className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
                                       supportingAdded[sid]
@@ -4138,32 +4253,37 @@ export default function Home() {
 
                 {/* Contact & company → Key insights → actions */}
                 <div className="mt-4 flex flex-col gap-6">
-                  {(result.contact || result.customer || result.location || result.crop || result.product) && (
+                  {(recordDisplayResult.contact ||
+                    recordDisplayResult.customer ||
+                    recordDisplayResult.location ||
+                    recordDisplayResult.crop ||
+                    recordDisplayResult.product) && (
                     <div className="rounded-2xl border border-zinc-200/90 bg-[#fafafa] px-4 py-3.5">
-                      {result.contact ? (
+                      {recordDisplayResult.contact ? (
                         <p className="text-[16px] font-bold leading-snug tracking-tight text-[#111111]">
-                          {result.contact}
+                          {recordDisplayResult.contact}
                         </p>
                       ) : (
                         <p
-                          className={`text-[16px] font-bold leading-snug tracking-tight ${result.customer ? 'text-[#111111]' : 'text-[#6b7280]'}`}
+                          className={`text-[16px] font-bold leading-snug tracking-tight ${recordDisplayResult.customer ? 'text-[#111111]' : 'text-[#6b7280]'}`}
                         >
-                          {result.customer || '—'}
+                          {recordDisplayResult.customer || '—'}
                         </p>
                       )}
-                      {result.contactCompany ? (
+                      {recordDisplayResult.contactCompany ? (
                         <p className="mt-0.5 text-[13px] font-medium leading-snug text-[#6b7280]">
-                          {result.contactCompany}
+                          {recordDisplayResult.contactCompany}
                         </p>
                       ) : null}
-                      {(result.location || productDisplayItems(result.crop, result.product).length > 0) && (
+                      {(recordDisplayResult.location ||
+                        productDisplayItems(recordDisplayResult.crop, recordDisplayResult.product).length > 0) && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          {result.location ? (
+                          {recordDisplayResult.location ? (
                             <span className="inline-flex max-w-full items-center rounded-full border border-zinc-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]">
-                              📍 {result.location}
+                              📍 {recordDisplayResult.location}
                             </span>
                           ) : null}
-                          {productDisplayItems(result.crop, result.product).map((p, i) => (
+                          {productDisplayItems(recordDisplayResult.crop, recordDisplayResult.product).map((p, i) => (
                             <span
                               key={`${p}-${i}`}
                               className="inline-flex max-w-full min-w-0 items-center rounded-full border border-zinc-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]"
@@ -4176,13 +4296,13 @@ export default function Home() {
                     </div>
                   )}
 
-                  {filterKeyInsightsForDisplay(result.crmFull).length > 0 && (
+                  {filterKeyInsightsForDisplay(recordDisplayResult.crmFull).length > 0 && (
                     <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-3.5">
                       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
                         KEY INSIGHTS
                       </p>
                       <KeyInsightsList
-                        lines={filterKeyInsightsForDisplay(result.crmFull)}
+                        lines={filterKeyInsightsForDisplay(recordDisplayResult.crmFull)}
                         gapClass="gap-2"
                         lineClassName="rounded-lg px-2 py-1.5 text-[12px] font-medium leading-[1.5] tracking-tight"
                         expanded={resultInsightsExpanded}
@@ -4201,7 +4321,13 @@ export default function Home() {
                         if (navigator.vibrate) navigator.vibrate(5)
                         handleCopy()
                       }}
-                      className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[11px] font-medium text-[#6b7280] transition-all hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111] active:scale-[0.98]"
+                      disabled={isTryWalkthroughPreview}
+                      title={isTryWalkthroughPreview ? 'Sign in to save and sync' : undefined}
+                      className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[11px] font-medium transition-all active:scale-[0.98] ${
+                        isTryWalkthroughPreview
+                          ? 'cursor-not-allowed text-zinc-400 opacity-60'
+                          : 'text-[#6b7280] hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111]'
+                      }`}
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-50">
                         <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -4211,7 +4337,7 @@ export default function Home() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => result && handleShare(result)}
+                      onClick={() => recordDisplayResult && handleShare(recordDisplayResult)}
                       className="flex h-10 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[#6b7280] transition-all hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111] active:scale-[0.98]"
                       aria-label="Share"
                     >
