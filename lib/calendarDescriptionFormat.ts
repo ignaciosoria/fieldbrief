@@ -140,10 +140,11 @@ function closingSendEn(product: string, deliverable?: string): string {
 
 function closingSendEs(product: string, deliverable?: string): string {
   const d = (deliverable || '').replace(/\s+/g, ' ').trim()
-  if (d) return `Enviar ${d}.`
-  const p = product.replace(/\s+/g, ' ').trim()
-  if (p) return `Enviar ${p}.`
-  return 'Enviar materiales pendientes.'
+  const text = d || product.replace(/\s+/g, ' ').trim()
+  if (!text) return 'Enviar materiales pendientes.'
+  const isPhysical = /\b(muestra|muestras|material|materiales|kit|kits|caja|cajas|producto|productos|pallet|pallets)\b/i.test(text)
+  const verb = isPhysical ? 'Entregar' : 'Enviar'
+  return `${verb} ${text}.`
 }
 
 function truncateTopic(topic: string, maxWords = 6): string {

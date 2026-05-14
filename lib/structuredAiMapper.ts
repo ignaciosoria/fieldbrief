@@ -292,7 +292,7 @@ function verbForPrimary(type: StructuredPrimaryType, langEs: boolean, object?: s
         return 'Llamar a'
       case 'send': {
         const obj = (object || '').toLowerCase()
-        const isPhysical = /\b(entregar|entrega|llevar|traer|coche|carro|veh[íi]culo|pallet|pallets)\b/.test(obj)
+        const isPhysical = /\b(entregar|entrega|llevar|traer|coche|carro|veh[íi]culo|pallet|pallets|material|materiales|muestra|muestras|kit|kits|caja|cajas|producto|productos)\b/.test(obj)
         return isPhysical ? 'Entregar' : 'Enviar'
       }
       case 'meeting':
@@ -437,7 +437,7 @@ export function structuredPayloadToStructureBody(
     const sd = normalizeDateMmdd(s.date)
     const st = normalizeTimeHint(s.time)
     const lab = truncateWords(s.label, 5)
-    const sv = verbForSupportingStructuredType(s.type, langEs).replace(/\/\S+/g, '').trim()
+    const sv = verbForSupportingStructuredType(s.type, langEs, s.object)
     const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 10)
     const objectPart =
       s.type === 'send' || s.type === 'email'

@@ -46,7 +46,7 @@ function stripLeadingVerbFromObjectPhrase(object: string, verb: string, langEs: 
     'send',
     'email',
     'mail',
-    ...(langEs ? ['enviar', 'correo', 'mandar'] : []),
+    ...(langEs ? ['enviar', 'correo', 'mandar', 'entrega de', 'entrega'] : []),
   ].filter((p, i, a) => p && a.indexOf(p) === i)
   for (const p of prefixes) {
     if (lower.startsWith(p + ' ')) {
@@ -166,10 +166,15 @@ export function buildSupportingBaseTitle(fields: ActionStructuredFields, noteLan
 export function verbForSupportingStructuredType(
   type: 'send' | 'email' | 'call' | 'other',
   langEs: boolean,
+  object?: string,
 ): string {
   if (langEs) {
     if (type === 'email') return 'Email'
-    if (type === 'send') return 'Enviar/Entregar'
+    if (type === 'send') {
+      const obj = (object || '').toLowerCase()
+      const isPhysical = /\b(entregar|entrega|llevar|traer|muestra|muestras|pallet|pallets|producto|productos|material|materiales|muestra de|kit|kits|caja|cajas)\b/.test(obj)
+      return isPhysical ? 'Entregar' : 'Enviar'
+    }
     if (type === 'call') return 'Llamar a'
     return 'Llamar'
   }

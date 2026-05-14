@@ -14,12 +14,12 @@ const API = 'http://localhost:3000/api/structure'
 
 const TEST_NOTES = [
   {
-    label: 'typical 1 / call after visit',
-    text: "Just left Dave Martinez at Central Coast Farms, good meeting. He's got about 150 acres of strawberries in Santa Maria. Interested in trying Quantum Flower this season but wants to talk to his agronomist first. Call him Thursday to follow up.",
+    label: 'physical delivery / entregar muestras',
+    text: "Llamé a Rosa en Finca Los Pinos. Quedamos en que le llevo las muestras de Quantum Engorde el jueves por la mañana.",
   },
   {
-    label: 'typical 2 / send after call',
-    text: "Called Jennifer at Sunrise Nursery this morning. She's looking for something to improve fruit size on her navel oranges, about 80 acres. Asked me to send her the Quantum Engorde technical sheet and pricing by end of day today.",
+    label: 'digital send / ficha tecnica',
+    text: "Hablé con Carlos en Invernaderos del Norte. Me pidió que le mande la ficha técnica de Quantum Flower hoy.",
   },
 ]
 
