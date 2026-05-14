@@ -3161,7 +3161,17 @@ export default function Home() {
       {/* Header */}
       <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
         <div className="relative z-10 flex min-w-0 flex-1 items-center">
-          <FolupHeaderBrand />
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedNote(null)
+              setActiveTab('record')
+            }}
+            className="-ml-0.5 flex min-w-0 shrink rounded-lg p-0.5 text-left outline-none transition-opacity hover:opacity-85 active:opacity-80 focus-visible:ring-2 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2"
+            aria-label="Folup — go to Record"
+          >
+            <FolupHeaderBrand />
+          </button>
         </div>
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
           {hasActiveSubscription === false && (
