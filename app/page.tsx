@@ -2010,8 +2010,6 @@ export default function Home() {
   const [showPaywall, setShowPaywall] = useState<'limit' | 'upgrade' | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
-  const avatarMenuRef = useRef<HTMLDivElement>(null)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -2043,16 +2041,6 @@ export default function Home() {
   useEffect(() => {
     initPosthog()
   }, [])
-
-  useEffect(() => {
-    if (!avatarMenuOpen) return
-    const onDocMouseDown = (e: MouseEvent) => {
-      const el = avatarMenuRef.current
-      if (el && !el.contains(e.target as Node)) setAvatarMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
-  }, [avatarMenuOpen])
 
   const calendarStorageKey = useMemo(() => {
     if (activeTab === 'history' && selectedNote) {
@@ -3186,61 +3174,31 @@ export default function Home() {
               Upgrade
             </button>
           )}
-          <div ref={avatarMenuRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setAvatarMenuOpen((open) => !open)}
-              className="shrink-0 rounded-full outline-none ring-2 ring-zinc-200 shadow-sm transition-[transform,opacity] hover:opacity-95 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2 active:scale-[0.98]"
-              aria-expanded={avatarMenuOpen}
-              aria-haspopup="menu"
-              aria-label="Account menu"
-            >
-              {userImage ? (
-                <img
-                  src={userImage}
-                  alt=""
-                  width={28}
-                  height={28}
-                  className="h-7 w-7 rounded-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: '#4F46E5' }}
-                  aria-hidden
-                >
-                  {userInitial}
-                </div>
-              )}
-            </button>
-            {avatarMenuOpen && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className="shrink-0 rounded-full outline-none ring-2 ring-zinc-200 shadow-sm transition-[transform,opacity] hover:opacity-95 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2 active:scale-[0.98]"
+            aria-label="Open settings"
+          >
+            {userImage ? (
+              <img
+                src={userImage}
+                alt=""
+                width={28}
+                height={28}
+                className="h-7 w-7 rounded-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
               <div
-                role="menu"
-                className="absolute right-0 top-full z-[120] mt-1.5 min-w-[13rem] rounded-xl border border-[#e5e7eb] bg-white px-3 py-3 shadow-lg"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                style={{ backgroundColor: '#4F46E5' }}
+                aria-hidden
               >
-                <div
-                  role="presentation"
-                  className="border-b border-zinc-100 pb-2.5 text-[13px] font-medium leading-snug text-[#374151]"
-                >
-                  {hasActiveSubscription === true
-                    ? 'Pro plan'
-                    : `Free plan — ${savedNotes.length} ${savedNotes.length === 1 ? 'note' : 'notes'} used`}
-                </div>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="mt-2 w-full rounded-lg py-2.5 text-center text-[13px] font-semibold text-[#111111] transition-colors hover:bg-zinc-50"
-                  onClick={() => {
-                    setAvatarMenuOpen(false)
-                    void signOut({ callbackUrl: '/' })
-                  }}
-                >
-                  Log out
-                </button>
+                {userInitial}
               </div>
             )}
-          </div>
+          </button>
         </div>
       </header>
 
@@ -4577,6 +4535,27 @@ export default function Home() {
         {/* ── SETTINGS TAB ── */}
         {activeTab === 'settings' && (
           <div className="pt-2 space-y-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">Plan</p>
+            <div className="rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-4 shadow-sm">
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-[12px] font-semibold tracking-tight ${
+                  hasActiveSubscription === true
+                    ? 'bg-[#4F46E5] text-white shadow-sm'
+                    : 'bg-zinc-200 text-zinc-800'
+                }`}
+              >
+                {hasActiveSubscription === true ? 'Pro plan' : 'Free plan'}
+              </span>
+              {hasActiveSubscription !== true && (
+                <button
+                  type="button"
+                  onClick={() => setShowPaywall('upgrade')}
+                  className="mt-3 w-full rounded-xl bg-[#16a34a] py-3 text-[13px] font-semibold text-white shadow-sm transition-[transform,background-color] hover:bg-[#15803d] active:scale-[0.99]"
+                >
+                  Upgrade to Pro — $19/month
+                </button>
+              )}
+            </div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">Account</p>
             <div className="rounded-2xl border border-[#e5e7eb]/70 bg-[#f8f8f8] px-4 py-4 shadow-sm">
               <div className="flex items-center gap-3">
