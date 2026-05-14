@@ -117,7 +117,9 @@ function truncateActionWords(action: string, maxWords: number): string {
 function looksLikeNarrative(action: string): boolean {
   const t = action.trim()
   if (!t) return true
-  if (/[.!?]\s/.test(t)) return true
+  /** "St. Mary's", "Dr. Smith — …" use `. ` as abbreviation, not sentence end. */
+  const forSentenceBoundary = t.replace(/\b(St|Dr|Mr|Mrs|Ms|Mt)\.\s/gi, '$1 ')
+  if (/[.!?]\s/.test(forSentenceBoundary)) return true
   if (t.length > 120) return true
   return NARRATIVE_SNIPPETS.some((re) => re.test(t))
 }

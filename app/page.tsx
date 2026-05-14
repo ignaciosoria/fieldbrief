@@ -77,11 +77,11 @@ function filterKeyInsightsForDisplay(lines: string[]): string[] {
 
 /** /try walkthrough: sample visit note (spinner hint + preview caption result label). */
 const TRY_DEMO_EXAMPLE_NOTE_TEXT =
-  "Visited Dr. Reynolds at St. Mary's, she's interested in the new catheter line, budget resets in October, need to send clinical data next Tuesday and call purchasing department Thursday afternoon"
+  "Visited Dr. Reynolds at St. Mary's Hospital, she's interested in the new catheter line, budget resets in October, need to send clinical data next Tuesday and call purchasing department Thursday afternoon"
 
 /** Walkthrough result: primary line (must match {@link buildTryWalkthroughStructureResult}). */
 const TRY_WALKTHROUGH_PRIMARY_DISPLAY =
-  "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
+  "Send clinical data to Dr. Reynolds — St. Mary's Hospital (Tuesday · 9:00 AM)"
 
 const TRY_WALKTHROUGH_INSIGHT_LINES = [
   'Budget resets in October — strong buying window',
@@ -91,7 +91,7 @@ const TRY_WALKTHROUGH_INSIGHT_LINES = [
 
 /** Pre-written CRM line for Copy CRM on the unauthenticated /try walkthrough. */
 const TRY_WALKTHROUGH_COPY_CRM_TEXT =
-  "Contact: Dr. Reynolds — St. Mary's | Next step: Send clinical data (Tuesday 9AM) | Follow up: Call purchasing dept (Thursday 2PM) | Notes: Budget resets October. Needs clinical trial data. Interested in full ward rollout if pilot succeeds."
+  "Contact: Dr. Reynolds — St. Mary's Hospital | Next step: Send clinical data (Tuesday 9AM) | Follow up: Call purchasing dept (Thursday 2PM) | Notes: Budget resets October. Needs clinical trial data. Interested in full ward rollout if pilot succeeds."
 
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
@@ -571,12 +571,12 @@ function nextThursdayMmddFrom(now: Date = new Date()): string {
 function buildTryWalkthroughStructureResult(): StructureResult {
   return normalizeStructureResult({
     ...emptyResult,
-    customer: "St. Mary's",
+    customer: "St. Mary's Hospital",
     contact: 'Dr. Reynolds',
-    contactCompany: "St. Mary's",
+    contactCompany: "St. Mary's Hospital",
     summary: '',
     nextStep: TRY_WALKTHROUGH_PRIMARY_DISPLAY,
-    nextStepTitle: "Send clinical data to Dr. Reynolds — St. Mary's",
+    nextStepTitle: "Send clinical data to Dr. Reynolds — St. Mary's Hospital",
     nextStepAction: 'send',
     nextStepTarget: 'Dr. Reynolds',
     nextStepDate: nextTuesdayMmddFrom(),
@@ -586,9 +586,9 @@ function buildTryWalkthroughStructureResult(): StructureResult {
     crmText: 'Clinical visit — send data Tuesday; call purchasing Thursday; budget cycle October.',
     additionalSteps: [
       {
-        action: "Call purchasing dept — St. Mary's",
+        action: "Call purchasing dept — St. Mary's Hospital",
         contact: 'Purchasing dept',
-        company: "St. Mary's",
+        company: "St. Mary's Hospital",
         resolvedDate: nextThursdayMmddFrom(),
         timeHint: '14:00',
         supportingType: 'call',
@@ -3282,6 +3282,17 @@ export default function Home() {
   const tryWtPrimaryComplete =
     !isTryWalkthroughPreview ||
     tryWalkthroughReveal.primaryLen >= TRY_WALKTHROUGH_PRIMARY_DISPLAY.length
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    if (!isTryWalkthroughPreview || !recordDisplayResult) return
+    console.log('[try walkthrough]', {
+      isTryWalkthroughPreview,
+      additionalStepsCount: recordDisplayResult.additionalSteps?.length ?? 0,
+      additionalSteps: recordDisplayResult.additionalSteps,
+      tryWtPrimaryComplete,
+    })
+  }, [isTryWalkthroughPreview, recordDisplayResult, tryWtPrimaryComplete])
 
   useEffect(() => {
     if (!tryWalkthroughPreviewActive) {
