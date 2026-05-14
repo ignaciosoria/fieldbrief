@@ -1907,6 +1907,16 @@ export default function Home() {
   const signInWithGoogle = useCallback(() => {
     void signIn('google', { callbackUrl: '/' })
   }, [])
+  /** /try demo: sign in then return with ?paywallUpgrade=1 to open upgrade modal post-login */
+  const signInFromDemoHeader = useCallback(() => {
+    if (typeof window === 'undefined') {
+      void signIn('google', { callbackUrl: '/try?paywallUpgrade=1' })
+      return
+    }
+    const u = new URL(window.location.href)
+    u.searchParams.set('paywallUpgrade', '1')
+    void signIn('google', { callbackUrl: `${u.pathname}${u.search}` })
+  }, [])
   /**
    * Authenticated user key for notes: Google account email (matches `notes.user_id` in Supabase).
    * See `supabase/migrations/*_add_notes_user_id.sql`.
@@ -2010,6 +2020,21 @@ export default function Home() {
   const [showPaywall, setShowPaywall] = useState<'limit' | 'upgrade' | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
+
+  /** After OAuth on /try, open upgrade modal from callback URL (?paywallUpgrade=1). */
+  useEffect(() => {
+    if (!mounted || status !== 'authenticated') return
+    if (typeof window === 'undefined') return
+    const u = new URL(window.location.href)
+    if (!u.pathname.startsWith('/try')) return
+    if (u.searchParams.get('paywallUpgrade') !== '1') return
+    setShowPaywall('upgrade')
+    u.searchParams.delete('paywallUpgrade')
+    const search = u.searchParams.toString()
+    const clean = `${u.pathname}${search ? `?${search}` : ''}${u.hash}`
+    window.history.replaceState(null, '', clean)
+  }, [mounted, status])
+
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -3174,10 +3199,17 @@ export default function Home() {
           </button>
         </div>
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
-          {hasActiveSubscription === false && (
+          {(hasActiveSubscription === false ||
+            (isDemo && status === 'unauthenticated')) && (
             <button
               type="button"
-              onClick={() => setShowPaywall('upgrade')}
+              onClick={() => {
+                if (isDemo && status === 'unauthenticated') {
+                  signInFromDemoHeader()
+                  return
+                }
+                setShowPaywall('upgrade')
+              }}
               className="rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#15803d] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
               aria-label="Upgrade to Pro subscription"
             >
@@ -3186,7 +3218,13 @@ export default function Home() {
           )}
           <button
             type="button"
-            onClick={() => setActiveTab('settings')}
+            onClick={() => {
+              if (isDemo && status === 'unauthenticated') {
+                signInFromDemoHeader()
+                return
+              }
+              setActiveTab('settings')
+            }}
             className="shrink-0 rounded-full outline-none ring-2 ring-zinc-200 shadow-sm transition-[transform,opacity] hover:opacity-95 focus-visible:ring-[#4F46E5] focus-visible:ring-offset-2 active:scale-[0.98]"
             aria-label="Open settings"
           >
