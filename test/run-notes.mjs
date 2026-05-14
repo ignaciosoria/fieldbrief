@@ -14,8 +14,12 @@ const API = 'http://localhost:3000/api/structure'
 
 const TEST_NOTES = [
   {
-    label: '9 / spanish / multiple actions / urgent',
-    text: "Estuve con Ramón en Agrícola del Norte, tiene como 400 hectáreas de fresa. Me dijo que necesita la cotización antes del viernes porque el jueves tiene reunión con su socio para decidir qué producto usar esta temporada. También quiere que le mande el registro del producto y los resultados de los ensayos que hicimos el año pasado en Baja.",
+    label: 'typical 1 / call after visit',
+    text: "Just left Dave Martinez at Central Coast Farms, good meeting. He's got about 150 acres of strawberries in Santa Maria. Interested in trying Quantum Flower this season but wants to talk to his agronomist first. Call him Thursday to follow up.",
+  },
+  {
+    label: 'typical 2 / send after call',
+    text: "Called Jennifer at Sunrise Nursery this morning. She's looking for something to improve fruit size on her navel oranges, about 80 acres. Asked me to send her the Quantum Engorde technical sheet and pricing by end of day today.",
   },
 ]
 

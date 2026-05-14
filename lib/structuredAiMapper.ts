@@ -438,7 +438,7 @@ export function structuredPayloadToStructureBody(
     const st = normalizeTimeHint(s.time)
     const lab = truncateWords(s.label, 5)
     const sv = verbForSupportingStructuredType(s.type, langEs).replace(/\/\S+/g, '').trim()
-    const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 5)
+    const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 10)
     const objectPart =
       s.type === 'send' || s.type === 'email'
         ? normalizePrimarySendObjectField(rawObj, s.contact.trim(), sv, noteLanguage)
