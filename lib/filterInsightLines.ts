@@ -3,13 +3,11 @@
  * Drop any line that reads like a next-step / task (action language).
  */
 
-/** English (user list) + Spanish parallels + "meet" as verb distinct from "meeting". */
+/** English (user list) + Spanish parallels. Omit bare \\bmeet\\b / \\bmeeting\\b — too many noun false positives mid-sentence. */
 const ACTION_LANGUAGE_PATTERNS: RegExp[] = [
   /\bsend\b/i,
   /\bcall\b/i,
   /\bfollow\s*[-]?\s*up\b/i,
-  /\bmeeting\b/i,
-  /\bmeet\b/i,
   /\benviar\b/i,
   /\bllamar\b/i,
   /\bseguimiento\b/i,

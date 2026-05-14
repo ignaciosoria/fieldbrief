@@ -115,7 +115,7 @@ export function buildPrimaryBaseTitle(fields: ActionStructuredFields, noteLangua
     if (object && company) return `${verb} ${object} ${EM} ${company}`
     if (object) return `${verb} ${object}`
     if (company) return `${verb} ${EM} ${company}`
-    return verb || (langEs ? 'Enviar/Entregar' : 'Send')
+    return verb || (langEs ? 'Enviar' : 'Send')
   }
 
   if (usesContactForPrimary(t)) {

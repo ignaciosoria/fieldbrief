@@ -76,7 +76,7 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
     Sunday: now.plus({ days: daysUntil(7) }),
   }
 
-  const nextWeekMonday = days.Monday.plus({ days: 7 })
+  const mondayTwoWeeksFromNow = days.Monday.plus({ days: 7 })
 
   const currentHour = now.toFormat('HH:mm')
   const currentPeriod = now.hour < 12 ? 'morning' : now.hour < 17 ? 'afternoon' : 'evening'
@@ -84,6 +84,8 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
   return [
     `User calendar timezone: ${z}. Anchor all relative dates to the user's local clock below — never use server time or UTC.`,
     `Today: ${fmtPair(now)}`,
+    'CRITICAL: English "next [weekday]" (e.g. "next Monday") and Spanish "próximo/próxima [weekday]" (e.g. "próximo lunes") MUST use the **same** calendar dates as the "Next [weekday]" lines below: the **nearest upcoming** occurrence of that weekday — NOT the separate anchor labeled **Monday TWO weeks from now** (that anchor is only for whole-week phrases like "next week" / "próxima semana"). Example: if today is Thursday, "next Monday" / "próximo lunes" = this coming Monday (~3 days). Only when the anchor day **is already that weekday** should "next/próximo [same weekday]" mean the following week (+7 days), matching the "never today" rule in those lines.',
+    '',
     `Current local time: ${currentHour} (${currentPeriod})`,
     `Time rule: if the user says "tomorrow morning" = tomorrow at 09:00; "this afternoon" = today at 15:00; "tonight" = today at 19:00; "end of day" = today at 17:00. Never assign a past time to today's date. If no time is mentioned at all, default to 09:00.`,
     `Tomorrow: ${fmtPair(tomorrow)}`,
@@ -91,17 +93,15 @@ function buildStructureUserDateContext(timeZone: string, userNow: Date): string 
     'Upcoming weekdays (always the NEXT occurrence, never today even if today matches):',
     ...Object.entries(days).map(([name, dt]) => `  Next ${name}: ${fmtPair(dt)}`),
     '',
-    `Next week Monday (week after the upcoming Monday): ${fmtPair(nextWeekMonday)}`,
+    `Monday TWO weeks from now: ${fmtPair(mondayTwoWeeksFromNow)}`,
     '',
     'Rules:',
     '- "tomorrow morning" = tomorrow at 9:00 AM',
     '- "Thursday at 2pm" = next Thursday date above at 14:00',
-    '- "next week" without a weekday / Spanish "próxima semana" (whole-week phrase only) = Monday of the following calendar week',
+    '- "next week" without a weekday / Spanish "próxima semana" (whole-week phrase only) = the calendar date on the line **Monday TWO weeks from now** above',
     '- "this week" = before Sunday of the current week',
     '- Never assign a date that is already past',
-    '- English "next [weekday]" (e.g. "next Monday") and Spanish "próximo/próxima [weekday]" (e.g. "próximo lunes") use the **same** calendar dates as the "Next [weekday]" lines above: the **nearest upcoming** occurrence of that weekday. Example: if today is Thursday, "next Monday" / "próximo lunes" = this coming Monday (~3 days), NOT Monday of the week after.',
     '- Spanish "este/esta [weekday]" (e.g. "este miércoles") = closest occurrence of that weekday in the current calendar week when it matches conversational intent; if ambiguous, prefer the same "Next [weekday]" anchor.',
-    '- Only when the anchor calendar day **is already that weekday** should "next/próximo [same weekday]" mean **following week\'s** occurrence (+7 days), matching the "never today" rule in the weekday lines.',
   ].join('\n')
 }
 

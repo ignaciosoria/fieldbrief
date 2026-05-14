@@ -42,6 +42,10 @@ export function linguisticUrgencyModifierForPrimaryRow(action: string, title: st
   if (/\btoday\b|\bhoy\b/.test(t)) s -= 3
   if (/\bbefore\b/.test(t) && /(\d|noon|midnight|pm|am|:\d)/i.test(t)) s -= 2
   if (/\burgent\b|\burgente\b/.test(t)) s -= 2
+  if (/\bdeadline\b|\bexpires\b|\bexpiring\b|\bcontract\s+end\b/i.test(t)) s -= 2
+  if (/\bend\s+of\s+(month|quarter|year)\b|\bfin\s+de\s+(mes|trimestre|año)\b/i.test(t))
+    s -= 1
+  if (/\bwaiting\b|\bpending\b|\bpendiente\b|\ba\s+la\s+espera\b/i.test(t)) s += 1
   if (/\btomorrow\b|\bmañana\b/.test(t)) s -= 1
   if (/\bnext\s+week\b|\bpr[oó]xima\s+semana\b|\bla\s+pr[oó]xima\s+semana\b/.test(t)) s += 3
   if (/\bno\s+rush\b|\bsin\s+prisa\b|\bno\s+hay\s+prisa\b/.test(t)) s += 2
