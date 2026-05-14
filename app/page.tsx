@@ -79,6 +79,16 @@ function filterKeyInsightsForDisplay(lines: string[]): string[] {
 const TRY_DEMO_EXAMPLE_NOTE_TEXT =
   "Visited Dr. Reynolds at St. Mary's, she's interested in the new catheter line, budget resets in October, need to send clinical data and follow up next Tuesday"
 
+/** Walkthrough result: primary line (must match {@link buildTryWalkthroughStructureResult}). */
+const TRY_WALKTHROUGH_PRIMARY_DISPLAY =
+  "Send catheter line proposal to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
+
+const TRY_WALKTHROUGH_INSIGHT_LINES = [
+  'Budget resets in October — strong buying window',
+  'Needs clinical trial data before committing',
+  'Interested in full ward rollout if pilot succeeds',
+] as const
+
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
@@ -542,6 +552,18 @@ function nextTuesdayMmddFrom(now: Date = new Date()): string {
   return `${mm}/${dd}/${y}`
 }
 
+function nextThursdayMmddFrom(now: Date = new Date()): string {
+  const d = new Date(now)
+  const day = d.getDay()
+  let add = (4 - day + 7) % 7
+  if (add === 0) add = 7
+  d.setDate(d.getDate() + add)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const y = d.getFullYear()
+  return `${mm}/${dd}/${y}`
+}
+
 function buildTryWalkthroughStructureResult(): StructureResult {
   return normalizeStructureResult({
     ...emptyResult,
@@ -549,19 +571,24 @@ function buildTryWalkthroughStructureResult(): StructureResult {
     contact: 'Dr. Reynolds',
     contactCompany: "St. Mary's",
     summary: '',
-    nextStep: "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)",
-    nextStepTitle: "Send clinical data to Dr. Reynolds — St. Mary's",
+    nextStep: TRY_WALKTHROUGH_PRIMARY_DISPLAY,
+    nextStepTitle: "Send catheter line proposal to Dr. Reynolds — St. Mary's",
     nextStepAction: 'send',
     nextStepTarget: 'Dr. Reynolds',
     nextStepDate: nextTuesdayMmddFrom(),
     nextStepTimeHint: '09:00',
     nextStepConfidence: 'medium',
-    crmFull: [
-      'Budget resets in October',
-      'Interested in new catheter line',
-      'Needs clinical evidence before committing',
-    ],
+    crmFull: [...TRY_WALKTHROUGH_INSIGHT_LINES],
     crmText: 'Clinical hospital visit — catheter line interest; budget cycle October.',
+    additionalSteps: [
+      {
+        action: "Follow up with purchasing dept — St. Mary's",
+        contact: '',
+        company: "St. Mary's",
+        resolvedDate: nextThursdayMmddFrom(),
+        timeHint: '14:00',
+      },
+    ],
   })
 }
 
@@ -1972,6 +1999,14 @@ export default function Home() {
     'idle',
   )
   const tryWalkthroughTimerRef = useRef<number | null>(null)
+  const tryWalkthroughRecordTargetRef = useRef<HTMLButtonElement | null>(null)
+  const [tryWalkthroughReveal, setTryWalkthroughReveal] = useState({
+    showNextLabel: false,
+    primaryLen: 0,
+    showInsightsTitle: false,
+    insightsHeaderOpaque: false,
+    insightCount: 0,
+  })
   const loadingMessages = [
     'One moment…',
     'Reading your note…',
@@ -3223,6 +3258,94 @@ export default function Home() {
   const processingWalkthrough = tryWalkthroughPhase === 'loading'
   const processingBusy = loading || processingWalkthrough
 
+  const tryWtPrimaryComplete =
+    !isTryWalkthroughPreview ||
+    tryWalkthroughReveal.primaryLen >= TRY_WALKTHROUGH_PRIMARY_DISPLAY.length
+
+  useEffect(() => {
+    if (!tryWalkthroughPreviewActive) {
+      setTryWalkthroughReveal({
+        showNextLabel: false,
+        primaryLen: 0,
+        showInsightsTitle: false,
+        insightsHeaderOpaque: false,
+        insightCount: 0,
+      })
+      return
+    }
+
+    const primary = TRY_WALKTHROUGH_PRIMARY_DISPLAY
+    const insightLines = TRY_WALKTHROUGH_INSIGHT_LINES
+    const pending: number[] = []
+    let cancelled = false
+
+    const arm = (id: number) => {
+      pending.push(id)
+    }
+
+    arm(
+      window.setTimeout(() => {
+        if (cancelled) return
+        setTryWalkthroughReveal((r) => ({ ...r, showNextLabel: true }))
+      }, 80),
+    )
+
+    arm(
+      window.setTimeout(() => {
+        if (cancelled) return
+        let n = 0
+        const iv = window.setInterval(() => {
+          if (cancelled) return
+          n += 1
+          setTryWalkthroughReveal((r) => ({ ...r, primaryLen: n }))
+          if (n >= primary.length) {
+            clearInterval(iv)
+            const tPost = window.setTimeout(() => {
+              if (cancelled) return
+              setTryWalkthroughReveal((r) => ({
+                ...r,
+                showInsightsTitle: true,
+                insightsHeaderOpaque: false,
+                insightCount: 0,
+              }))
+              arm(
+                window.setTimeout(() => {
+                  if (cancelled) return
+                  setTryWalkthroughReveal((r) => ({ ...r, insightsHeaderOpaque: true }))
+                }, 60),
+              )
+              arm(
+                window.setTimeout(() => {
+                  if (cancelled) return
+                  let k = 0
+                  const addNext = () => {
+                    if (cancelled) return
+                    k += 1
+                    setTryWalkthroughReveal((r) => ({ ...r, insightCount: k }))
+                    if (k < insightLines.length) {
+                      arm(window.setTimeout(addNext, 400))
+                    }
+                  }
+                  addNext()
+                }, 560),
+              )
+            }, 200)
+            arm(tPost)
+          }
+        }, 30)
+        arm(iv)
+      }, 380),
+    )
+
+    return () => {
+      cancelled = true
+      pending.forEach((id) => {
+        clearTimeout(id)
+        clearInterval(id)
+      })
+    }
+  }, [tryWalkthroughPreviewActive])
+
   if (!mounted) return null
 
   if (status === 'loading') {
@@ -3996,13 +4119,28 @@ export default function Home() {
                     : 'auto',
               }}
             >
-              <div className="mb-6 max-w-[20rem] text-center">
-                <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
-                  Tap to record your visit
-                </h2>
+              <div
+                className={`mb-6 text-center ${isDemo && status === 'unauthenticated' ? 'max-w-[22rem]' : 'max-w-[20rem]'}`}
+              >
+                {isDemo && status === 'unauthenticated' ? (
+                  <>
+                    <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
+                      Turn your sales visits into action
+                    </h2>
+                    <p className="mt-2.5 text-pretty text-[0.875rem] font-medium leading-relaxed text-[#6b7280] sm:text-[0.9375rem]">
+                      Record a voice memo after each visit. Get your next step, calendar event, and CRM summary
+                      in seconds.
+                    </p>
+                  </>
+                ) : (
+                  <h2 className="text-2xl font-bold leading-tight tracking-tight text-[#111111] sm:text-[1.65rem]">
+                    Tap to record your visit
+                  </h2>
+                )}
               </div>
               {/* Mic button */}
               <button
+                ref={tryWalkthroughRecordTargetRef}
                 onClick={toggleRecording}
                 disabled={processingBusy}
                 className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
@@ -4049,12 +4187,27 @@ export default function Home() {
                       if (navigator.vibrate) navigator.vibrate(4)
                       startTryWalkthrough()
                     }}
-                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-2.5 py-1.5 text-[10px] font-medium leading-none text-zinc-700 shadow-sm transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.98]"
+                    className="mt-4 flex w-full max-w-md items-center justify-center gap-2 bg-transparent px-2 py-1.5 text-[13px] font-medium leading-snug text-indigo-600 shadow-none outline-none ring-0 transition-colors hover:text-indigo-700 active:opacity-80 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2"
                   >
-                    <span className="translate-x-[0.5px] text-[9px] text-zinc-500" aria-hidden>
-                      ▶
+                    <span
+                      className="inline-flex shrink-0 animate-pulse text-indigo-600"
+                      aria-hidden
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        className="overflow-visible"
+                        aria-hidden
+                      >
+                        <circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.14" />
+                        <path
+                          d="M10.2 8.4v7.2l6.3-3.6-6.3-3.6z"
+                          fill="currentColor"
+                        />
+                      </svg>
                     </span>
-                    Try a demo
+                    See it in action
                   </button>
                 )}
 
@@ -4160,33 +4313,43 @@ export default function Home() {
                 )}
                 {/* 1 — Next step + calendar (sticky) */}
                 <div className="sticky top-0 z-20 -mx-5 border-b border-zinc-200/90 bg-white/90 px-5 pb-2 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
-                  <div className="mb-1.5 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleReset}
-                      className="flex shrink-0 items-center gap-0.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] py-1.5 pl-2.5 pr-3 text-[11px] font-semibold text-[#6b7280] shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-100 active:scale-[0.97]"
-                    >
-                      <span className="text-[13px] font-semibold leading-none text-[#111111]" aria-hidden>+</span>
-                      New
-                    </button>
-                  </div>
+                  {!isTryWalkthroughPreview && (
+                    <div className="mb-1.5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="flex shrink-0 items-center gap-0.5 rounded-full border border-[#e5e7eb] bg-[#f8f8f8] py-1.5 pl-2.5 pr-3 text-[11px] font-semibold text-[#6b7280] shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-100 active:scale-[0.97]"
+                      >
+                        <span className="text-[13px] font-semibold leading-none text-[#111111]" aria-hidden>+</span>
+                        New
+                      </button>
+                    </div>
+                  )}
 
                   {(recordDisplayResult.nextStep || recordDisplayResult.nextStepTitle) && (
                     <>
                       <div
                         className="rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-4 py-3 text-center ring-1 ring-indigo-500/25 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
                       >
-                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5]">
+                        <p
+                          className={`mb-1 text-[9px] font-semibold uppercase tracking-[0.26em] text-[#4F46E5] transition-opacity duration-500 ease-out ${
+                            isTryWalkthroughPreview
+                              ? tryWalkthroughReveal.showNextLabel
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                              : 'opacity-100'
+                          }`}
+                        >
                           {isNoClearFollowUpResult(recordDisplayResult) ? 'Follow-up' : 'NEXT STEP'}
                         </p>
-                        <p className="text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased">
+                        <p className="min-h-[4.25rem] text-[18px] font-black leading-[1.2] tracking-[-0.02em] text-[#111111] antialiased sm:min-h-[3.75rem]">
                           {isTryWalkthroughPreview
-                            ? "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
+                            ? TRY_WALKTHROUGH_PRIMARY_DISPLAY.slice(0, tryWalkthroughReveal.primaryLen)
                             : buildPrimaryDisplayTitle(primaryTitleForDisplay(recordDisplayResult))}
                         </p>
                       </div>
 
-                      {!isNoClearFollowUpResult(recordDisplayResult) ? (
+                      {tryWtPrimaryComplete && !isNoClearFollowUpResult(recordDisplayResult) ? (
                         <button
                           onClick={() => addResultToCalendar(recordDisplayResult)}
                           type="button"
@@ -4220,7 +4383,8 @@ export default function Home() {
                         </button>
                       ) : null}
 
-                      {!isNoClearFollowUpResult(recordDisplayResult) &&
+                      {tryWtPrimaryComplete &&
+                        !isNoClearFollowUpResult(recordDisplayResult) &&
                         (recordDisplayResult.additionalSteps || []).length > 0 && (
                           <div className="mt-2.5 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] px-3.5 py-3 text-left ring-1 ring-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
                             <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#6b7280]">
@@ -4285,7 +4449,8 @@ export default function Home() {
 
                 {/* Contact & company → Key insights → actions */}
                 <div className="mt-4 flex flex-col gap-6">
-                  {(recordDisplayResult.contact ||
+                  {tryWtPrimaryComplete &&
+                    (recordDisplayResult.contact ||
                     recordDisplayResult.customer ||
                     recordDisplayResult.location ||
                     recordDisplayResult.crop ||
@@ -4328,13 +4493,29 @@ export default function Home() {
                     </div>
                   )}
 
-                  {filterKeyInsightsForDisplay(recordDisplayResult.crmFull).length > 0 && (
+                  {filterKeyInsightsForDisplay(recordDisplayResult.crmFull).length > 0 &&
+                    (!isTryWalkthroughPreview || tryWalkthroughReveal.showInsightsTitle) && (
                     <div className="rounded-2xl border border-zinc-200/80 bg-[#fafafa] px-4 py-3.5">
-                      <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
+                      <p
+                        className={`mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6b7280] transition-opacity duration-500 ease-out ${
+                          isTryWalkthroughPreview
+                            ? tryWalkthroughReveal.insightsHeaderOpaque
+                              ? 'opacity-100'
+                              : 'opacity-0'
+                            : 'opacity-100'
+                        }`}
+                      >
                         KEY INSIGHTS
                       </p>
                       <KeyInsightsList
-                        lines={filterKeyInsightsForDisplay(recordDisplayResult.crmFull)}
+                        lines={
+                          isTryWalkthroughPreview
+                            ? filterKeyInsightsForDisplay(recordDisplayResult.crmFull).slice(
+                                0,
+                                tryWalkthroughReveal.insightCount,
+                              )
+                            : filterKeyInsightsForDisplay(recordDisplayResult.crmFull)
+                        }
                         gapClass="gap-2"
                         lineClassName="rounded-lg px-2 py-1.5 text-[12px] font-medium leading-[1.5] tracking-tight"
                         expanded={resultInsightsExpanded}
@@ -4345,7 +4526,30 @@ export default function Home() {
                     </div>
                   )}
 
+                  {isTryWalkthroughPreview &&
+                    tryWalkthroughReveal.insightCount >= TRY_WALKTHROUGH_INSIGHT_LINES.length && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(8)
+                        clearTryWalkthrough()
+                        window.requestAnimationFrame(() => {
+                          tryWalkthroughRecordTargetRef.current?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center',
+                          })
+                        })
+                      }}
+                      className="w-full rounded-xl py-4 text-[15px] font-bold text-white shadow-sm transition-[transform,filter] hover:brightness-[1.03] active:scale-[0.99]"
+                      style={{ backgroundColor: '#16a34a' }}
+                    >
+                      🎙️ Record your first visit
+                    </button>
+                  )}
+
                   {/* Copy / Share / Correct — inline, directly under content */}
+                  {(!isTryWalkthroughPreview ||
+                    tryWalkthroughReveal.insightCount >= TRY_WALKTHROUGH_INSIGHT_LINES.length) && (
                   <div className="flex items-center gap-2 border-t border-zinc-200/60 pt-4 pb-0">
                     <button
                       type="button"
@@ -4413,6 +4617,7 @@ export default function Home() {
                       )}
                     </button>
                   </div>
+                  )}
                 </div>
               </div>
             )}
