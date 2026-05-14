@@ -2007,7 +2007,7 @@ export default function Home() {
     }
   }, [status])
 
-  const [showPaywall, setShowPaywall] = useState(false)
+  const [showPaywall, setShowPaywall] = useState<'limit' | 'upgrade' | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null)
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -2825,7 +2825,7 @@ export default function Home() {
       const subRes = await fetch('/api/subscription')
       const subData = await subRes.json()
       if (subData.active === false && savedNotes.length >= 10) {
-        setShowPaywall(true)
+        setShowPaywall('limit')
         return
       }
     }
@@ -3167,7 +3167,7 @@ export default function Home() {
           {hasActiveSubscription === false && (
             <button
               type="button"
-              onClick={() => setShowPaywall(true)}
+              onClick={() => setShowPaywall('upgrade')}
               className="rounded-lg bg-[#4F46E5] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#4338CA] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
               aria-label="Upgrade subscription"
             >
@@ -4731,14 +4731,18 @@ export default function Home() {
           </div>
         </div>
       )}
-      {showPaywall && (
+      {showPaywall != null && (
         <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-black/50 px-6 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
             <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
-              You've used your 10 free notes
+              {showPaywall === 'upgrade'
+                ? 'Upgrade to Folup Pro'
+                : "You've used your 10 free notes"}
             </h2>
             <p className="mb-6 text-center text-[14px] text-[#6b7280]">
-              Subscribe to Folup Pro to keep recording and never forget a follow-up again.
+              {showPaywall === 'upgrade'
+                ? 'Unlimited notes, never miss a follow-up. $19/month, cancel anytime.'
+                : 'Subscribe to Folup Pro to keep recording and never forget a follow-up again.'}
             </p>
             <button
               type="button"
@@ -4754,7 +4758,7 @@ export default function Home() {
             </button>
             <button
               type="button"
-              onClick={() => setShowPaywall(false)}
+              onClick={() => setShowPaywall(null)}
               className="mt-3 w-full rounded-xl py-3 text-[13px] font-medium text-[#6b7280]"
             >
               Maybe later
