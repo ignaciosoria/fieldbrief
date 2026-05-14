@@ -2064,17 +2064,29 @@ export default function Home() {
 
   /** After OAuth on /try, open upgrade modal from callback URL (?paywallUpgrade=1). */
   useEffect(() => {
-    if (!mounted || status !== 'authenticated') return
+    if (!mounted) return
+    if (status === 'loading') return
+    if (status !== 'authenticated') return
+    if (!session?.user) return
     if (typeof window === 'undefined') return
-    const u = new URL(window.location.href)
-    if (!u.pathname.startsWith('/try')) return
-    if (u.searchParams.get('paywallUpgrade') !== '1') return
-    setShowPaywall('upgrade')
-    u.searchParams.delete('paywallUpgrade')
-    const search = u.searchParams.toString()
-    const clean = `${u.pathname}${search ? `?${search}` : ''}${u.hash}`
-    window.history.replaceState(null, '', clean)
-  }, [mounted, status])
+    try {
+      let u: URL
+      try {
+        u = new URL(window.location.href)
+      } catch {
+        return
+      }
+      if (!u.pathname.startsWith('/try')) return
+      if (u.searchParams.get('paywallUpgrade') !== '1') return
+      setShowPaywall('upgrade')
+      u.searchParams.delete('paywallUpgrade')
+      const search = u.searchParams.toString()
+      const clean = `${u.pathname}${search ? `?${search}` : ''}${u.hash}`
+      window.history.replaceState(null, '', clean)
+    } catch (err) {
+      console.warn('[paywallUpgrade] handler failed:', err)
+    }
+  }, [mounted, status, session?.user])
 
   /** First time structured output is ready: install hint until dismissed (`folup_home_banner_shown` in localStorage). */
   useEffect(() => {
@@ -3179,16 +3191,6 @@ export default function Home() {
     }
   }
 
-  if (!mounted) return null
-
-  if (status === 'loading') {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-[#111111] antialiased">
-        <p className="text-[14px] text-[#6b7280]">Loading…</p>
-      </main>
-    )
-  }
-
   const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/try')
 
   const startTryWalkthrough = useCallback(() => {
@@ -3215,6 +3217,16 @@ export default function Home() {
   const isTryWalkthroughPreview = !!walkthroughDisplayResult
   const processingWalkthrough = tryWalkthroughPhase === 'loading'
   const processingBusy = loading || processingWalkthrough
+
+  if (!mounted) return null
+
+  if (status === 'loading') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-[#111111] antialiased">
+        <p className="text-[14px] text-[#6b7280]">Loading…</p>
+      </main>
+    )
+  }
 
   if (status === 'unauthenticated' && !isDemo) {
     return (
