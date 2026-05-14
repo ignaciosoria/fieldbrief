@@ -3340,72 +3340,72 @@ export default function Home() {
             clearInterval(iv)
             const tPost = window.setTimeout(() => {
               if (cancelled) return
+              const nOther =
+                buildTryWalkthroughStructureResult().additionalSteps?.length ?? 0
+
+              const startInsightsSequence = () => {
+                if (cancelled) return
+                setTryWalkthroughReveal((r) => ({
+                  ...r,
+                  showInsightsTitle: true,
+                  insightsHeaderOpaque: false,
+                  insightCount: 0,
+                }))
+                arm(
+                  window.setTimeout(() => {
+                    if (cancelled) return
+                    setTryWalkthroughReveal((r) => ({ ...r, insightsHeaderOpaque: true }))
+                  }, 60),
+                )
+                arm(
+                  window.setTimeout(() => {
+                    if (cancelled) return
+                    let k = 0
+                    const addNextInsight = () => {
+                      if (cancelled) return
+                      k += 1
+                      setTryWalkthroughReveal((r) => ({ ...r, insightCount: k }))
+                      if (k < insightLines.length)
+                        arm(window.setTimeout(addNextInsight, 400))
+                    }
+                    addNextInsight()
+                  }, 560),
+                )
+              }
+
+              if (nOther <= 0) {
+                startInsightsSequence()
+                return
+              }
+
               setTryWalkthroughReveal((r) => ({
                 ...r,
-                showInsightsTitle: true,
+                showOtherActionsSection: true,
+                otherActionsOpaque: false,
+                otherActionsStepCount: 0,
+                showInsightsTitle: false,
                 insightsHeaderOpaque: false,
                 insightCount: 0,
               }))
               arm(
                 window.setTimeout(() => {
                   if (cancelled) return
-                  setTryWalkthroughReveal((r) => ({ ...r, insightsHeaderOpaque: true }))
+                  setTryWalkthroughReveal((r) => ({ ...r, otherActionsOpaque: true }))
                 }, 60),
               )
               arm(
                 window.setTimeout(() => {
                   if (cancelled) return
-                  let k = 0
-                  const addNext = () => {
+                  let j = 0
+                  const revealNextOtherStep = () => {
                     if (cancelled) return
-                    k += 1
-                    setTryWalkthroughReveal((r) => ({ ...r, insightCount: k }))
-                    if (k < insightLines.length) {
-                      arm(window.setTimeout(addNext, 400))
-                    } else {
-                      const nOther =
-                        buildTryWalkthroughStructureResult().additionalSteps?.length ?? 0
-                      if (nOther <= 0) return
-                      arm(
-                        window.setTimeout(() => {
-                          if (cancelled) return
-                          setTryWalkthroughReveal((r) => ({
-                            ...r,
-                            showOtherActionsSection: true,
-                            otherActionsOpaque: false,
-                            otherActionsStepCount: 0,
-                          }))
-                          arm(
-                            window.setTimeout(() => {
-                              if (cancelled) return
-                              setTryWalkthroughReveal((r) => ({
-                                ...r,
-                                otherActionsOpaque: true,
-                              }))
-                            }, 60),
-                          )
-                          arm(
-                            window.setTimeout(() => {
-                              if (cancelled) return
-                              let j = 0
-                              const revealNextOtherStep = () => {
-                                if (cancelled) return
-                                j += 1
-                                setTryWalkthroughReveal((r) => ({
-                                  ...r,
-                                  otherActionsStepCount: j,
-                                }))
-                                if (j < nOther) arm(window.setTimeout(revealNextOtherStep, 400))
-                              }
-                              revealNextOtherStep()
-                            }, 350),
-                          )
-                        }, 400),
-                      )
-                    }
+                    j += 1
+                    setTryWalkthroughReveal((r) => ({ ...r, otherActionsStepCount: j }))
+                    if (j < nOther) arm(window.setTimeout(revealNextOtherStep, 400))
+                    else arm(window.setTimeout(startInsightsSequence, 400))
                   }
-                  addNext()
-                }, 560),
+                  revealNextOtherStep()
+                }, 350),
               )
             }, 200)
             arm(tPost)
