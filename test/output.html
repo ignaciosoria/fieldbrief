@@ -20,7 +20,7 @@
 </head>
 <body>
   <h1>Structure API — <code>test/run-notes.mjs</code></h1>
-  <p class="meta">Generated at 2026-05-14T03:22:57.425Z · POST http://localhost:3000/api/structure</p>
+  <p class="meta">Generated at 2026-05-14T03:25:20.924Z · POST http://localhost:3000/api/structure</p>
   <p class="meta">Rows with empty <code>nextStep</code> or <code>nextStepConfidence: low</code> are highlighted in red.</p>
   <table>
     <thead>
@@ -41,43 +41,63 @@
     </thead>
     <tbody>
 <tr>
-  <td><span class="tag">physical delivery / entregar muestras</span><pre class="note">Llamé a Rosa en Finca Los Pinos. Quedamos en que le llevo las muestras de Quantum Engorde el jueves por la mañana.</pre></td>
-  <td>Rosa</td>
-  <td>Finca Los Pinos</td>
-  <td>Entregar muestras de Quantum Engorde a Rosa — Finca Los Pinos</td>
-  <td>Entregar muestras de Quantum Engorde a Rosa — Finca Los Pinos</td>
+  <td><span class="tag">dirty 1 / mal transcrito</span><pre class="note">eeeh sali de ver a miguel en ranchos del valle eem tiene unas 200 hectareas de de tomate eem le interesa lo del quantum flower para el proximo ciclo pero dice que que primero quiere ver los resultados del ensayo que hicimos en en sinaloa el año pasado eem llamarle la proxima semana</pre></td>
+  <td>Miguel</td>
+  <td>Ranchos Del Valle</td>
+  <td>Llamar a Miguel — Ranchos del Valle</td>
+  <td>Llamar a Miguel — Ranchos del Valle</td>
+  <td>05/19/2026</td>
+  <td></td>
+  <td><pre class="json">—</pre></td>
+  <td>high</td>
+  <td></td>
+  <td><pre class="json">Miguel en Ranchos del Valle. Quiere ver los resultados del ensayo en Sinaloa antes de decidir.
+
+Llamar para hablar sobre Quantum Flower para tomate.</pre></td>
+  <td><pre class="json">{
+  &quot;problem&quot;: &quot;Quiere ver los resultados del ensayo en Sinaloa antes de decidir&quot;,
+  &quot;productInterest&quot;: &quot;Quantum Flower para tomate en el próximo ciclo&quot;,
+  &quot;barrier&quot;: &quot;Resultados del ensayo de Sinaloa pendientes&quot;
+}</pre></td>
+</tr>
+<tr>
+  <td><span class="tag">dirty 2 / ruido de fondo</span><pre class="note">ok si entonces estuve con con juan carlos en agricola hermanos perez tiene problema con el cuajado en en sus naranjas como unas 80 hectareas dijo que si le mandamos la cotizacion antes del viernes puede que que arranquen esta temporada su socio tambien tiene que aprobar</pre></td>
+  <td>Juan Carlos</td>
+  <td>Agrícola Hermanos Pérez</td>
+  <td>Enviar cotización a Juan Carlos — Agrícola Hermanos Pérez</td>
+  <td>Enviar cotización a Juan Carlos — Agrícola Hermanos Pérez</td>
+  <td>05/15/2026</td>
+  <td></td>
+  <td><pre class="json">—</pre></td>
+  <td>high</td>
+  <td></td>
+  <td><pre class="json">Juan Carlos en Agrícola Hermanos Pérez. Cuajado en naranjas en 80 hectáreas.
+
+Enviar cotización.</pre></td>
+  <td><pre class="json">{
+  &quot;problem&quot;: &quot;problema de cuajado en naranjas en 80 hectáreas&quot;,
+  &quot;productInterest&quot;: &quot;&quot;,
+  &quot;barrier&quot;: &quot;aprobación pendiente del socio&quot;
+}</pre></td>
+</tr>
+<tr>
+  <td><span class="tag">dirty 3 / muy rapido</span><pre class="note">visita rapida roberto martinez frescos del pacifico quiere muestras quantum engorde para sus fresas 150 acres watsonville llamar jueves confirmar entrega</pre></td>
+  <td>Roberto Martínez</td>
+  <td>Frescos Del Pacífico</td>
+  <td>Llamar a Roberto Martínez — Frescos del Pacífico</td>
+  <td>Llamar a Roberto Martínez — Frescos del Pacífico</td>
   <td>05/14/2026</td>
   <td></td>
   <td><pre class="json">—</pre></td>
   <td>high</td>
   <td></td>
-  <td><pre class="json">Rosa en Finca Los Pinos.
+  <td><pre class="json">Roberto Martínez en Frescos del Pacífico. Necesidad de mejorar el engorde de fresas en 150 acres en Watsonville.
 
-Entregar muestras de Quantum Engorde.</pre></td>
+Llamar para hablar sobre Quantum Engorde para fresas.</pre></td>
   <td><pre class="json">{
-  &quot;problem&quot;: &quot;&quot;,
-  &quot;productInterest&quot;: &quot;Quantum Engorde&quot;,
-  &quot;barrier&quot;: &quot;&quot;
-}</pre></td>
-</tr>
-<tr>
-  <td><span class="tag">digital send / ficha tecnica</span><pre class="note">Hablé con Carlos en Invernaderos del Norte. Me pidió que le mande la ficha técnica de Quantum Flower hoy.</pre></td>
-  <td>Carlos</td>
-  <td>Invernaderos Del Norte</td>
-  <td>Enviar ficha técnica de Quantum Flower a Carlos — Invernaderos del Norte</td>
-  <td>Enviar ficha técnica de Quantum Flower a Carlos — Invernaderos del Norte</td>
-  <td>05/13/2026</td>
-  <td></td>
-  <td><pre class="json">—</pre></td>
-  <td>high</td>
-  <td></td>
-  <td><pre class="json">Carlos en Invernaderos del Norte.
-
-Enviar ficha técnica de Quantum Flower.</pre></td>
-  <td><pre class="json">{
-  &quot;problem&quot;: &quot;&quot;,
-  &quot;productInterest&quot;: &quot;Quantum Flower&quot;,
-  &quot;barrier&quot;: &quot;&quot;
+  &quot;problem&quot;: &quot;necesidad de mejorar el engorde de fresas en 150 acres en Watsonville&quot;,
+  &quot;productInterest&quot;: &quot;Quantum Engorde para fresas&quot;,
+  &quot;barrier&quot;: &quot;pendiente entrega y confirmación logística de las muestras&quot;
 }</pre></td>
 </tr>
     </tbody>

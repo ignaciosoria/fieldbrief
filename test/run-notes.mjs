@@ -14,12 +14,16 @@ const API = 'http://localhost:3000/api/structure'
 
 const TEST_NOTES = [
   {
-    label: 'physical delivery / entregar muestras',
-    text: "Llamé a Rosa en Finca Los Pinos. Quedamos en que le llevo las muestras de Quantum Engorde el jueves por la mañana.",
+    label: 'dirty 1 / mal transcrito',
+    text: "eeeh sali de ver a miguel en ranchos del valle eem tiene unas 200 hectareas de de tomate eem le interesa lo del quantum flower para el proximo ciclo pero dice que que primero quiere ver los resultados del ensayo que hicimos en en sinaloa el año pasado eem llamarle la proxima semana",
   },
   {
-    label: 'digital send / ficha tecnica',
-    text: "Hablé con Carlos en Invernaderos del Norte. Me pidió que le mande la ficha técnica de Quantum Flower hoy.",
+    label: 'dirty 2 / ruido de fondo',
+    text: "ok si entonces estuve con con juan carlos en agricola hermanos perez tiene problema con el cuajado en en sus naranjas como unas 80 hectareas dijo que si le mandamos la cotizacion antes del viernes puede que que arranquen esta temporada su socio tambien tiene que aprobar",
+  },
+  {
+    label: 'dirty 3 / muy rapido',
+    text: "visita rapida roberto martinez frescos del pacifico quiere muestras quantum engorde para sus fresas 150 acres watsonville llamar jueves confirmar entrega",
   },
 ]
 
