@@ -75,19 +75,23 @@ function filterKeyInsightsForDisplay(lines: string[]): string[] {
     .filter((line) => !line.trimStart().startsWith('📅'))
 }
 
-/** /try walkthrough: sample visit note (spinner hint + preview caption). */
+/** /try walkthrough: sample visit note (spinner hint + preview caption result label). */
 const TRY_DEMO_EXAMPLE_NOTE_TEXT =
-  "Visited Dr. Reynolds at St. Mary's, she's interested in the new catheter line, budget resets in October, need to send clinical data and follow up next Tuesday"
+  "Visited Dr. Reynolds at St. Mary's, she's interested in the new catheter line, budget resets in October, need to send clinical data next Tuesday and call purchasing department Thursday afternoon"
 
 /** Walkthrough result: primary line (must match {@link buildTryWalkthroughStructureResult}). */
 const TRY_WALKTHROUGH_PRIMARY_DISPLAY =
-  "Send catheter line proposal to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
+  "Send clinical data to Dr. Reynolds — St. Mary's (Tuesday · 9:00 AM)"
 
 const TRY_WALKTHROUGH_INSIGHT_LINES = [
   'Budget resets in October — strong buying window',
   'Needs clinical trial data before committing',
   'Interested in full ward rollout if pilot succeeds',
 ] as const
+
+/** Pre-written CRM line for Copy CRM on the unauthenticated /try walkthrough. */
+const TRY_WALKTHROUGH_COPY_CRM_TEXT =
+  "Contact: Dr. Reynolds — St. Mary's | Next step: Send clinical data (Tuesday 9AM) | Follow up: Call purchasing dept (Thursday 2PM) | Notes: Budget resets October. Needs clinical trial data. Interested in full ward rollout if pilot succeeds."
 
 import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
@@ -572,21 +576,22 @@ function buildTryWalkthroughStructureResult(): StructureResult {
     contactCompany: "St. Mary's",
     summary: '',
     nextStep: TRY_WALKTHROUGH_PRIMARY_DISPLAY,
-    nextStepTitle: "Send catheter line proposal to Dr. Reynolds — St. Mary's",
+    nextStepTitle: "Send clinical data to Dr. Reynolds — St. Mary's",
     nextStepAction: 'send',
     nextStepTarget: 'Dr. Reynolds',
     nextStepDate: nextTuesdayMmddFrom(),
     nextStepTimeHint: '09:00',
     nextStepConfidence: 'medium',
     crmFull: [...TRY_WALKTHROUGH_INSIGHT_LINES],
-    crmText: 'Clinical hospital visit — catheter line interest; budget cycle October.',
+    crmText: 'Clinical visit — send data Tuesday; call purchasing Thursday; budget cycle October.',
     additionalSteps: [
       {
-        action: "Follow up with purchasing dept — St. Mary's",
-        contact: '',
+        action: "Call purchasing dept — St. Mary's",
+        contact: 'Purchasing dept',
         company: "St. Mary's",
         resolvedDate: nextThursdayMmddFrom(),
         timeHint: '14:00',
+        supportingType: 'call',
       },
     ],
   })
@@ -3126,6 +3131,22 @@ export default function Home() {
   }
 
   const handleCopy = async () => {
+    const walkthroughClipboardCopyActive =
+      typeof window !== 'undefined' &&
+      window.location.pathname.startsWith('/try') &&
+      status === 'unauthenticated' &&
+      tryWalkthroughPhase === 'done'
+
+    if (walkthroughClipboardCopyActive) {
+      try {
+        await navigator.clipboard.writeText(TRY_WALKTHROUGH_COPY_CRM_TEXT)
+        setCopied(true)
+      } catch {
+        setError('Could not copy to clipboard.')
+      }
+      return
+    }
+
     if (!copyText) return
     try {
       await navigator.clipboard.writeText(copyText)
@@ -3430,15 +3451,10 @@ export default function Home() {
           </button>
         </div>
         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
-          {(hasActiveSubscription === false ||
-            (isDemo && status === 'unauthenticated')) && (
+          {hasActiveSubscription === false && status === 'authenticated' && (
             <button
               type="button"
               onClick={() => {
-                if (isDemo && status === 'unauthenticated') {
-                  signInFromDemoHeader()
-                  return
-                }
                 setShowPaywall('upgrade')
               }}
               className="rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12px] font-semibold leading-none text-white shadow-sm transition-[transform,box-shadow,background-color] hover:bg-[#15803d] hover:shadow-md active:scale-[0.98] sm:text-[13px]"
@@ -4190,14 +4206,12 @@ export default function Home() {
                     className="mt-4 flex w-full max-w-md items-center justify-center gap-2 bg-transparent px-2 py-1.5 text-[13px] font-medium leading-snug text-indigo-600 shadow-none outline-none ring-0 transition-colors hover:text-indigo-700 active:opacity-80 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2"
                   >
                     <span
-                      className="inline-flex shrink-0 animate-pulse text-indigo-600"
+                      className="inline-flex h-4 w-4 shrink-0 animate-pulse text-indigo-600"
                       aria-hidden
                     >
                       <svg
-                        width="18"
-                        height="18"
                         viewBox="0 0 24 24"
-                        className="overflow-visible"
+                        className="h-4 w-4 overflow-visible"
                         aria-hidden
                       >
                         <circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.14" />
@@ -4302,13 +4316,8 @@ export default function Home() {
               >
                 {isTryWalkthroughPreview && (
                   <div className="mb-2.5 flex w-full justify-center px-2">
-                    <p className="max-w-[min(100%,22rem)] text-center text-xs italic leading-relaxed text-zinc-400">
-                      <span className="block">
-                        ✦ Visited Dr. Reynolds at St. Mary&apos;s — interested in new catheter line,
-                      </span>
-                      <span className="block">
-                        budget resets October, needs clinical data, follow up next Tuesday
-                      </span>
+                    <p className="max-w-[min(100%,22rem)] text-pretty text-center text-xs italic leading-relaxed text-zinc-400">
+                      {TRY_DEMO_EXAMPLE_NOTE_TEXT}
                     </p>
                   </div>
                 )}
@@ -4550,21 +4559,15 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         if (navigator.vibrate) navigator.vibrate(5)
-                        handleCopy()
+                        void handleCopy()
                       }}
-                      disabled={isTryWalkthroughPreview}
-                      title={isTryWalkthroughPreview ? 'Sign in to save and sync' : undefined}
-                      className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[11px] font-medium transition-all active:scale-[0.98] ${
-                        isTryWalkthroughPreview
-                          ? 'cursor-not-allowed text-zinc-400 opacity-60'
-                          : 'text-[#6b7280] hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111]'
-                      }`}
+                      className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border border-[#e5e7eb] bg-[#f8f8f8] text-[11px] font-medium text-[#6b7280] transition-all hover:border-zinc-300 hover:bg-zinc-100 hover:text-[#111111] active:scale-[0.98]"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-50">
                         <rect x="9" y="9" width="13" height="13" rx="2" />
                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                       </svg>
-                      {copied ? 'Copied' : 'Copy CRM'}
+                      {copied ? 'Copied!' : 'Copy CRM'}
                     </button>
                     <button
                       type="button"
