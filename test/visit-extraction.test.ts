@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { confirmVisitField, parseVisitExtraction, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
-import { calendarDraftFromAction } from '../lib/calendarDraft'
+import { calendarDraftFromAction, googleCalendarUrl } from '../lib/calendarDraft'
 const base = ():VisitExtraction => ({language:'English',contacts:['Ana','Bob'],companies:['Acme','Beta'],location:'Fair',summary:'Met Ana and Bob at the fair.',insights:[],questions:[],actions:[
   {type:'send',contact:'Ana',company:'Acme',object:'catalog',description:'Send the complete catalog.',date:'2026-09-11',time:'',evidence:'Send Ana the catalog'},
   {type:'meeting',contact:'Bob',company:'Beta',object:'',description:'Discuss the trial results.',date:'2026-09-12',time:'10:00',evidence:'Meet Bob Saturday'},
@@ -23,6 +23,16 @@ test('Q06: empty actions are valid and do not manufacture a follow-up', () => {
   assert.equal(r.nextStep,'No follow-up needed')
   assert.equal(r.primaryActionStructured,undefined)
   assert.deepEqual(r.additionalSteps,[])
+})
+test('each action restriction survives the adapter and Calendar URL without leaking to another contact', () => {
+  const v = base()
+  v.actions[0].description = 'Send the complete catalog without prices for now.'
+  const r = visitExtractionResult(v,'2026-09-10T18:00:00Z')
+  const primary = calendarDraftFromAction(r.primaryActionStructured!,'English','America/Los_Angeles')
+  const secondary = calendarDraftFromAction(r.additionalSteps[0].actionStructured,'English','America/Los_Angeles')
+  assert.equal(new URL(googleCalendarUrl(primary)!).searchParams.get('details'),v.actions[0].description)
+  assert.equal(new URL(googleCalendarUrl(secondary)!).searchParams.get('details'),'Discuss the trial results.')
+  assert.doesNotMatch(secondary.details,/prices|catalog|Ana|Acme/)
 })
 test('field confirmation changes only the requested action', () => {
   const v = base()

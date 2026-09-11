@@ -1,5 +1,5 @@
 /** Human-readable product expectations, NOT fabricated model responses.
- * All names and visits are synthetic. No API/audio evaluation has run on this corpus.
+ * All names and visits are synthetic. Paid text runs are recorded separately; not an audio evaluation.
  */
 export type ExpectedAction = {
   type: 'call' | 'send' | 'meeting' | 'other'

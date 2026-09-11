@@ -37,6 +37,14 @@ async function main() {
         if (c.id === 'es-secondary-meeting' && !actual.some(a=>a.type==='meeting' && a.time==='10:00')) issues.push('meeting-time')
         if (c.id === 'en-long-product' && !actual.some(a=>/intensive care unit in Baja California/i.test(a.object))) issues.push('truncated-deliverable')
         const prose = [result.extraction.summary,...result.extraction.insights].join(' ')
+        if (c.tags.includes('action-constraint')) {
+          const send = actual.find(a=>a.type==='send')
+          const call = actual.find(a=>a.type==='call')
+          const restriction = c.language === 'Spanish' ? /(?:no|sin|exclu|omiti).*precio/i : /(?:no|not|without|exclud|omit|leave out).*pric/i
+          if (!send || !restriction.test(send.description)) issues.push('lost-action-restriction')
+          if (!call || /precio|pric|Q7|Quantum/i.test(call.description)) issues.push('borrowed-action-context')
+          if (call?.time !== '11:00') issues.push('call-time')
+        }
         if (c.id === 'en-negation' && !/not|don't|no quote/i.test(prose)) issues.push('lost-negative-constraint')
         if (c.id === 'es-no-followup' && /mostr|demostr/i.test(prose)) issues.push('invented-demonstration')
         if (c.id === 'en-uncertain-company' && /interest|interested/i.test(prose)) issues.push('invented-interest')

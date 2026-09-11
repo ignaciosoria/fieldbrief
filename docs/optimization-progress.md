@@ -1,5 +1,42 @@
 # Folup optimization — sequential evaluation
 
+## Action restrictions checkpoint — September 11, 2026, 11:28 UTC
+
+LOCAL ONLY, not deployed. One authenticated synthetic production text note was
+processed and survived reload/history reopening: two contacts, two companies,
+two actions, correct separate dates/time, no invented meeting. Vercel structure
+log at 11:19:24Z: 5236ms, 1387 input / 356 output tokens, estimated $0.0088075
+at uncached GPT-5.4 rates. One synthetic note remains in history; no Calendar
+save, deletion, or payment. This checks text extraction/persistence, NOT ASR.
+
+That test exposed a missing action constraint: "no enviar precios todavía"
+was in CRM prose but absent from the Calendar-bound action description.
+Adjusted the prompt to keep explicit restrictions in their own action's
+self-contained description, with an example preventing cross-contact leakage.
+Added ES/EN regression cases and a deterministic adapter/Calendar URL test.
+Verification: 98/98 unit tests, 33/33 output-quality tests, production build,
+and git diff whitespace check passed. npm test's tsx CLI IPC was sandbox-blocked;
+equivalent node --import tsx --test test/*.test.ts passed without escalation.
+Paid run 6: 27 requests, 27/27 automated checks, $0.18838 conservative uncached
+cost. Raw outputs: eval/visit-v2-run-6.jsonl. Both new cases keep pricing out
+of the send description and preserve the unrelated delivery call at 11:00.
+This is a small synthetic sample, not a universal quality guarantee.
+
+Manual review found another remaining issue in es-clear-purpose: summary says
+the visit was "para dar seguimiento a la propuesta Q7 y a dudas sobre el precio",
+although that purpose was only stated for the FUTURE call. Automated checks
+did not catch this. Next block: strengthen temporal factuality regression before
+another prompt adjustment; do not call the current output perfect. Also some
+outputs still duplicate future commitments in summary. Keep these findings
+separate from the successfully tested restriction fix.
+
+Next priorities after temporal factuality: neutral ASR context/noisy ES/EN tests,
+correction-audio recovery, invalid-request quota handling, per-row history
+validation and account-switch state isolation. Existing overnight heartbeat
+remains active, original stop deadline 2026-09-11T16:18:51.084Z; do not extend it.
+Ledger remaining $4.2756605 includes $0.08 still held for unknown-cost failures.
+Official prompting guidance consulted: https://developers.openai.com/api/docs/guides/prompt-engineering
+
 ## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 10:49 UTC
 
 Code through **9958e55** is now pushed to origin/main and DEPLOYED to production.

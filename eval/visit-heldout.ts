@@ -2,6 +2,16 @@ import type { VisitCase } from './visit-corpus'
 import { appendVisitCorrection } from '../lib/visitCorrection'
 
 export const VISIT_HELDOUT: VisitCase[] = [
+  {id:'es-action-constraint',language:'Spanish',tags:['action-constraint','multiple-contacts'],
+    note:'Salí de visitar a Ana de Acme y después hablé con Luis de Beta. A Ana le enviaré mañana la ficha técnica completa de Quantum Flower 75, pero no le enviaré precios todavía. A Luis lo llamaré el lunes 14 de septiembre de 2026 a las once de la mañana para confirmar la fecha de entrega. No quedamos en ninguna reunión adicional.',
+    actions:[{type:'send',contact:'Ana',company:'Acme',object:'ficha técnica completa de Quantum Flower 75',date:'2026-09-11',evidence:'A Ana le enviaré mañana la ficha técnica completa de Quantum Flower 75'},
+      {type:'call',contact:'Luis',company:'Beta',object:null,date:'2026-09-14',evidence:'A Luis lo llamaré el lunes 14 de septiembre de 2026 a las once de la mañana para confirmar la fecha de entrega'}],
+    crmFacts:['No enviar precios a Ana todavía.'],forbiddenClaims:['Reunión adicional.','Luis no debe recibir precios.'],clarification:[]},
+  {id:'en-action-constraint',language:'English',tags:['action-constraint','multiple-contacts'],
+    note:'Met Anna from Acme and Bob from Beta. Tomorrow I will email Anna the full Q7 technical sheet, but leave out all pricing for now. On Monday I will call Bob at eleven in the morning to confirm delivery. We did not schedule another meeting.',
+    actions:[{type:'send',contact:'Anna',company:'Acme',object:'full Q7 technical sheet',date:'2026-09-11',evidence:'Tomorrow I will email Anna the full Q7 technical sheet'},
+      {type:'call',contact:'Bob',company:'Beta',object:null,date:'2026-09-14',evidence:'On Monday I will call Bob at eleven in the morning to confirm delivery'}],
+    crmFacts:['Leave pricing out of the technical sheet.'],forbiddenClaims:['Another meeting.','Bob must not receive prices.'],clarification:[]},
   {id:'es-location-confounder',language:'Spanish',tags:['location-confounder'],
     note:'Eh, hablé por teléfono con Inés de Soltec. Le mandaré mañana el informe de los ensayos en Sonora, el completo, no el resumen.',
     actions:[{type:'send',contact:'Inés',company:'Soltec',object:'informe de los ensayos en Sonora',date:'2026-09-11',evidence:'Le mandaré mañana el informe de los ensayos en Sonora'}],
