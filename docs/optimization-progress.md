@@ -1,5 +1,35 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 10:49 UTC
+
+Code through **9958e55** is now pushed to origin/main and DEPLOYED to production.
+Vercel confirmed Ready / Production / Current Domains www.folup.app, build duration 47s:
+https://vercel.com/ignaciosorias-projects/fieldbrief/29U36oBecYnFgvvgPghyNDguoxEy
+This includes extraction v2, the dependency security update, subscription lifecycle,
+partial clarification fix, analytics privacy, primary recording recovery and bounded
+transcription uploads. Migration 003 is applied and verified (details below).
+
+Post-deployment checks against https://www.folup.app: homepage 200; anonymous notes,
+subscription, structure and transcribe endpoints all 401. An ignored synthetic
+customer.created webhook signed with the local test signing secret returned 200;
+it performs no subscription/database write or charge. This proves matching deployed
+webhook signing configuration, not an end-to-end checkout or live-payment integration.
+
+After that success, updated ONLY the existing TEST Stripe webhook
+we_1TNNIO1RBOM3m17AlSzByNAc to https://www.folup.app/api/stripe/webhook and the union
+of existing events with all 11 supported checkout/subscription/invoice events. A fresh
+Stripe read confirmed enabled, exact www URL, 11 events, unchanged API version
+2026-03-25.dahlia. No signing secret, price, plan, payment method or credentials changed.
+No subscribers existed in the tested account; no reconciliation was needed.
+
+Still unverified: complete Stripe test checkout/payment-state delivery, production
+secret-key mode (key remained masked in Vercel), real Google OAuth after framework
+update, actual ASR/noisy mobile microphone and a paid end-to-end deployed note.
+Do not describe the tool as fully finished. Next: one controlled deployed text case
+within the ledger budget if the user's Folup session is available, then ASR comparison
+and correction-audio recovery. All earlier "local only / not deployed" sections below
+are historical checkpoints, superseded for code through 9958e55 by this section.
+
 ## Deployment preparation — September 11, 2026, 10:45 UTC
 
 Supabase dashboard session verified live; project iownaoghocmubpxwrnlk is healthy.
