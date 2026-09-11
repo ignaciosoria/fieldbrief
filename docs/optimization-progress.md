@@ -1,5 +1,61 @@
 # Folup optimization — sequential evaluation
 
+## Overnight checkpoint — subscriptions ready for further integration verification
+
+September 11, 2026. Local only; NOT deployed and migration 003 NOT applied remotely.
+The subscription block now includes signature-verified event routing, retrieval of
+current Stripe state, database errors returning retryable webhook failures, correct-price
+active subscription policy, explicit paid expiry and ordered/idempotent database sync.
+Checkout reuses known customers, rejects an existing active plan and has a 15-minute
+idempotency key. UI distinguishes an unavailable plan from a free plan, supports retry,
+shows checkout errors and disables repeated clicks during checkout creation.
+
+Verification: all 85 unit/database tests and production build pass. Four subscription
+tests cover event routing/ownership, access policy/expiry, ordered duplicate events,
+database role permissions and expiry enforced by AI quota reservation. These tests
+do not prove real webhook delivery, Stripe checkout completion or production access.
+No new paid API calls or real charges in this block. API ledger unchanged.
+
+Deployment prerequisites (do not push/deploy this block blindly):
+1. Inspect existing subscription counts/statuses without disclosing customer data.
+2. Apply `supabase/migrations/20260911000300_subscription_sync.sql` and reconcile any
+   legitimate active rows with Stripe before switching expiry-based access on. Legacy
+   active rows have NULL paid_until and intentionally fail closed until reconciled.
+3. Verify handler signature failures and injected Stripe/database failures locally;
+   rerun mocked browser smoke against the latest build including billing error UI.
+4. Deploy only after migration verification. Then update the resolved TEST webhook
+   `we_1TNNIO1RBOM3m17AlSzByNAc` from folup.app to www.folup.app: the former was
+   observed returning HTTP 307, which Stripe treats as a webhook failure. Enable the
+   11 event types listed in lib/subscriptionEvent.ts. Never print its signing secret.
+5. Local Stripe credentials were confirmed TEST mode; this does not establish the mode
+   of Vercel credentials. Verify separately before claiming live billing is ready.
+
+Official Stripe behavior checked: https://docs.stripe.com/billing/subscriptions/webhooks
+and https://docs.stripe.com/webhooks. Remaining limitation: the current access policy
+uses active status plus correct-price billing-period end, not invoice-paid history;
+evaluate finalization failure/unpaid-active edge cases before calling billing complete.
+
+Night continuation created: `pulir-folup-durante-la-noche`, same-thread every 30 minutes,
+with instructions to pause after 8 hours from creation. Check its actual saved creation
+time when enforcing that cutoff. Continue one tested block at a time; no new tasks or
+subagents, no real charges, no plan purchases, no data deletion. If access is blocked,
+document it and work on a different safe local block instead of repeatedly requesting it.
+
+Next output/reliability priorities:
+- Partial clarifications: answering one question then leaving others unresolved currently
+  skips the final prose regeneration; CRM text can retain an already-corrected uncertainty.
+  Make skip awaitable/retryable and regenerate once when collected answers exist.
+- Mobile recording: retain audio on upload/ASR failure; retry/download without recording
+  again; enforce practical upload/duration bounds and reliably release microphone tracks.
+- Transcription: evaluate neutral context against hard-coded crop/product vocabulary;
+  compare candidates on synthetic ES/EN audio within the remaining $4.472848 ledger.
+- Privacy: PostHog currently uses default autocapture settings; prevent private note,
+  person/company and typed correction content from entering analytics/session replay.
+- Quotas: invalid/failed attempts and clarifications currently consume the allowance;
+  align accounting and UI promises without enabling free unlimited retry abuse.
+- Persisted malformed own-note objects, account switches, calendar editing and complete
+  end-to-end recording/correction/history tests remain to be reviewed.
+
 ## Current work — extraction v2 (local, not yet deployed)
 
 - One versioned action list replaces the legacy primary/supporting extraction contract.

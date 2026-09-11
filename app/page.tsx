@@ -2057,21 +2057,31 @@ export default function Home() {
   const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string} | null>(null)
   const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
+  const [subscriptionError, setSubscriptionError] = useState(false)
+  const [subscriptionCheck, setSubscriptionCheck] = useState(0)
+  const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const [checkoutError, setCheckoutError] = useState('')
 
   useEffect(() => {
+    setHasActiveSubscription(null)
+    setSubscriptionError(false)
     if (status !== 'authenticated') return
-    console.log('[subscription] checking...')
+    let cancelled = false
     fetch('/api/subscription')
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw Error('Subscription unavailable')
+        const data = await r.json()
+        if (typeof data.active !== 'boolean') throw Error('Invalid subscription response')
+        return data
+      })
       .then((data) => {
-        console.log('[subscription] result:', data)
-        setHasActiveSubscription(data.active)
+        if (!cancelled) setHasActiveSubscription(data.active)
       })
-      .catch((err) => {
-        console.log('[subscription] error:', err)
-        setHasActiveSubscription(false)
+      .catch(() => {
+        if (!cancelled) setSubscriptionError(true)
       })
-  }, [status])
+    return () => { cancelled = true }
+  }, [status, session?.user?.email, subscriptionCheck])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -4866,9 +4876,10 @@ export default function Home() {
                     : 'bg-zinc-200 text-zinc-800'
                 }`}
               >
-                {hasActiveSubscription === true ? 'Pro plan' : 'Free plan'}
+                {hasActiveSubscription === true ? 'Pro plan' : hasActiveSubscription === false ? 'Free plan' : subscriptionError ? 'Plan unavailable' : 'Checking plan…'}
               </span>
-              {hasActiveSubscription !== true && (
+              {subscriptionError && <p role="alert" className="mt-3 text-sm text-red-700">Unable to verify your plan. <button type="button" className="underline" onClick={() => setSubscriptionCheck(n => n + 1)}>Retry</button></p>}
+              {hasActiveSubscription === false && (
                 <button
                   type="button"
                   onClick={() => setShowPaywall('upgrade')}
@@ -5088,15 +5099,28 @@ export default function Home() {
             </p>
             <button
               type="button"
+              disabled={checkoutBusy}
               onClick={async () => {
-                const res = await fetch('/api/stripe/checkout', { method: 'POST' })
-                const data = await res.json()
-                if (data.url) window.location.href = data.url
+                if (checkoutBusy) return
+                setCheckoutBusy(true)
+                setCheckoutError('')
+                try {
+                  const res = await fetch('/api/stripe/checkout', { method: 'POST' })
+                  const data = await res.json()
+                  if (!res.ok) throw Error(data.error || 'Unable to open checkout. Please try again.')
+                  if (typeof data.url !== 'string') throw Error('Checkout unavailable. Please try again.')
+                  const url = new URL(data.url)
+                  if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw Error('Invalid checkout destination.')
+                  window.location.href = url.href
+                } catch (err) {
+                  setCheckoutError(err instanceof Error ? err.message : 'Unable to open checkout. Please try again.')
+                } finally { setCheckoutBusy(false) }
               }}
               className="w-full rounded-xl bg-[#16a34a] py-4 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-[#15803d]"
             >
-              Subscribe — $19/month
+              {checkoutBusy ? 'Opening secure checkout…' : 'Subscribe — $19/month'}
             </button>
+            {checkoutError && <p role="alert" className="mt-3 text-sm text-red-700">{checkoutError}</p>}
             <button
               type="button"
               onClick={() => setShowPaywall(null)}
