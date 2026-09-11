@@ -1,5 +1,20 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION — September 11, 2026, 15:15 UTC
+
+0db80a8 is DEPLOYED on www.folup.app. Vercel Ready, Production domain and exact
+source commit verified through CUA, build 24s:
+https://vercel.com/ignaciosorias-projects/fieldbrief/ER7Jbq1KHKjENda93jAkkVApKPkK
+Includes all pending quota validation, per-row history recovery and complete AI
+response deadlines. Earlier LOCAL ONLY headings below are historical/superseded.
+Local verification: 120 unit tests, TypeScript, production build and browser
+history scenario passed. Homepage 200; anonymous notes/subscription GET and
+structure/transcribe POST return 401. No paid production test repeated, no
+migrations/config changes. Local test servers stopped and synthetic tab closed.
+No API spend in this block. Remaining: real mobile/audio and native download/
+discard compatibility, full fresh OAuth/test checkout, quota messaging and
+broader async account-isolation review. Do not claim the full app audit finished.
+
 ## History browser verification — September 11, 2026
 
 CUA verified the real compiled app using the local-only synthetic gateway. A valid
