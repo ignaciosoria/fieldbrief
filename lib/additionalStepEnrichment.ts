@@ -7,7 +7,7 @@ import {
 import type { ActionStructuredFields } from './actionTitleContract'
 
 /** From model `supporting[].type` — supporting-only calendar uses these with `label` / structured date/time. */
-export type SupportingStructuredType = 'send' | 'email' | 'call' | 'other'
+export type SupportingStructuredType = 'send' | 'email' | 'call' | 'meeting' | 'follow_up' | 'other'
 
 /** Supporting calendar rows — always include contact/company; timing when known or extractable from text. */
 export type AdditionalStep = {

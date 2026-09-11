@@ -22,7 +22,7 @@ export type { CommercialContextFields } from './calendarDescriptionFormat'
 
 /** Model response shape — no prose fields outside this tree. */
 export type StructuredPrimaryType = 'call' | 'send' | 'meeting' | 'follow_up'
-export type StructuredSupportingType = 'send' | 'email' | 'call' | 'other'
+export type StructuredSupportingType = 'send' | 'email' | 'call' | 'meeting' | 'follow_up' | 'other'
 
 export type StructuredPrimary = {
   type: StructuredPrimaryType
@@ -143,7 +143,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     const st = normSupportingType(str(s.type))
     if (!st) continue
     const label = truncateWords(str(s.label), 5)
-    const object = truncateWords(str(s.object), 10)
+    const object = str(s.object)
     const contact = str(s.contact).trim()
     if (!label && !object && !contact) continue
     supporting.push({
@@ -176,7 +176,7 @@ export function parseStructuredAiPayload(raw: unknown): StructuredAiPayload | nu
     primary: {
       type: pType,
       contact: str(pr.contact),
-      object: truncateWords(str(pr.object), 8),
+      object: str(pr.object),
       company: str(pr.company),
       date: str(pr.date),
       time: str(pr.time),
@@ -377,7 +377,7 @@ export function structuredPayloadToStructureBody(
     const st = normalizeTimeHint(s.time)
     const lab = truncateWords(s.label, 5)
     const sv = verbForSupportingStructuredType(s.type, langEs, s.object)
-    const rawObj = s.type === 'call' ? '' : truncateWords(s.object, 10)
+    const rawObj = s.type === 'call' ? '' : s.object.trim()
     const objectPart =
       s.type === 'send' || s.type === 'email'
         ? normalizePrimarySendObjectField(rawObj, s.contact.trim(), sv, noteLanguage)

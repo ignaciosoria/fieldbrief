@@ -2,7 +2,7 @@
  * All names and visits are synthetic. No API/audio evaluation has run on this corpus.
  */
 export type ExpectedAction = {
-  type: 'call' | 'send' | 'meeting'
+  type: 'call' | 'send' | 'meeting' | 'other'
   contact: string | null
   company: string | null
   object: string | null

@@ -99,6 +99,7 @@ function formatClock12FromHint(hint: string): string {
 }
 
 export type PrimaryDisplayTitleInput = {
+  preserveStructuredTitle?: boolean
   nextStep: string
   nextStepTitle: string
   nextStepDate: string
@@ -117,7 +118,7 @@ export type PrimaryDisplayTitleInput = {
  */
 export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
   const raw = (r.nextStepTitle || r.nextStep || '').trim()
-  const base = cleanCalendarTitle(raw)
+  const base = r.preserveStructuredTitle ? raw : cleanCalendarTitle(raw)
   const langEs = !!r.langEs
   if (r.hideTiming) return formatRelativeDayWordsForDisplay(base || raw, langEs)
   if (!base) return formatRelativeDayWordsForDisplay(raw, langEs)
@@ -143,6 +144,7 @@ export function buildPrimaryDisplayTitle(r: PrimaryDisplayTitleInput): string {
 }
 
 export type SupportingDisplayTitleInput = {
+  preserveStructuredTitle?: boolean
   action: string
   resolvedDate: string
   timeHint: string
@@ -158,7 +160,7 @@ export function buildSupportingDisplayTitle(step: SupportingDisplayTitleInput): 
   const langEs = !!step.langEs
   const raw = (step.action || '').trim()
   if (!raw) return ''
-  const base = cleanCalendarTitle(raw)
+  const base = step.preserveStructuredTitle ? raw : cleanCalendarTitle(raw)
   if (!base) return formatRelativeDayWordsForDisplay(raw, langEs)
 
   const dateRaw = (step.resolvedDate || '').trim()

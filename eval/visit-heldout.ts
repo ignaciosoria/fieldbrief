@@ -1,0 +1,33 @@
+import type { VisitCase } from './visit-corpus'
+import { appendVisitCorrection } from '../lib/visitCorrection'
+
+export const VISIT_HELDOUT: VisitCase[] = [
+  {id:'es-location-confounder',language:'Spanish',tags:['location-confounder'],
+    note:'Eh, hablé por teléfono con Inés de Soltec. Le mandaré mañana el informe de los ensayos en Sonora, el completo, no el resumen.',
+    actions:[{type:'send',contact:'Inés',company:'Soltec',object:'informe de los ensayos en Sonora',date:'2026-09-11',evidence:'Le mandaré mañana el informe de los ensayos en Sonora'}],
+    crmFacts:['Conversación telefónica con Inés de Soltec.'],forbiddenClaims:['Visita en Sonora.'],clarification:[]},
+  {id:'en-correction-later',language:'English',tags:['later-correction'],
+    note:appendVisitCorrection('Met Ana at Acme. I will call her tomorrow.','Her name is Anna, not Ana.','2026-09-15T18:00:00Z','America/Los_Angeles'),
+    actions:[{type:'call',contact:'Anna',company:'Acme',object:null,date:'2026-09-11',evidence:'I will call her tomorrow'}],
+    crmFacts:['Met Anna at Acme.'],forbiddenClaims:['Call September 16.'],clarification:[]},
+  {id:'es-clear-purpose',language:'Spanish',tags:['action-description'],
+    note:'Fui a ver a Lucía de Beta. Quedé en llamarla mañana para confirmar si recibió la propuesta Q7 y resolver las dudas del precio. No hay que mandar nada más.',
+    actions:[{type:'call',contact:'Lucía',company:'Beta',object:null,date:'2026-09-11',evidence:'Quedé en llamarla mañana para confirmar si recibió la propuesta Q7 y resolver las dudas del precio'}],
+    crmFacts:['Visita con Lucía de Beta.'],forbiddenClaims:['Enviar propuesta.'],clarification:[]},
+  {id:'en-correction-new-date',language:'English',tags:['later-correction'],
+    note:appendVisitCorrection('Met Ana at Acme. I will call her tomorrow.','Move that call to tomorrow instead.','2026-09-15T18:00:00Z','America/Los_Angeles'),
+    actions:[{type:'call',contact:'Ana',company:'Acme',object:null,date:'2026-09-16',evidence:'Move that call to tomorrow instead'}],
+    crmFacts:['Met Ana at Acme.'],forbiddenClaims:['Two calls.'],clarification:[]},
+  {id:'es-confirmed-person',language:'Spanish',tags:['clarification-resolution'],
+    note:appendVisitCorrection('Salí de Acme. Hablé con Marta o María, no entendí bien el nombre. Le prometí enviar el catálogo.','Answer to clarification question "¿El contacto es Marta o María?": "María". This replaces the earlier uncertainty.','2026-09-10T18:01:00Z','America/Los_Angeles'),
+    actions:[{type:'send',contact:'María',company:'Acme',object:'catálogo',date:null,evidence:'Le prometí enviar el catálogo'}],crmFacts:['María es el contacto.'],forbiddenClaims:['Marta o María todavía sin confirmar.'],clarification:[]},
+  {id:'en-confirmed-company',language:'English',tags:['clarification-resolution'],
+    note:appendVisitCorrection('I met Ana. Her company was Acme or Apex, I could not hear it clearly. I promised to send her the catalog.','Answer to clarification question "Was the company Acme or Apex?": "Apex". This replaces the earlier uncertainty.','2026-09-10T18:01:00Z','America/Los_Angeles'),
+    actions:[{type:'send',contact:'Ana',company:'Apex',object:'catalog',date:null,evidence:'I promised to send her the catalog'}],crmFacts:['Ana works at Apex.'],forbiddenClaims:['Company still unclear.'],clarification:[]},
+  {id:'es-confirmed-date',language:'Spanish',tags:['clarification-resolution'],
+    note:appendVisitCorrection('Hablé con Ana de Acme. Tengo que llamarla el martes o el jueves, no recuerdo cuál acordamos.','Answer to clarification question "¿Martes o jueves?": "2026-09-17". This replaces the earlier uncertainty.','2026-09-10T18:01:00Z','America/Los_Angeles'),
+    actions:[{type:'call',contact:'Ana',company:'Acme',object:null,date:'2026-09-17',evidence:'Tengo que llamarla el martes o el jueves, no recuerdo cuál acordamos'}],crmFacts:['Fecha confirmada el 17 de septiembre.'],forbiddenClaims:['Fecha por confirmar.'],clarification:[]},
+  {id:'es-other-action',language:'Spanish',tags:['other-action'],note:'Hablé con Elena de Norvia. Mañana revisaré internamente las existencias de Q7. No tengo que llamarla ni enviarle nada.',
+    actions:[{type:'other',contact:'Elena',company:'Norvia',object:null,date:'2026-09-11',evidence:'Mañana revisaré internamente las existencias de Q7'}],crmFacts:['Conversación con Elena de Norvia.'],forbiddenClaims:['Llamar a Elena.'],clarification:[]},
+  {id:'en-conditional-only',language:'English',tags:['conditional'],note:'Met Oliver from Verdant. If the trial works, we could arrange a demo later, but we made no commitment today.',actions:[],crmFacts:['No commitment.'],forbiddenClaims:['Schedule demo.'],clarification:[]},
+]

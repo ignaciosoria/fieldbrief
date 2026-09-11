@@ -20,6 +20,8 @@ export type ActionStructuredFields = {
   company: string
   date: string
   time: string
+  /** Brief action-specific instruction, grounded in the visit; not the entire CRM note. */
+  description?: string
 }
 
 function isSpanish(noteLanguage: string): boolean {
@@ -164,10 +166,12 @@ export function buildSupportingBaseTitle(fields: ActionStructuredFields, noteLan
 }
 
 export function verbForSupportingStructuredType(
-  type: 'send' | 'email' | 'call' | 'other',
+  type: 'send' | 'email' | 'call' | 'meeting' | 'follow_up' | 'other',
   langEs: boolean,
   object?: string,
 ): string {
+  if (type === 'meeting') return langEs ? 'Reunirse con' : 'Meet with'
+  if (type === 'follow_up') return langEs ? 'Seguimiento con' : 'Follow up with'
   if (langEs) {
     if (type === 'email') return 'Email'
     if (type === 'send') {

@@ -4,6 +4,12 @@ import { initPosthog } from '../lib/posthog'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { calendarExportDate, calendarTimedRange } from '../lib/calendarExportDate'
+import { calendarDraftFromAction, googleCalendarUrl, type CalendarDraft } from '../lib/calendarDraft'
+import CalendarPreview from './components/CalendarPreview'
+import VisitClarification from './components/VisitClarification'
+import { confirmVisitField, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
+import { appendVisitCorrection } from '../lib/visitCorrection'
+import VisitSummary from './components/VisitSummary'
 import { notesRequest } from '../lib/notesClient'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -94,7 +100,7 @@ import { FolupHeaderBrand, FolupLogo } from '../components/folup-branding'
 
 type MentionedEntity = { name: string; type: string }
 
-type SupportingStructuredType = 'send' | 'email' | 'call' | 'other'
+type SupportingStructuredType = 'send' | 'email' | 'call' | 'meeting' | 'follow_up' | 'other'
 
 type AdditionalStep = {
   action: string
@@ -128,6 +134,11 @@ type NormalizedAction = {
 }
 
 type StructureResult = {
+  schemaVersion?: 2
+  noteTimezone?: string
+  extraction?: VisitExtraction
+  capturedAt?: string
+  noteLanguage?: string
   customer: string
   contact: string
   /** Employer / org of the direct contact (not the same field as customer). */
@@ -473,6 +484,7 @@ function normalizeCommercialContext(raw: unknown): CommercialContextFields | und
 }
 
 function normalizeStructureResult(m: StructureResult): StructureResult {
+  if (m.schemaVersion === 2 && m.extraction) return {...emptyResult,...visitExtractionResult(m.extraction,m.capturedAt || new Date().toISOString(),m.noteTimezone)}
   const { dealer: _legacyDealer, ...mRest } = m as StructureResult & {
     dealer?: string
     commercial_context?: unknown
@@ -1025,6 +1037,7 @@ function confidenceLow(r: StructureResult): boolean {
 }
 
 function primaryTitleForDisplay(r: StructureResult) {
+  if (r.schemaVersion === 2) return {...r,langEs:r.noteLanguage === 'Spanish',preserveStructuredTitle:true}
   const langEs =
     detectNoteLanguage(
       `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''}`,
@@ -2003,6 +2016,7 @@ export default function Home() {
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
   /** Internal save pipeline state (reserved for future UI; not shown yet). */
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [currentNoteId,setCurrentNoteId] = useState<string | null>(null)
   /** Cleared when a new save starts; callback checks gen so stale timeouts cannot reset status after a later save. */
   const savingIdleResetTimerRef = useRef<number | null>(null)
   const savingIdleResetGenerationRef = useRef(0)
@@ -2039,6 +2053,8 @@ export default function Home() {
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [primaryAdded, setPrimaryAdded] = useState(false)
+  const [calendarDraft, setCalendarDraft] = useState<CalendarDraft | null>(null)
+  const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string} | null>(null)
   const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
 
@@ -2268,6 +2284,7 @@ export default function Home() {
   const saveNote = async (res: StructureResult, tx: string): Promise<void> => {
     if (!sessionEmail) { setShowLoginPrompt(true); return }
     const note: SavedNote = { id: crypto.randomUUID(), date: new Date().toISOString(), result: res, transcript: tx }
+    setCurrentNoteId(note.id)
     setSavingStatus('saving')
     try {
       await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify(note) })
@@ -2288,7 +2305,7 @@ export default function Home() {
   }, [savingStatus])
 
   useEffect(() => {
-    if (savingStatus !== 'saved' && savingStatus !== 'error') return
+    if (savingStatus !== 'saved') return
     const gen = savingIdleResetGenerationRef.current
     if (savingIdleResetTimerRef.current !== null) {
       clearTimeout(savingIdleResetTimerRef.current)
@@ -2507,17 +2524,42 @@ export default function Home() {
     setSavingStatus('saving')
     try {
       await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify({ id, result: res, transcript: tx }) })
-      setSavedNotes(prev => prev.map(n => n.id === id ? { ...n, result: res, transcript: tx } : n))
+      setSavedNotes(prev => prev.some(n=>n.id===id)
+        ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx } : n)
+        : [{id,date:res.capturedAt || new Date().toISOString(),result:res,transcript:tx},...prev])
       if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
       if (result) setResult(res)
       setSavingStatus('saved')
     } catch (err) {
       setSavingStatus('error')
       setError(err instanceof Error ? err.message : 'Update failed.')
+      throw err
     }
   }
 
+  const acceptVisit = async (res:StructureResult, tx:string, noteId?:string, leaveUnresolved=false) => {
+    const next = normalizeStructureResult(res)
+    if (!leaveUnresolved && next.extraction?.questions.length) { setPendingVisit({result:next,transcript:tx,noteId}); return }
+    setPendingVisit(null)
+    setResult(next)
+    setTranscript(tx)
+    if (noteId) setCurrentNoteId(noteId)
+    if (noteId) await updateNote(noteId,next,tx)
+    else await saveNote(next,tx)
+  }
+
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
+
+  const correctVisitText = async (r:StructureResult,tx:string,correction:string,noteId?:string) => {
+    const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
+    const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
+    })})
+    const updated = await response.json()
+    if (!response.ok) {handleAiAccessResponse(response.status,updated);throw Error('Correction failed')}
+    setTranscript(combined)
+    await acceptVisit(updated,combined,noteId)
+  }
 
   const handleShare = async (r: StructureResult) => {
     const text = buildShareText(r)
@@ -2559,25 +2601,28 @@ export default function Home() {
           if (handleAiAccessResponse(txRes.status, txData)) return
           if (!txRes.ok) throw new Error(txData.error || 'Failed to transcribe correction.')
           const correction = txData.transcript || txData.text || ''
-          const combined = `ORIGINAL NOTE: ${originalTranscript}\n\nCORRECTION: ${correction}`
+          const originalNote = savedNotes.find(n => n.id === noteId)
+          const referenceNow = originalNote?.result.capturedAt || originalNote?.date || getClientNowIso()
+          const combined = appendVisitCorrection(originalTranscript,correction,getClientNowIso(),getClientTimezone())
           const strRes = await fetch('/api/structure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               note: combined,
-              timezone: getClientTimezone(),
-              clientNow: getClientNowIso(),
+              timezone: originalNote?.result.noteTimezone || getClientTimezone(),
+              clientNow: referenceNow,
             }),
           })
           const strData = await strRes.json()
           if (handleAiAccessResponse(strRes.status, strData)) return
           if (!strRes.ok) throw new Error(strData.error)
+          if (strData.schemaVersion === 2) { await acceptVisit(strData,combined,noteId); return }
           let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
           final = inferMissingContact(final)
           final = finalizeNextStepFields(final, combined)
           final = applyConfidenceDefaults(final)
           await awaitMinProcessingDisplay()
-          updateNote(noteId, final, combined)
+          await updateNote(noteId, final, combined)
         } catch (err: any) {
           setError(err?.message || 'Correction failed.')
         } finally {
@@ -2741,6 +2786,7 @@ export default function Home() {
       }
 
       let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
+      if (final.schemaVersion === 2) { await acceptVisit(final,tx); return }
 
       if (
         !isNoClearFollowUpResult(final) &&
@@ -2828,6 +2874,7 @@ export default function Home() {
       const data = await res.json()
       if (handleAiAccessResponse(res.status, data)) return
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
+      if (data.schemaVersion === 2) { await acceptVisit(data,input); return }
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
       final = finalizeNextStepFields(final, input)
@@ -2920,73 +2967,30 @@ export default function Home() {
     setSupportingAdded({})
   }
 
-  /** One click: Google Calendar when signed in with Google; otherwise download ICS. */
-  const addResultToCalendar = (r: StructureResult, opts?: { noteId?: string | null }) => {
-    // If user is not authenticated, show login prompt instead
-    if (!session?.user) {
-      if (result) {
-        localStorage.setItem('folup_pending_result', JSON.stringify(result))
-      }
-      setShowLoginPrompt(true)
-      return
-    }
-    if (isNoClearFollowUpResult(r)) return
-    if (navigator.vibrate) navigator.vibrate(10)
-    const calendarOpts = buildCalendarOpenOptsFromResult(r)
-    const range = buildGoogleCalendarDateRangeParts(calendarOpts.dateMmddyyyy, calendarOpts.time)
-    if (!range) {
-      setError('Could not build the event. Check date and time in the note.')
-      return
-    }
-    setPrimaryAdded(true)
-
-    if (session?.user) {
-      openGoogleCalendarWindow(calendarOpts)
-      setShowCalendarToast(true)
-      return
-    }
-    const ok = openAppleCalendarFromOpts(calendarOpts)
-    if (ok) {
-      setShowCalendarToast(true)
-    } else {
-      setPrimaryAdded(false)
-      setError('Could not create the calendar file.')
-    }
+  /** Google is the final review/save screen. Ask here only when date/time needs attention. */
+  const openActionCalendar = (action: ActionStructuredFields, r: StructureResult) => {
+    if (!session?.user) { setShowLoginPrompt(true); return }
+    const language = r.noteLanguage || detectNoteLanguage(r.crmText || r.summary || action.verb)
+    const draft = calendarDraftFromAction(action, language, r.noteTimezone || getClientTimezone())
+    const url = googleCalendarUrl(draft)
+    if (!url) { setCalendarDraft(draft); return }
+    const opened = window.open(url, "_blank")
+    if (!opened) { setCalendarDraft(draft); return }
+    opened.opener = null
+    setShowCalendarToast(true)
   }
 
-  const addSupportingStepToCalendar = (
-    r: StructureResult,
-    step: AdditionalStep,
-    index: number,
-    opts?: { noteId?: string | null },
-  ) => {
+  const addResultToCalendar = (r: StructureResult, _opts?: { noteId?: string | null }) => {
     if (isNoClearFollowUpResult(r)) return
-    if (navigator.vibrate) navigator.vibrate(10)
-    const calendarOpts = buildCalendarOpenOptsForSupportingStep(r, step)
-    const range = buildGoogleCalendarDateRangeParts(calendarOpts.dateMmddyyyy, calendarOpts.time)
-    if (!range) {
-      setError('Could not build the event. Check date and time for this action.')
-      return
-    }
-    const stepId = supportingCalendarStepId(index)
-    setSupportingAdded((prev) => ({ ...prev, [stepId]: true }))
+    const action = r.primaryActionStructured
+    if (!action) { setError("Please review this action before exporting."); return }
+    openActionCalendar({...action, date:r.nextStepDate || action.date, time:r.nextStepTimeHint || action.time}, r)
+  }
 
-    if (session?.user) {
-      openGoogleCalendarWindow(calendarOpts)
-      setShowCalendarToast(true)
-      return
-    }
-    const ok = openAppleCalendarFromOpts(calendarOpts)
-    if (ok) {
-      setShowCalendarToast(true)
-    } else {
-      setSupportingAdded((prev) => {
-        const next = { ...prev }
-        delete next[stepId]
-        return next
-      })
-      setError('Could not create the calendar file.')
-    }
+  const addSupportingStepToCalendar = (r: StructureResult, step: AdditionalStep, _index: number, _opts?: { noteId?: string | null }) => {
+    const action = step.actionStructured
+    if (!action) { setError("Please review this action before exporting."); return }
+    openActionCalendar({...action,date:step.structuredDate || step.resolvedDate || action.date,time:step.structuredTime || step.timeHint || action.time}, r)
   }
 
   const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/try')
@@ -3884,7 +3888,31 @@ export default function Home() {
         </div>
       )}
 
-      {/* Calendar — floating toast; no layout shift */}
+      {pendingVisit?.result.extraction?.questions[0] && <VisitClarification
+        key={JSON.stringify(pendingVisit.result.extraction.questions[0])}
+        extraction={pendingVisit.result.extraction}
+        question={pendingVisit.result.extraction.questions[0]}
+        onSkip={() => { void acceptVisit(pendingVisit.result,pendingVisit.transcript,pendingVisit.noteId,true).catch(()=>{}) }}
+        onConfirm={async answer => {
+          const question = pendingVisit.result.extraction!.questions[0]
+          const extraction = confirmVisitField(pendingVisit.result.extraction!,question,answer)
+          const clarification = `Answer to clarification question ${JSON.stringify(question.question)}: ${JSON.stringify(answer.trim())}. This replaces the earlier uncertainty.`
+          const tx = appendVisitCorrection(pendingVisit.transcript,clarification,getClientNowIso(),getClientTimezone())
+          if (extraction.questions.length) {
+            setPendingVisit({...pendingVisit,result:{...pendingVisit.result,extraction},transcript:tx})
+            return
+          }
+          // Regenerate the prose once all answers are collected: never save a stale
+          // CRM summary saying "Marta or María" after the user confirmed María.
+          const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            note:tx,clientNow:pendingVisit.result.capturedAt,timezone:pendingVisit.result.noteTimezone || getClientTimezone(),
+          })})
+          const updated = await response.json()
+          if (!response.ok) throw Error('Clarification could not be processed')
+          await acceptVisit(updated,tx,pendingVisit.noteId)
+        }} />}
+      {calendarDraft && <CalendarPreview initial={calendarDraft} onClose={() => setCalendarDraft(null)} onOpened={() => setShowCalendarToast(true)} />}
+      {/* Opening Google is not confirmation that the user saved the event. */}
       {showCalendarToast && (
         <div
           className="pointer-events-none fixed left-1/2 z-[96] flex max-w-[min(18rem,92vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-[#e5e7eb] bg-white/96 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-[#111111] shadow-[0_4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
@@ -3900,7 +3928,7 @@ export default function Home() {
               <path d="M20 6L9 17l-5-5" />
             </svg>
           </span>
-          Event created
+          Review and save in Google Calendar
         </div>
       )}
 
@@ -4226,6 +4254,7 @@ export default function Home() {
                                     <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                       <span className="select-none text-[#6b7280]">- </span>
                                       {buildSupportingDisplayTitle({
+                                        preserveStructuredTitle: recordDisplayResult.schemaVersion === 2,
                                         action: s.action,
                                         resolvedDate: s.resolvedDate,
                                         timeHint: s.timeHint,
@@ -4288,6 +4317,15 @@ export default function Home() {
 
                 {/* Contact & company → Key insights → actions */}
                 <div className="mt-4 flex flex-col gap-6">
+                  {savingStatus === 'error' && currentNoteId && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+                    This note has not been saved. Keep this page open.
+                    <button type="button" className="ml-2 font-semibold underline" onClick={()=>{void updateNote(currentNoteId,recordDisplayResult,transcript).catch(()=>{})}}>Retry saving</button>
+                  </div>}
+                  {recordDisplayResult.schemaVersion === 2 && <VisitSummary
+                    text={formatProfessionalCrmNote(recordDisplayResult)} language={recordDisplayResult.noteLanguage || 'English'}
+                    hasQuestions={!!recordDisplayResult.extraction?.questions.length}
+                    onClarify={()=>setPendingVisit({result:recordDisplayResult,transcript,noteId:currentNoteId || undefined})}
+                    onCorrect={correction=>correctVisitText(recordDisplayResult,transcript,correction,currentNoteId || undefined)} />}
                   {tryWtPrimaryComplete &&
                     (recordDisplayResult.contact ||
                     recordDisplayResult.customer ||
@@ -4414,7 +4452,7 @@ export default function Home() {
                       type="button"
                       disabled={savedNotes.length === 0}
                       onClick={() => {
-                        const latest = savedNotes[0]
+                        const latest = savedNotes.find(n=>n.id === currentNoteId)
                         if (!latest) return
                         if (isCorrectingRecording) stopCorrectionRecording()
                         else startCorrectionRecording(latest.id, latest.transcript)
@@ -4467,6 +4505,11 @@ export default function Home() {
                 </button>
 
                 <div className="space-y-7">
+                  {selectedNote.result.schemaVersion === 2 && <VisitSummary
+                    text={formatProfessionalCrmNote(selectedNote.result)} language={selectedNote.result.noteLanguage || 'English'}
+                    hasQuestions={!!selectedNote.result.extraction?.questions.length}
+                    onClarify={()=>setPendingVisit({result:selectedNote.result,transcript:selectedNote.transcript,noteId:selectedNote.id})}
+                    onCorrect={correction=>correctVisitText(selectedNote.result,selectedNote.transcript,correction,selectedNote.id)} />}
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">{formatDate(selectedNote.date)}</p>
 
                   <div className="rounded-2xl border border-zinc-200/90 bg-[#fafafa] px-4 py-4">
@@ -4577,6 +4620,7 @@ export default function Home() {
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
                                     {buildSupportingDisplayTitle({
+                                      preserveStructuredTitle: selectedNote.result.schemaVersion === 2,
                                       action: s.action,
                                       resolvedDate: s.resolvedDate,
                                       timeHint: s.timeHint,

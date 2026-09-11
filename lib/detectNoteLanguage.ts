@@ -1,8 +1,5 @@
 import { franc } from 'franc'
 
-/** Distinct Spanish letters/markers rarely used in English CRM notes. */
-const SPANISH_MARK_CHARS_RE = /[áéíóúüñ¿¡]/i
-
 /**
  * Spanish-only vocabulary (not normal English). Unicode-aware boundaries so
  * accented tokens match reliably.
@@ -46,8 +43,7 @@ export function detectNoteLanguage(note: string): string {
   const trimmed = note.trim()
   if (!trimmed) return 'English'
 
-  if (SPANISH_MARK_CHARS_RE.test(trimmed)) return 'Spanish'
-
+  // Accented proper names (José, Peña) are not evidence of the note's language.
   if (countSpanishOnlyWordHits(trimmed) >= 2) return 'Spanish'
 
   const code = franc(trimmed, { minLength: 3 })

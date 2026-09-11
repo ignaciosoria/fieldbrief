@@ -1,5 +1,68 @@
 # Folup optimization — sequential evaluation
 
+## Current work — extraction v2 (local, not yet deployed)
+
+- One versioned action list replaces the legacy primary/supporting extraction contract.
+  Every action carries its own type, person, company, full object, brief instruction,
+  date, time and verbatim source evidence. Missing actions/timing remain absent.
+- Strict JSON schema plus server validation; v2 bypasses legacy semantic rewriting.
+  Earliest dated action is displayed first, followed by other actions; none is discarded.
+- Targeted questions replace numerical confidence guesses. Answers regenerate the prose
+  after the final question so CRM text does not retain the old uncertain name/date.
+- Visible CRM copy, written corrections, stable note identity, persistent failed-save
+  notice with idempotent retry, and action-specific Calendar titles/descriptions.
+- Original note timestamp/time zone retained; appended corrections have their own anchor.
+- Google remains the final save/review screen. No false "event created" confirmation.
+  Missing date opens an editable draft; no hour means all-day. Invalid/DST-ambiguous
+  clocks require review rather than guessing an offset.
+- Local verification: 81 tests passed; production build passed. Isolated browser smoke
+  passed at 390px and 1280px for save retry, own-company Calendar export, written
+  correction without duplicate notes, clarification refresh and no-action visits.
+  Browser APIs/OAuth/database/analytics were mocked: this does NOT verify real OAuth,
+  Google event persistence, physical mobile recording or production database writes.
+- Generated duplicate `* 2.ts` files reappear in `.next/types`; only those three named
+  generated copies are excluded from tsc. Original copies were moved recoverably to
+  `/private/tmp/folup-generated-types.Axm0yw`. No source type checking is disabled.
+
+### Paid text evaluation and model decision
+
+101 synthetic requests so far. Known estimated cost $0.447152 plus a conservative
+$0.08 hold for four validation failures whose token usage was not retained. Remaining
+authorized budget $4.472848. Ledger: `eval/api-budget.json`. No audio calls yet.
+
+GPT-4.1 run 2 passed the basic 20-case checks but manual inspection found invented
+demonstration/interest details, stale uncertainty in prose and repetition. GPT-5.4 mini
+on the same prompt failed five cases (four non-verbatim evidence quotes and one borrowed
+date). GPT-5.4 low passed 20/20 on that prompt and was more restrained in prose.
+After strengthening fidelity instructions and adding five cases, GPT-5.4 passed 25/25
+automated checks including three confirmed-field cases; raw outputs are retained in
+`eval/visit-v2-run-5.jsonl`. Selected pinned model: `gpt-5.4-2026-03-05`, low reasoning.
+
+This is a small synthetic evaluation, NOT 100% real-world accuracy. Remaining manual
+issues include occasional repetitive commitments in summary and attribution such as
+"Ana said" when the original did not explicitly identify who gave the instruction.
+No autonomous writes to CRM/Calendar; users review the visible output.
+
+Published rates checked September 11, 2026: GPT-4.1 $2/$8, GPT-5.4 mini $0.75/$4.50,
+GPT-5.4 $2.50/$15 per million input/output tokens. Sources:
+https://developers.openai.com/api/docs/models/gpt-4.1
+https://developers.openai.com/api/docs/models/gpt-5.4-mini
+https://developers.openai.com/api/docs/models/gpt-5.4
+Run 5 extraction averaged $0.0067995/note before cache discounts: $0.68/100 or
+$6.80/1,000 short notes, excluding transcription/hosting/Stripe and additional correction
+requests. Pricing is an estimate from usage, not a billing receipt. Do not extrapolate
+latency/accuracy to long notes, noisy audio or concurrent production traffic.
+
+### Next sequential blocks
+
+1. Security dependencies: production audit currently reports 21 affected packages,
+   including 4 critical (severity includes transitive packages, not 21 independent exploits).
+2. Stripe lifecycle/reliable paid access and endpoint error handling.
+3. Audio transcription context, size/duration boundaries, recovery and mobile lifecycle.
+4. Production smoke, real-account persistence and remaining frontend cleanup.
+
+The older entries below are historical snapshots, not current test/spend totals.
+
 ## Deployment status — September 11, 2026 UTC
 
 The user authorized production changes and a fresh start without importing legacy history.

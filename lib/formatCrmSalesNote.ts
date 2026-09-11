@@ -1,10 +1,13 @@
 import { normalizeProductField, productFieldToList } from './productField'
+import type { VisitExtraction } from './visitExtraction'
 import {
   stripExecutionBlocksFromCrmNarrative,
 } from './crmNarrativeSanitize'
 
 /** Fields needed to build the clipboard / share CRM note (matches app StructureResult). */
 export type CrmSalesNoteInput = {
+  schemaVersion?: 2
+  extraction?: VisitExtraction
   customer: string
   contact: string
   contactCompany: string
@@ -68,6 +71,16 @@ function filterInsightsForNote(lines: string[]): string[] {
  * Does **not** include next steps, follow-up tasks, or scheduling — those live in the app’s Next step UI.
  */
 export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
+  if (r.schemaVersion === 2 && r.extraction) {
+    const v = r.extraction
+    const es = v.language === 'Spanish'
+    const header = [v.contacts.join(', '),v.companies.join(', ')].filter(Boolean).join(' — ')
+    const commitments = v.actions.map(a => `${[a.contact,a.company].filter(Boolean).join(' — ')}${a.contact || a.company ? ': ' : ''}${a.description}${a.date ? ` (${a.date}${a.time ? ` ${a.time}` : ''})` : ''}`)
+    return [header,v.location,v.summary,...v.insights.filter(line=>!v.summary.includes(line)),
+      commitments.length ? `${es ? 'Acuerdos y próximos pasos' : 'Agreements and next steps'}:\n${commitments.map(a=>`- ${a}`).join('\n')}` : '',
+      v.questions.length ? `${es ? 'Pendiente de aclarar' : 'To clarify'}: ${v.questions.map(q=>q.question).join(' ')}` : '',
+    ].filter(Boolean).join('\n\n')
+  }
   const cust = (r.customer || '').trim()
   const contact = (r.contact || '').trim()
   const company = (r.contactCompany || '').trim()
