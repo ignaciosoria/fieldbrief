@@ -1,6 +1,17 @@
 # Folup optimization — sequential evaluation
 
-## Temporal fidelity checkpoint — September 11, 2026, 12:04 UTC
+## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 12:02 UTC
+
+Code through **c4bd917** is DEPLOYED. Vercel reports Ready / Production / Current
+Domains www.folup.app, exact commit c4bd917, build duration 25s, deployment:
+https://vercel.com/ignaciosorias-projects/fieldbrief/3b261Ad8gSeMzyubEPhyZCCRQQDX
+This includes both action restrictions (e8cbce5) and temporal fidelity (c4bd917).
+Default cloud build succeeded despite the local Turbopack worker-port restriction.
+Post-deployment HTTP checks: homepage 200; anonymous notes/subscription GET and
+structure/transcribe POST all 401. No paid deployed note test repeated in this block.
+Earlier local-only notes below are historical; this checkpoint supersedes them.
+
+## Temporal fidelity checkpoint — September 11, 2026, 12:01 UTC
 
 LOCAL ONLY pending deployment verification. Added one focused prompt paragraph
 and contrasting examples separating actual visit discussion from future-action
