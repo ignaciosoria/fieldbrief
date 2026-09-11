@@ -1,5 +1,17 @@
 # Folup optimization — sequential evaluation
 
+## History browser verification — September 11, 2026
+
+CUA verified the real compiled app using the local-only synthetic gateway. A valid
+Maya/Northstar note remains visible beside a deliberately malformed v2 note. The
+damaged detail displays the original transcript and explicit recovery warning, no
+calendar action button. Found and fixed misleading legacy count: recovered note
+initially said one action; rebuilt/restarted/reloaded and verified zero actions,
+with the healthy neighbour still showing one. Fixture history scenario retained
+for repeatable checks. Build passes. Ready to deploy quota/history/AI deadline
+changes; deployment confirmation will be recorded separately. No paid APIs or
+real data mutations in this browser test.
+
 ## AI transport deadline checkpoint — September 11, 2026
 
 LOCAL ONLY. fetchWithTimeout now bounds headers AND full response body, buffers

@@ -4953,7 +4953,7 @@ export default function Home() {
                         note.result.calendarDescription?.toLowerCase().includes(q)
                       )
                     }).map((note) => {
-                      const ac = historyActionCount(note.result)
+                      const ac = note.recoveryRequired ? 0 : historyActionCount(note.result)
                       const contactLine =
                         note.result.contact || note.result.customer || '—'
                       const stepLine =

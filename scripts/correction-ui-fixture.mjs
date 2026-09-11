@@ -41,7 +41,11 @@ createServer(async(req,res)=>{
       return json(visitExtractionResult(corrected,now,zone))
     }
     if(url.pathname==='/api/notes') {
-      if(req.method==='GET')return json({notes:[...notes.values()],hasMore:false})
+      if(req.method==='GET') {
+        const historyScenario=new URL(req.headers.referer || 'http://127.0.0.1').searchParams.get('testScenario')==='history'
+        const damaged={id:'synthetic-damaged-note',created_at:now,raw_text:'Original transcript preserved: call Ana tomorrow.',structured_output:{schemaVersion:2,extraction:{actions:null}}}
+        return json({notes:historyScenario?[...notes.values(),damaged]:[...notes.values()],hasMore:false})
+      }
       if(req.method!=='PUT')return json({error:'Fixture forbids mutation other than synthetic upsert'},405)
       let body='';for await(const chunk of req)body+=chunk
       const value=JSON.parse(body)
