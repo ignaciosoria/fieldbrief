@@ -29,7 +29,7 @@ test('verified event routing covers renewals and never trusts billing email for 
 })
 
 test('paid access requires active status, correct price, quantity and no payment pause',()=>{
-  const active={status:'active',pause_collection:null,items:{data:[{price:{id:'price_folup'},quantity:1,current_period_end:2000}]}} as Parameters<typeof grantsPaidAccess>[0]
+  const active={status:'active',pause_collection:null,latest_invoice:{status:'paid'},items:{data:[{price:{id:'price_folup'},quantity:1,current_period_end:2000}]}} as Parameters<typeof paidAccessUntil>[0]
   assert.equal(grantsPaidAccess(active,'price_folup'),true)
   for(const status of ['past_due','canceled','trialing','incomplete','incomplete_expired','unpaid','paused'] as const) assert.equal(grantsPaidAccess({...active,status},'price_folup'),false)
   assert.equal(grantsPaidAccess(active,'price_other'),false)
@@ -38,6 +38,9 @@ test('paid access requires active status, correct price, quantity and no payment
   assert.equal(stripeObjectId({id:'sub_test'}),'sub_test');assert.equal(stripeObjectId(null),null)
   assert.equal(paidAccessUntil(active,'price_folup',1000_000),new Date(2000_000).toISOString())
   assert.equal(paidAccessUntil(active,'price_folup',2000_000),null)
+  for(const latest_invoice of [null,'in_unexpanded',...['draft','open','void','uncollectible'].map(status=>({status}))]) {
+    assert.equal(paidAccessUntil({...active,latest_invoice} as Parameters<typeof paidAccessUntil>[0],'price_folup',1000_000),null,'Active alone is not evidence of a paid invoice')
+  }
 })
 
 test('subscription sync is idempotent, ordered and isolated from public roles',async()=>{

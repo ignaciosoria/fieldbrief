@@ -5,7 +5,7 @@ import {paidAccessUntil,stripeObjectId} from './subscriptionPolicy'
 /** Refetch current Stripe state instead of trusting possibly delayed event snapshots. */
 export async function syncSubscription(stripe:Stripe,id:string,checkoutEmail?:string) {
   const checkedAt=new Date().toISOString()
-  const subscription=await stripe.subscriptions.retrieve(id)
+  const subscription=await stripe.subscriptions.retrieve(id,{expand:['latest_invoice']})
   const db=serverDb()
   let email=subscription.metadata?.user_email || checkoutEmail
   if(!email) {

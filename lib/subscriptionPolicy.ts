@@ -14,8 +14,11 @@ export function stripeObjectId(value:string|{id:string}|null|undefined):string|n
   return typeof value==='string' ? value : value?.id || null
 }
 
-export function paidAccessUntil(subscription:Parameters<typeof grantsPaidAccess>[0],priceId:string,now=Date.now()):string|null {
+export function paidAccessUntil(subscription:Parameters<typeof grantsPaidAccess>[0] & Pick<Stripe.Subscription,'latest_invoice'>,priceId:string,now=Date.now()):string|null {
   if(!grantsPaidAccess(subscription,priceId)) return null
+  // An active subscription can still have a draft/unpaid invoice (e.g. tax finalization failure).
+  const invoice=subscription.latest_invoice
+  if(!invoice || typeof invoice==='string' || invoice.status!=='paid') return null
   const end=Math.max(0,...subscription.items.data.filter(item=>item.price.id===priceId && (item.quantity || 0)>0).map(item=>item.current_period_end))
   return Number.isFinite(end) && end*1000>now ? new Date(end*1000).toISOString() : null
 }

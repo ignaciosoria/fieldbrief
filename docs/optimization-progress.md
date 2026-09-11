@@ -1,5 +1,35 @@
 # Folup optimization — sequential evaluation
 
+## Deployment preparation — September 11, 2026, 10:45 UTC
+
+Supabase dashboard session verified live; project iownaoghocmubpxwrnlk is healthy.
+Before migration: subscriptions had 0 rows / 0 active, paid_until did not exist, ai_usage
+existed. Migration 20260911000300_subscription_sync.sql was APPLIED through the SQL
+editor in one transaction. A second transaction checked public-role denial/service-role
+permission, synthetic paid access above free quota, and expiry revocation, then ROLLED
+BACK. Final live query: subscription_rows=0, expiry_column_exists=true,
+probe_rows_remaining=0. No user data was deleted and no synthetic rows remain.
+
+Stripe read-only check: local secret key is TEST mode, zero subscriptions, exactly one
+enabled test webhook (we_1TNNIO1RBOM3m17AlSzByNAc), still using the non-www URL and
+only checkout.session.completed/customer.subscription.deleted. Do not claim this is a
+live-payment readiness check. Update this endpoint AFTER successful deployment.
+
+Paid policy tightened locally: latest_invoice is expanded from Stripe and must have
+status=paid as well as an active, unpaused correct-price subscription with future period
+end. Draft/open/void/uncollectible/missing/unexpanded invoices do not grant paid access.
+Tradeoff: a renewal can temporarily show inactive until invoice.paid is delivered;
+there is no unpaid grace period. Tests cover this fail-closed behavior. One new route
+test verifies actual raw-body Stripe signatures, rejects missing/invalid/tampered ones,
+acknowledges a signed irrelevant event without network access and detects missing config.
+All 97 tests and production build pass. No new paid API calls.
+
+Vercel session verified, production still 9e5feee when inspected. Required environment
+variable names are present for all environments, including Stripe/OpenAI/Supabase/Google.
+Public Supabase URL points to the same project. Secrets stayed masked. Vercel warns
+that sensitive keys are stored as Config, not its Secret type; do not rotate credentials
+unattended through browser UI. Remaining deployment and webhook checks are below.
+
 ## Transcription transport checkpoint — September 11, 2026
 
 Local only. Authentication remains first; empty/malformed multipart and oversized files
