@@ -10,7 +10,8 @@
     ,{"id":"visit-v2-run-6","model":"gpt-5.4-2026-03-05","maxRequests":27,"reservedUsd":1.8,"status":"completed","actualUsd":0.18838}
     ,{"id":"visit-v2-run-7","model":"gpt-5.4-2026-03-05","maxRequests":30,"reservedUsd":2,"status":"completed","actualUsd":0.222915}
     ,{"id":"asr-pilot-1","maxRequests":12,"reservedUsd":0.2,"status":"completed","actualUsd":0.0133725,"note":"Usage-based estimate at published rates: Whisper 116 billed seconds; mini 554 input and 216 output tokens. Not an invoice reconciliation."}
+    ,{"id":"production-visible-demo-1","maxRequests":1,"reservedUsd":0.1,"status":"completed","unknownCostUpperBoundUsd":0.1,"unknownCostRequests":1,"note":"Visible browser demo succeeded: Note saved, history 1 to 2, Jose/AgroSol send without prices Sep12 and Ana/Campo Verde call Sep14 10am. No calendar save. Usage not retrieved; keep full reservation conservatively, not actual invoice cost."}
   ],
-  "unreservedUsd": 4.039373,
+  "unreservedUsd": 3.939373,
   "note":"Conservative reservation includes unknown-cost failures. Do not repeat a run without recording its result and a new reservation. Twelve synthetic audio calls completed."
 }

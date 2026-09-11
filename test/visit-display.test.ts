@@ -12,7 +12,7 @@ test('structured product parentheses are never interpreted as timing',()=>{
 })
 test('other calendar actions retain their meaning, contact and company',()=>{
   const draft=calendarDraftFromAction({type:'other',verb:'Complete',contact:'Ana',company:'Acme',object:'',description:'Review Q7 stock',date:'09/11/2026',time:''},'English','America/Los_Angeles')
-  assert.equal(draft.title,'Review Q7 stock — Ana — Acme')
+  assert.equal(draft.title,'Review Q7 stock · Ana · Acme')
   assert.equal(draft.details,'Review Q7 stock')
 })
 test('ambiguous autumn DST time requires review instead of choosing an offset silently',()=>{

@@ -12,7 +12,7 @@ export default function CalendarPreview({ initial, onClose, onOpened }: {
   useEffect(() => { dialog.current?.showModal() }, [])
   const es = initial.language === 'Spanish'
   const edit = (field: keyof CalendarDraft, value: string) => {
-    setDraft(d => ({...d,[field]:value})); setError('')
+    setDraft(d => ({...d,[field]:value,...(field==='time'?{timeSuggested:false}:{})})); setError('')
   }
   const fieldClass = 'mt-1 w-full rounded-xl border border-gray-300 p-3 text-base text-gray-900'
   return <dialog ref={dialog} onCancel={onClose} aria-labelledby="calendar-preview-title"
@@ -32,9 +32,10 @@ export default function CalendarPreview({ initial, onClose, onOpened }: {
       <label className="block text-sm">{es ? 'Descripción' : 'Description'}<textarea rows={5} className={fieldClass} value={draft.details} onChange={e => edit('details',e.target.value)} /></label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm">{es ? 'Fecha' : 'Date'}<input required type="date" className={fieldClass} value={draft.date} onChange={e => edit('date',e.target.value)} /></label>
-        <label className="block text-sm">{es ? 'Hora (opcional)' : 'Time (optional)'}<input type="time" className={fieldClass} value={draft.time} onChange={e => edit('time',e.target.value)} /></label>
+        <label className="block text-sm">{es ? 'Hora' : 'Time'}<input required type="time" className={fieldClass} value={draft.time} onChange={e => edit('time',e.target.value)} /></label>
       </div>
-      <p className="text-xs text-gray-600">{draft.time ? (es ? 'Duración: 30 minutos.' : 'Duration: 30 minutes.') : (es ? 'Sin hora: evento de todo el día.' : 'No time: all-day event.')} {draft.timezone}</p>
+      {draft.timeSuggested && <p className="text-sm text-amber-800">{es ? '09:00 sugerida: no indicaste una hora exacta. Puedes cambiarla.' : '09:00 suggested: no exact time was provided. You can change it.'}</p>}
+      <p className="text-sm text-gray-600">{es ? 'Duración: 30 minutos.' : 'Duration: 30 minutes.'} {draft.timezone}</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="flex justify-end gap-3">
         <button type="button" onClick={onClose} className="rounded-xl px-4 py-3">{es ? 'Cancelar' : 'Cancel'}</button>

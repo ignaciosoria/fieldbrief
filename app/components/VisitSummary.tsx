@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
 
-export default function VisitSummary({text,language,hasQuestions,onClarify,onCorrect}: {
-  text:string;language:string;hasQuestions:boolean;onClarify:()=>void;onCorrect:(correction:string)=>Promise<void>
+export default function VisitSummary({text,language,hasQuestions,onClarify,onCorrect,onVoiceCorrect,voiceDisabled,voiceRecording}: {
+  text:string;language:string;hasQuestions:boolean;onClarify:()=>void;onCorrect:(correction:string)=>Promise<void>;onVoiceCorrect?:()=>void;voiceDisabled?:boolean;voiceRecording?:boolean
 }) {
   const es = language === 'Spanish'
   const [correction,setCorrection] = useState('')
@@ -11,6 +11,8 @@ export default function VisitSummary({text,language,hasQuestions,onClarify,onCor
   return <section className="rounded-2xl border border-zinc-200 bg-white p-4">
     <h2 className="mb-3 text-sm font-semibold">{es ? 'Nota para CRM' : 'CRM note'}</h2>
     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{text}</p>
+    {onVoiceCorrect && <button type="button" disabled={busy || voiceDisabled} onClick={onVoiceCorrect} className={`mt-4 rounded-xl px-4 py-3 text-base font-semibold text-white disabled:opacity-50 ${voiceRecording?'bg-red-600':'bg-indigo-600'}`}>{voiceRecording ? (es?'Terminar corrección':'Finish correction') : (es ? 'Corregir hablando' : 'Correct by voice')}</button>}
+    {onVoiceCorrect && <p className="mt-2 text-sm text-gray-600">{es ? 'Actualiza la nota, las acciones y los eventos antes de añadirlos al calendario.' : 'Updates the note, actions and event drafts before adding them to your calendar.'}</p>}
     {hasQuestions && <button type="button" onClick={onClarify} className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900">{es ? 'Resolver datos pendientes' : 'Resolve unclear details'}</button>}
     <details className="mt-4 border-t border-zinc-100 pt-3">
       <summary className="cursor-pointer text-sm font-semibold text-indigo-700">{es ? 'Corregir por escrito' : 'Correct in writing'}</summary>

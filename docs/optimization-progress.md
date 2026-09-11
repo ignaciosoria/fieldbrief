@@ -1,5 +1,25 @@
 # Folup optimization — sequential evaluation
 
+## Requested calendar/voice UX — September 11, 2026, 16:38 UTC
+
+User explicitly changed requirements: short calendar titles, always a clock time,
+voice correction prominent before export. Calendar titles now use compact action
++ person + company; full detail/restrictions stay in description. Unknown send
+objects use plain Send rather than guessing a material category. Exact times stay;
+missing/invalid times propose 09:00 and require preview with suggested-time notice.
+No natural-language daypart inference added; no all-day exports from this helper.
+CRM/extraction timing remains untouched so defaults do not become alleged promises.
+Voice correction is prominent in both result and history CRM cards, with a stop
+button in the same place; writing remains secondary. Existing correction pipeline
+regenerates all action drafts. CUA synthetic test verified Maya -> Maia through
+voice start/stop, ASR/structure/save retries, CRM/action and Calendar preview title;
+09:00 notice and original date/description preserved. No real microphone or paid
+API in this test. No Calendar event saved. Full suite 120 before one additional
+calendar regression; final focused 6/6 and production build pass. Prior session
+switch-specific UI integration remains unverified; no claim of universal isolation.
+Overnight heartbeat paused at 16:38 after original deadline; current work explicitly
+requested by user continues normally. Production confirmation follows separately.
+
 ## Account-switch continuation guards — September 11, 2026, 16:04 UTC
 
 LOCAL ONLY, not deployed. Inspection found typed extraction could finish after a

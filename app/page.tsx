@@ -3092,7 +3092,7 @@ export default function Home() {
     const language = r.noteLanguage || detectNoteLanguage(r.crmText || r.summary || action.verb)
     const draft = calendarDraftFromAction(action, language, r.noteTimezone || getClientTimezone())
     const url = googleCalendarUrl(draft)
-    if (!url) { setCalendarDraft(draft); return }
+    if (!url || draft.timeSuggested) { setCalendarDraft(draft); return }
     const opened = window.open(url, "_blank")
     if (!opened) { setCalendarDraft(draft); return }
     opened.opener = null
@@ -4473,6 +4473,8 @@ export default function Home() {
                     <button type="button" className="ml-2 font-semibold underline" onClick={()=>{void updateNote(currentNoteId,recordDisplayResult,transcript).catch(()=>{})}}>Retry saving</button>
                   </div>}
                   {recordDisplayResult.schemaVersion === 2 && <VisitSummary
+                    voiceDisabled={!currentNoteId || savingStatus==='saving'} voiceRecording={isCorrectingRecording}
+                    onVoiceCorrect={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}const note=savedNotes.find(n=>n.id===currentNoteId);if(note) void startCorrectionRecording(note.id,note.transcript);else setError('Save this note before correcting by voice.')}}
                     text={formatProfessionalCrmNote(recordDisplayResult)} language={recordDisplayResult.noteLanguage || 'English'}
                     hasQuestions={!!recordDisplayResult.extraction?.questions.length}
                     onClarify={()=>setPendingVisit({result:recordDisplayResult,transcript,noteId:currentNoteId || undefined})}
@@ -4661,6 +4663,8 @@ export default function Home() {
                     <p className="mt-2 whitespace-pre-wrap">{selectedNote.transcript || 'No transcript available.'}</p>
                   </div>}
                   {selectedNote.result.schemaVersion === 2 && <VisitSummary
+                    voiceRecording={isCorrectingRecording}
+                    onVoiceCorrect={()=>{if(isCorrectingRecording)stopCorrectionRecording();else void startCorrectionRecording(selectedNote.id,selectedNote.transcript)}}
                     text={formatProfessionalCrmNote(selectedNote.result)} language={selectedNote.result.noteLanguage || 'English'}
                     hasQuestions={!!selectedNote.result.extraction?.questions.length}
                     onClarify={()=>setPendingVisit({result:selectedNote.result,transcript:selectedNote.transcript,noteId:selectedNote.id})}
