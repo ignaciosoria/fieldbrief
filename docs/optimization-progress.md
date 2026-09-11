@@ -1,5 +1,31 @@
 # Folup optimization — sequential evaluation
 
+## Analytics privacy checkpoint — September 11, 2026
+
+Local only. PostHog now explicitly disables DOM/autocapture, dead/rage clicks, replay,
+heatmaps, exceptions, performance capture, surveys, remote feature configuration and
+external dependency loading. Anonymous page counts remain: before_send accepts only
+$pageview and rebuilds the payload with a coarse allowlisted pathname (/ or /try,
+everything else /other), a fresh per-page random ID and required ingestion fields.
+Raw URLs, queries, referrers, user identity, person properties and arbitrary event
+properties cannot pass through this filter. In-memory identity only; person profiles
+and GeoIP processing disabled. This is NOT a claim that the network provider cannot
+see connection IP addresses, nor a compliance certification. No vendor data was deleted.
+
+Initialization is guarded against duplicate React effect calls. Default US ingestion
+host updated from the app/dashboard hostname to https://us.i.posthog.com; optional
+NEXT_PUBLIC_POSTHOG_HOST supports an explicitly configured hosting region. Current
+official configuration docs and installed SDK typings were checked before changes:
+https://posthog.com/docs/libraries/js/config
+https://posthog.com/docs/privacy/data-collection
+
+All 88 tests and production build pass, including three new privacy tests with private
+note/contact/URL fixtures and disallowed event types. The mocked browser integration
+suite also passes at 390px and 1280px after this build (no JavaScript errors); vendor
+requests were intercepted, so actual PostHog ingestion was not verified. No new paid API usage. No production
+deploy or migration in this block. Existing product analytics funnels/session replay will
+not be available under this policy; add only explicitly reviewed aggregate events later.
+
 ## Verified clarification checkpoint — September 11, 2026, 09:00 UTC
 
 Local only. Partial answers are now regenerated into CRM prose when leaving remaining
@@ -62,8 +88,7 @@ Next output/reliability priorities:
   again; enforce practical upload/duration bounds and reliably release microphone tracks.
 - Transcription: evaluate neutral context against hard-coded crop/product vocabulary;
   compare candidates on synthetic ES/EN audio within the remaining $4.472848 ledger.
-- Privacy: PostHog currently uses default autocapture settings; prevent private note,
-  person/company and typed correction content from entering analytics/session replay.
+- Privacy: local restrictive page-count policy implemented and tested above; do not redo.
 - Quotas: invalid/failed attempts and clarifications currently consume the allowance;
   align accounting and UI promises without enabling free unlimited retry abuse.
 - Persisted malformed own-note objects, account switches, calendar editing and complete
