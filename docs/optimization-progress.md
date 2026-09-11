@@ -55,6 +55,14 @@ latency/accuracy to long notes, noisy audio or concurrent production traffic.
 
 ### Next sequential blocks
 
+Dependency block completed locally: Next.js 16.3.4, NextAuth 5.0.0-beta.32,
+matching eslint-config-next and compatible transitive fixes. `npm audit fix` ran without
+`--force` or install scripts. Production build and all 81 tests pass after the upgrade;
+the resulting all-dependency audit reports zero known vulnerabilities. This does not
+mean the application has no security bugs. Maintainer advisories verified:
+https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4
+https://github.com/nextauthjs/next-auth/security/advisories/GHSA-8fpg-xm3f-6cx3
+
 1. Security dependencies: production audit currently reports 21 affected packages,
    including 4 critical (severity includes transitive packages, not 21 independent exploits).
 2. Stripe lifecycle/reliable paid access and endpoint error handling.
