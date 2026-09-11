@@ -3,11 +3,8 @@
 import { initPosthog } from '../lib/posthog'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
-import {
-  logNotesTableRlsAssumptions,
-  logPostgrestError,
-} from '../lib/saveNoteSupabaseDebug'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { calendarExportDate, calendarTimedRange } from '../lib/calendarExportDate'
+import { notesRequest } from '../lib/notesClient'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { stripExecutionBlocksFromCrmNarrative } from '../lib/crmNarrativeSanitize'
@@ -640,35 +637,9 @@ function pad2(n: number) {
   return n.toString().padStart(2, '0')
 }
 
-/**
- * If the resolved local date+time is already past, advance by whole weeks until it is
- * in the future (handles stale anchor dates, not only “+7 once”).
- */
-function ensureCalendarDateTimeNotPast(
-  dateMmddyyyy: string,
-  hour: number,
-  minute: number,
-): { dateMmddyyyy: string; hour: number; minute: number } {
-  const ds = dateMmddyyyy.trim()
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) {
-    return { dateMmddyyyy: ds, hour, minute }
-  }
-  const [mm, dd, yyyy] = ds.split('/').map((x) => parseInt(x, 10))
-  if ([mm, dd, yyyy].some((n) => Number.isNaN(n))) {
-    return { dateMmddyyyy: ds, hour, minute }
-  }
-  const event = new Date(yyyy, mm - 1, dd, hour, minute, 0, 0)
-  const now = new Date()
-  let guard = 0
-  while (event.getTime() < now.getTime() && guard < 365) {
-    event.setDate(event.getDate() + 1)
-    guard++
-  }
-  return {
-    dateMmddyyyy: `${pad2(event.getMonth() + 1)}/${pad2(event.getDate())}/${event.getFullYear()}`,
-    hour: event.getHours(),
-    minute: event.getMinutes(),
-  }
+/** Keep the selected date, including overdue commitments. */
+function ensureCalendarDateTimeNotPast(dateMmddyyyy: string, hour: number, minute: number) {
+  return calendarExportDate(dateMmddyyyy, hour, minute) ?? { dateMmddyyyy: '', hour, minute }
 }
 
 function isoDateToMmddyyyy(iso: string): string {
@@ -698,7 +669,7 @@ function buildGoogleCalendarDateRangeParts(
   time: CalendarTimeInput,
 ): GoogleCalendarDateRange | null {
   const ds = dateMmddyyyy.trim()
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(ds)) return null
+  if (!calendarExportDate(ds, 0, 0)) return null
 
   if (time.kind === 'allday') {
     const bumped = ensureCalendarDateTimeNotPast(ds, 12, 0)
@@ -717,21 +688,7 @@ function buildGoogleCalendarDateRangeParts(
     time.kind === 'hint'
       ? resolveTimeFromHint(time.hint)
       : { hour: time.hour, minute: time.minute }
-  const bumped = ensureCalendarDateTimeNotPast(ds, resolved.hour, resolved.minute)
-  const hour = bumped.hour
-  const minute = bumped.minute
-  const [mm, dd, yyyy] = bumped.dateMmddyyyy.split('/')
-  let endH = hour
-  let endM = minute + 30
-  if (endM >= 60) {
-    endH = Math.min(23, endH + 1)
-    endM -= 60
-  }
-  return {
-    kind: 'floating',
-    start: `${yyyy}${mm}${dd}T${pad2(hour)}${pad2(minute)}00`,
-    end: `${yyyy}${mm}${dd}T${pad2(endH)}${pad2(endM)}00`,
-  }
+  return calendarTimedRange(ds, resolved.hour, resolved.minute)
 }
 
 /** Strip pictographic / emoji chars for plain-text calendar bodies. */
@@ -2042,6 +1999,7 @@ export default function Home() {
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [transcript, setTranscript] = useState('')
   const [savedNotes, setSavedNotes] = useState<SavedNote[]>([])
+  const [hasMoreNotes, setHasMoreNotes] = useState(false)
   const [selectedNote, setSelectedNote] = useState<SavedNote | null>(null)
   /** Internal save pipeline state (reserved for future UI; not shown yet). */
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -2207,89 +2165,25 @@ export default function Home() {
   }, [calendarStorageKey])
 
   useEffect(() => {
-    if (!sessionEmail) {
-      setSavedNotes([])
-      return
-    }
-    const loadNotes = async () => {
-      if (!isSupabaseConfigured) {
-        try {
-          const stored = localStorage.getItem(notesStorageKey)
-          if (stored) {
-            const parsed = JSON.parse(stored) as SavedNote[]
-            setSavedNotes(
-              parsed
-                .map((n) => ({
-                  ...n,
-                  result: normalizeStructureResult({
-                    ...emptyResult,
-                    ...n.result,
-                    crmFull: normalizeCrmFull(n.result.crmFull),
-                  }),
-                }))
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-            )
-          } else {
-            setSavedNotes([])
-          }
-        } catch {
-          setSavedNotes([])
-        }
-        return
-      }
+    let cancelled = false
+    setSavedNotes([])
+    setSelectedNote(null)
+    if (!sessionEmail) return
+    const load = async () => {
       try {
-        const { data, error } = await supabase
-          .from('notes')
-          .select('*')
-          .eq('user_id', sessionEmail)
-          .order('created_at', { ascending: false })
-        if (error) {
-          console.error('[loadNotes] Supabase select error:', error.message, error)
-        }
-        if (!error && data && data.length > 0) {
-          const mapped: SavedNote[] = data.map((n: any) => ({
-            id: String(n.id),
-            date:
-              typeof n.created_at === 'string'
-                ? n.created_at
-                : typeof n.date === 'string'
-                  ? n.date
-                  : new Date().toISOString(),
-            transcript:
-              typeof n.raw_text === 'string' ? n.raw_text : typeof n.transcript === 'string' ? n.transcript : '',
-            result: normalizeStructureResult(rawStructureResultFromSupabaseRow(n)),
-          }))
-          setSavedNotes(mapped)
-          try { localStorage.setItem(notesStorageKey, JSON.stringify(mapped)) } catch {}
-          return
-        }
-      } catch (e) {
-        console.error('[loadNotes] Supabase request failed:', e)
-      }
-      try {
-        const stored = localStorage.getItem(notesStorageKey)
-        if (stored) {
-          const parsed = JSON.parse(stored) as SavedNote[]
-          setSavedNotes(
-            parsed
-              .map((n) => ({
-                ...n,
-                result: normalizeStructureResult({
-                  ...emptyResult,
-                  ...n.result,
-                  crmFull: normalizeCrmFull(n.result.crmFull),
-                }),
-              }))
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-          )
-        } else {
-          setSavedNotes([])
-        }
-      } catch {
-        setSavedNotes([])
+        const data = await notesRequest('/api/notes')
+        if (cancelled) return
+        setSavedNotes(data.notes.map((n: { id: string; created_at: string; raw_text: string; structured_output: unknown }) => ({
+          id: n.id, date: n.created_at, transcript: n.raw_text,
+          result: normalizeStructureResult({ ...emptyResult, ...(n.structured_output as Partial<StructureResult>) }),
+        })))
+        setHasMoreNotes(data.hasMore)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load notes.')
       }
     }
-    loadNotes()
+    void load()
+    return () => { cancelled = true }
   }, [sessionEmail])
 
   useEffect(() => {
@@ -2372,175 +2266,18 @@ export default function Home() {
   }, [pendingNextStepClarifyPick])
 
   const saveNote = async (res: StructureResult, tx: string): Promise<void> => {
-    const validSession = status === 'authenticated' && !!session?.user
-    console.log('[saveNote] start', {
-      path: 'pending',
-      sessionStatus: status,
-      validSession,
-      sessionEmail: sessionEmail ?? '(none)',
-      isSupabaseConfigured,
-    })
-    if (savingIdleResetTimerRef.current !== null) {
-      clearTimeout(savingIdleResetTimerRef.current)
-      savingIdleResetTimerRef.current = null
-    }
-    savingIdleResetGenerationRef.current += 1
+    if (!sessionEmail) { setShowLoginPrompt(true); return }
+    const note: SavedNote = { id: crypto.randomUUID(), date: new Date().toISOString(), result: res, transcript: tx }
     setSavingStatus('saving')
-    const note: SavedNote = {
-      id: Date.now().toString(),
-      date: new Date().toISOString(),
-      result: res,
-      transcript: tx,
-    }
-
-    let localStorageFailed = false
-    setSavedNotes((prev) => {
-      const updated = [note, ...prev]
-      try {
-        if (sessionEmail && notesStorageKey) {
-          localStorage.setItem(notesStorageKey, JSON.stringify(updated))
-        }
-      } catch (e) {
-        localStorageFailed = true
-        console.error('Save error:', e)
-      }
-      return updated
-    })
-    setNoteSaved(true)
-    setTimeout(() => setNoteSaved(false), 2300)
-
-    if (localStorageFailed) {
-      setSavingStatus('error')
-      throw new Error('localStorage persist failed')
-    }
-
-    if (!sessionEmail) {
-      console.warn('[saveNote] path=local-only (no Supabase insert)', {
-        reason: 'no-session-email',
-        sessionStatus: status,
-        validSession,
-        sessionEmail: '(none)',
-      })
-      console.warn(
-        'No authenticated user (email); note kept in UI/history only. Supabase sync skipped.',
-      )
-      setSavingStatus('saved')
-      return
-    }
-    if (!isSupabaseConfigured) {
-      console.warn('[saveNote] path=local-only (no Supabase insert)', {
-        reason: 'supabase-not-configured',
-        sessionStatus: status,
-        validSession,
-        sessionEmail,
-      })
-      console.error(
-        'Save error: Supabase not configured (missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY). Note saved locally only.',
-      )
-      setSavingStatus('saved')
-      return
-    }
-
-    const rowUserId = sessionEmail
-    const clientNoteId = note.id
-    const insertPayload = {
-      user_id: rowUserId,
-      raw_text: tx,
-      structured_output: buildStructuredOutputForSupabase(res),
-    }
-
-    console.log('[saveNote] path=supabase-insert (about to insert)', {
-      sessionStatus: status,
-      validSession,
-      sessionEmail,
-      userIdForRow: rowUserId,
-      noteId: clientNoteId,
-    })
-    logNotesTableRlsAssumptions({
-      userIdForRow: rowUserId,
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    })
-    console.log('[saveNote] insert payload (exact)', insertPayload)
-
-    const verifyNoteRowVisible = async (phase: string, noteId: string) => {
-      const verifyRes = await supabase
-        .from('notes')
-        .select('id, user_id')
-        .eq('id', noteId)
-        .eq('user_id', rowUserId)
-        .maybeSingle()
-      console.log(`[saveNote] verify select (${phase})`, {
-        noteId,
-        userId: rowUserId,
-        rowFound: !!verifyRes.data,
-        data: verifyRes.data,
-        fullResponse: verifyRes,
-      })
-      if (verifyRes.error) {
-        logPostgrestError('[saveNote] verify select error', verifyRes.error)
-      }
-      return verifyRes
-    }
-
     try {
-      const attemptInsert = async () => {
-        const res = await supabase.from('notes').insert(insertPayload).select('id')
-        console.log('[saveNote] insert response (full)', res)
-        if (res.error) logPostgrestError('[saveNote] insert error', res.error)
-        return res
-      }
-
-      let { data, error } = await attemptInsert()
-      if (error) {
-        if (error.code === '23505') {
-          console.warn('[saveNote] insert duplicate key (23505) — row may already exist', {
-            code: error.code,
-            message: error.message,
-          })
-          await verifyNoteRowVisible('after-23505', clientNoteId)
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Note saved (row already exists for this id)')
-          }
-          setSavingStatus('saved')
-          return
-        }
-        console.error('Save error:', error)
-        await new Promise((r) => setTimeout(r, 400))
-        const retry = await attemptInsert()
-        data = retry.data
-        error = retry.error
-        if (error) {
-          if (error.code === '23505') {
-            await verifyNoteRowVisible('after-23505-retry', clientNoteId)
-            if (process.env.NODE_ENV === 'development') {
-              console.log('Note saved (row already exists after retry)')
-            }
-            setSavingStatus('saved')
-            return
-          }
-          logPostgrestError('[saveNote] insert error (after retry)', error)
-          setSavingStatus('error')
-          throw new Error(error.message || 'Supabase insert failed after retry')
-        }
-      }
-      if (!error && (!data || data.length === 0)) {
-        console.warn(
-          '[saveNote] insert succeeded but returned no rows — check RLS SELECT policies or omit .select() behavior',
-        )
-      }
-      const serverId = data?.[0]?.id != null ? String(data[0].id) : null
-      if (serverId && serverId !== clientNoteId) {
-        setSavedNotes((prev) => prev.map((row) => (row.id === clientNoteId ? { ...row, id: serverId } : row)))
-        setSelectedNote((prev) => (prev && prev.id === clientNoteId ? { ...prev, id: serverId } : prev))
-      }
-      await verifyNoteRowVisible('after-successful-insert', serverId ?? clientNoteId)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Note saved', data?.length ?? 0, 'row(s)')
-      }
+      await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify(note) })
+      setSavedNotes(prev => [note, ...prev])
       setSavingStatus('saved')
+      setNoteSaved(true)
+      setTimeout(() => setNoteSaved(false), 2300)
     } catch (err) {
-      console.error('Save error:', err)
       setSavingStatus('error')
+      setError(err instanceof Error ? err.message : 'Note was not saved.')
       throw err
     }
   }
@@ -2747,56 +2484,36 @@ export default function Home() {
   }
 
   const deleteNote = async (id: string) => {
-    const updated = savedNotes.filter((n) => n.id !== id)
-    setSavedNotes(updated)
     try {
-      if (sessionEmail && notesStorageKey) {
-        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
-      }
-    } catch {}
-    if (selectedNote?.id === id) setSelectedNote(null)
-    if (!sessionEmail || !isSupabaseConfigured) return
+      await notesRequest('/api/notes?id=' + encodeURIComponent(id), { method: 'DELETE' })
+      setSavedNotes(prev => prev.filter(n => n.id !== id))
+      if (selectedNote?.id === id) setSelectedNote(null)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Delete failed.') }
+  }
+
+  const loadMoreNotes = async () => {
     try {
-      const { error } = await supabase
-        .from('notes')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', sessionEmail)
-      if (error) {
-        console.error('[deleteNote] Supabase delete failed:', error.message, error)
-      }
-    } catch (e) {
-      console.error('[deleteNote] Unexpected error:', e)
-    }
+      const data = await notesRequest('/api/notes?offset=' + savedNotes.length)
+      const rows = data.notes.map((n: { id: string; created_at: string; raw_text: string; structured_output: Partial<StructureResult> }) => ({
+        id: n.id, date: n.created_at, transcript: n.raw_text,
+        result: normalizeStructureResult({ ...emptyResult, ...n.structured_output }),
+      }))
+      setSavedNotes(prev => [...prev, ...rows.filter((n: SavedNote) => !prev.some(p => p.id === n.id))])
+      setHasMoreNotes(data.hasMore)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load notes.') }
   }
 
   const updateNote = async (id: string, res: StructureResult, tx: string) => {
-    const updated = savedNotes.map((n) =>
-      n.id === id ? { ...n, result: res, transcript: tx } : n
-    )
-    setSavedNotes(updated)
+    setSavingStatus('saving')
     try {
-      if (sessionEmail && notesStorageKey) {
-        localStorage.setItem(notesStorageKey, JSON.stringify(updated))
-      }
-    } catch {}
-    if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
-    if (result) setResult(res)
-    if (!sessionEmail || !isSupabaseConfigured) return
-    try {
-      const { error } = await supabase
-        .from('notes')
-        .update({
-          raw_text: tx,
-          structured_output: buildStructuredOutputForSupabase(res),
-        })
-        .eq('id', id)
-        .eq('user_id', sessionEmail)
-      if (error) {
-        console.error('[updateNote] Supabase update failed:', error.message, error)
-      }
-    } catch (e) {
-      console.error('[updateNote] Unexpected error:', e)
+      await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify({ id, result: res, transcript: tx }) })
+      setSavedNotes(prev => prev.map(n => n.id === id ? { ...n, result: res, transcript: tx } : n))
+      if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
+      if (result) setResult(res)
+      setSavingStatus('saved')
+    } catch (err) {
+      setSavingStatus('error')
+      setError(err instanceof Error ? err.message : 'Update failed.')
     }
   }
 
@@ -2814,6 +2531,7 @@ export default function Home() {
   const correctRecorderRef = useRef<MediaRecorder | null>(null)
 
   const startCorrectionRecording = async (noteId: string, originalTranscript: string) => {
+    if (!session?.user) { setShowLoginPrompt(true); return }
     try {
       setError('')
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Audio not supported.')
@@ -2838,6 +2556,8 @@ export default function Home() {
           fd.append('file', file)
           const txRes = await fetch('/api/transcribe', { method: 'POST', body: fd })
           const txData = await txRes.json()
+          if (handleAiAccessResponse(txRes.status, txData)) return
+          if (!txRes.ok) throw new Error(txData.error || 'Failed to transcribe correction.')
           const correction = txData.transcript || txData.text || ''
           const combined = `ORIGINAL NOTE: ${originalTranscript}\n\nCORRECTION: ${correction}`
           const strRes = await fetch('/api/structure', {
@@ -2850,6 +2570,7 @@ export default function Home() {
             }),
           })
           const strData = await strRes.json()
+          if (handleAiAccessResponse(strRes.status, strData)) return
           if (!strRes.ok) throw new Error(strData.error)
           let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
           final = inferMissingContact(final)
@@ -2925,6 +2646,7 @@ export default function Home() {
       try { mediaRecorderRef.current?.stop() } catch { setIsRecording(false) }
       return
     }
+    if (!session?.user) { setShowLoginPrompt(true); return }
     try {
       setError('')
       setCopied(false)
@@ -2966,18 +2688,16 @@ export default function Home() {
     }
   }
 
-  const processRecordedAudio = async (blob: Blob) => {
-    // Check subscription FIRST before any processing
-    const EXEMPT_EMAILS = ['ignacio.isk@gmail.com']
-    const userEmail = session?.user?.email || ''
-    if (!EXEMPT_EMAILS.includes(userEmail)) {
-      const subRes = await fetch('/api/subscription')
-      const subData = await subRes.json()
-      if (subData.active === false && savedNotes.length >= 10) {
-        setShowPaywall('limit')
-        return
-      }
+  const handleAiAccessResponse = (statusCode: number, data: { code?: string }): boolean => {
+    if (statusCode === 401) { setShowLoginPrompt(true); return true }
+    if (statusCode === 403 && data.code === 'QUOTA_EXCEEDED') {
+      setShowPaywall('limit')
+      return true
     }
+    return false
+  }
+
+  const processRecordedAudio = async (blob: Blob) => {
 
     processingStartedAtRef.current = Date.now()
     setLoading(true)
@@ -2997,6 +2717,7 @@ export default function Home() {
 
       const transcribeRes = await fetch('/api/transcribe', { method: 'POST', body: formData })
       const transcribeData = await transcribeRes.json()
+      if (handleAiAccessResponse(transcribeRes.status, transcribeData)) return
       if (!transcribeRes.ok) throw new Error(transcribeData.error || 'Failed to transcribe.')
 
       const tx = transcribeData.transcript || transcribeData.text || ''
@@ -3014,6 +2735,7 @@ export default function Home() {
       })
       
       const structureData = await structureRes.json()
+      if (handleAiAccessResponse(structureRes.status, structureData)) return
       if (!structureRes.ok) {
         throw new Error(structureData.error || 'Failed to structure.')
       }
@@ -3081,6 +2803,7 @@ export default function Home() {
 
   const processTypedNote = async () => {
     if (!input.trim()) return
+    if (!session?.user) { setShowLoginPrompt(true); return }
     processingStartedAtRef.current = Date.now()
     setLoading(true)
     clearTryWalkthrough()
@@ -3103,6 +2826,7 @@ export default function Home() {
         }),
       })
       const data = await res.json()
+      if (handleAiAccessResponse(res.status, data)) return
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
@@ -5026,6 +4750,7 @@ export default function Home() {
                   </div>
                 ) : (
                   <ul className="space-y-1.5">
+                    {hasMoreNotes && <li><button type="button" onClick={loadMoreNotes} className="w-full rounded-xl border p-3 text-sm text-indigo-600">Load older notes to include in search</button></li>}
                     {savedNotes.filter((note) => {
                       if (!searchQuery.trim()) return true
                       const q = searchQuery.toLowerCase()
@@ -5149,20 +4874,12 @@ export default function Home() {
             <button
               onClick={async () => {
                 if (!confirm('Delete all saved notes?')) return
-                setSavedNotes([])
                 try {
+                  await notesRequest('/api/notes?all=true', { method: 'DELETE' })
+                  setSavedNotes([])
+                  setSelectedNote(null)
                   if (notesStorageKey) localStorage.removeItem(notesStorageKey)
-                } catch {}
-                if (sessionEmail && isSupabaseConfigured) {
-                  try {
-                    const { error } = await supabase.from('notes').delete().eq('user_id', sessionEmail)
-                    if (error) {
-                      console.error('[clearAllNotes] Supabase delete failed:', error.message, error)
-                    }
-                  } catch (e) {
-                    console.error('[clearAllNotes] Unexpected error:', e)
-                  }
-                }
+                } catch (err) { setError(err instanceof Error ? err.message : 'Delete failed.') }
               }}
               className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-[13px] font-medium text-red-600 transition-all hover:bg-red-100"
             >
@@ -5318,7 +5035,7 @@ export default function Home() {
             <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
               {showPaywall === 'upgrade'
                 ? 'Upgrade to Folup Pro'
-                : "You've used your 10 free notes"}
+                : "You've used your free AI allowance"}
             </h2>
             <p className="mb-6 text-center text-[14px] text-[#6b7280]">
               {showPaywall === 'upgrade'

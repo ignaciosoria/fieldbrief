@@ -208,7 +208,10 @@ export function resolveRelativePhraseToMmdd(
   const t = (raw || '').trim()
   if (!t) return null
 
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) return t
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(t)) {
+    const date = DateTime.fromFormat(t, 'MM/dd/yyyy', { zone: z })
+    return date.isValid ? date.toFormat('MM/dd/yyyy') : null
+  }
   if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
     const d = DateTime.fromISO(t.slice(0, 10), { zone: z })
     return d.isValid ? d.toFormat('MM/dd/yyyy') : null
@@ -231,11 +234,7 @@ export function resolveRelativePhraseToMmdd(
   }
 
   if (/\bnext\s+week\b/.test(lower) || /\bpr[oó]xima\s+semana\b/.test(lower)) {
-    const daysToMonday = (8 - anchorDt.weekday) % 7
-    const upcomingMonday = anchorDt.plus({
-      days: daysToMonday === 0 ? 0 : daysToMonday,
-    })
-    return upcomingMonday.plus({ days: 7 }).toFormat('MM/dd/yyyy')
+    return anchorDt.startOf('week').plus({ weeks: 1 }).toFormat('MM/dd/yyyy')
   }
 
   const luxWd = parseWeekdayToLuxonWeekday(s)

@@ -1,12 +1,13 @@
 import Stripe from "stripe"
 import { NextResponse } from "next/server"
-import { supabase } from "../../../../lib/supabase"
+import { serverDb } from "../../../../lib/serverDb"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2026-03-25.dahlia",
 })
 
 export async function POST(request: Request) {
+  const supabase = serverDb()
   const body = await request.text()
   const sig = request.headers.get("stripe-signature")!
 
