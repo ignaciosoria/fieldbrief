@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:structured-ai": "tsx scripts/structured-ai-harness.ts",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "test:output-quality": "node --import tsx --test eval/output-quality.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

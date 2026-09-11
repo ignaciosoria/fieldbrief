@@ -6,7 +6,6 @@ import {
   verbForSupportingStructuredType,
   type ActionStructuredFields,
 } from './actionTitleContract'
-import { hasExplicitMeetScheduleIntent, isNarrativeMeetingDiscussionContext } from './actionIntentGuard'
 import {
   ensureMinimumCrmFullInsights,
   filterInsightsToContextOnly,
@@ -204,66 +203,6 @@ function parseCommercialContext(o: Record<string, unknown>): CommercialContextFi
   }
 }
 
-/** True when the note explicitly mentions sending/sharing (never use primary follow_up alone for these). */
-export function noteHasExplicitSendIntent(note: string): boolean {
-  const n = note.trim()
-  if (!n) return false
-  if (
-    /\b(send|enviar|env[íi]a|mandar|manda|compartir|forward|deliver|email|e-mail)\b/i.test(n)
-  ) {
-    return true
-  }
-  if (/\bshare\s+/i.test(n)) return true
-  if (/\bshare\b/i.test(n) && !/\bmarket\s+share\b/i.test(n)) return true
-  return false
-}
-
-/**
- * When the transcript orders send/email before call, the model sometimes marks primary as call/follow_up.
- * Correct primary.type so the title builder does not emit "Call" for a same-day send.
- */
-export function alignStructuredPayloadWithNote(
-  note: string,
-  payload: StructuredAiPayload,
-): StructuredAiPayload {
-  const n = note.trim()
-  if (!n) return payload
-
-  const primary = { ...payload.primary }
-  const supporting = payload.supporting.map((s) => ({ ...s }))
-
-  const idxSend = n.search(
-    /\b(send|enviar|env[íi]a|mandar|manda|compartir|email|e-mail|share\s+|deliver|forward|program|proposal|contract)\b/i,
-  )
-  const idxCall = n.search(/\b(call|I['']?ll\s+call|llamar|llamada|phone|tel[ée]fono|ring)\b/i)
-
-  if (idxSend !== -1 && idxCall !== -1 && idxSend < idxCall) {
-    if (primary.type === 'call' || primary.type === 'follow_up') {
-      primary.type = 'send'
-    }
-    /** Second action is a call — prefer explicit supporting type `call` over `other`. */
-    const first = supporting[0]
-    if (first && first.type === 'other') {
-      supporting[0] = { ...first, type: 'call' }
-    }
-  }
-
-  if (
-    primary.type === 'meeting' &&
-    (isNarrativeMeetingDiscussionContext(n) || !hasExplicitMeetScheduleIntent(n))
-  ) {
-    primary.type = 'follow_up'
-  }
-
-  if (noteHasExplicitSendIntent(n)) {
-    if (primary.type === 'follow_up' || primary.type === 'meeting') {
-      primary.type = 'send'
-    }
-  }
-
-  return { ...payload, primary, supporting }
-}
-
 function normalizeDateMmdd(d: string): string {
   const t = d.trim()
   if (!t) return ''
@@ -383,11 +322,11 @@ export function structuredPayloadToStructureBody(
   noteLanguage: string,
   rawNote?: string,
 ): StructureBodyLike {
-  const aligned = rawNote?.trim()
-    ? alignStructuredPayloadWithNote(rawNote, payload)
-    : payload
   const langEs = isSpanish(noteLanguage)
-  const { primary, supporting, insights, crmSummary, commercialContext } = aligned
+  // Preserve extracted intent. A word elsewhere in the note cannot establish
+  // an action's actor, negation or tense. Ranking may reorder actions later,
+  // but this mapper must not turn a call/meeting into a different commitment.
+  const { primary, supporting, insights, crmSummary, commercialContext } = payload
 
   const company = primary.company.trim()
   const contact = primary.contact.trim()

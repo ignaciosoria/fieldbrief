@@ -8,14 +8,19 @@ Migrations 001 and 002 were applied through its SQL editor and succeeded.
 Remote checks confirmed RLS on all four tables, no CRUD permissions for anon/authenticated,
 and server-role access. The quota function allows 10 free structure attempts and denies
 the 11th; this check ran inside a rolled-back transaction. Public roles cannot execute it.
-No legacy rows were deleted. Application code is not deployed yet: the legacy browser
-cannot read/write the closed tables until the new server-backed application is deployed.
+No legacy rows were deleted. Application commit `ae631cb` was deployed to Vercel Production
+(`6NLVwBZ65PQzue7X31D4EjHDTD9L`), with Ready status and the www.folup.app domain assigned.
+Production smoke checks: homepage 200; anonymous GET/PUT/DELETE notes and POST structure/transcribe
+all return 401. No OpenAI calls were needed for these checks.
+Browser smoke: Google sign-in returned to the signed-in Record screen, and History
+showed an empty new history without an error. Authenticated create/update/delete and
+two-account end-to-end isolation still need explicit integration coverage.
 
 Local verification: 15 tests passed, TypeScript passed, production build passed.
 These checks do not establish real-model quality or authenticated production UX.
 No paid AI tests have been run.
 
-## 1. Server-side AI access (database applied; application prepared locally)
+## 1. Server-side AI access (deployed)
 
 - Both AI routes require a session and an atomic database usage reservation.
 - Free allowance: 10 transcription attempts and 10 structure attempts per account.
@@ -47,7 +52,7 @@ Tests in `test/ai-access.test.ts` exercise anonymous denial, both operation type
 quota denial, rate-limit denial and database outage handling without paid APIs.
 `test/ai-usage-db.test.ts` additionally exercises quotas and role permissions in PGlite.
 
-## 2. Private notes (database applied; application prepared locally)
+## 2. Private notes (deployed)
 
 New session-authenticated API routes scope every operation to the signed-in email.
 The browser cannot supply ownership. Composite keys isolate reused note UUIDs across accounts.
@@ -55,7 +60,7 @@ History loads 50 rows at a time; saves/deletes only update UI state after server
 New notes use `folup_notes`; legacy `notes` remains closed and is not imported.
 Tests cover validation, role denial and owner-key separation, not a full logged-in browser flow.
 
-## 3. Calendar dates (prepared locally)
+## 3. Calendar dates (deployed)
 
 Next week uses the following calendar week's Monday consistently in prompt context and resolver.
 Invalid dates are rejected. Export no longer silently advances overdue dates.
