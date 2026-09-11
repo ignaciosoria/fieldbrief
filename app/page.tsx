@@ -2217,6 +2217,9 @@ export default function Home() {
     setInput('')
     setPendingVisit(null)
     setCurrentNoteId(null)
+    setLoading(false)
+    setSavingStatus('idle')
+    setNoteSaved(false)
     if (!sessionEmail) return
     const load = async () => {
       try {
@@ -2313,16 +2316,20 @@ export default function Home() {
 
   const saveNote = async (res: StructureResult, tx: string): Promise<void> => {
     if (!sessionEmail) { setShowLoginPrompt(true); return }
+    const owner=sessionEmail
+    if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
     const note: SavedNote = { id: crypto.randomUUID(), date: new Date().toISOString(), result: res, transcript: tx }
     setCurrentNoteId(note.id)
     setSavingStatus('saving')
     try {
       await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify(note) })
+      if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       setSavedNotes(prev => [note, ...prev])
       setSavingStatus('saved')
       setNoteSaved(true)
-      setTimeout(() => setNoteSaved(false), 2300)
+      setTimeout(() => {if(owner===audioOwnerRef.current) setNoteSaved(false)}, 2300)
     } catch (err) {
+      if(owner!==audioOwnerRef.current) throw err
       setSavingStatus('error')
       setError(err instanceof Error ? err.message : 'Note was not saved.')
       throw err
@@ -2584,21 +2591,25 @@ export default function Home() {
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
 
   const refreshClarifiedVisit = async (r:StructureResult, tx:string):Promise<StructureResult> => {
+    const owner=audioOwnerRef.current
     const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       note:tx,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
     })})
     const updated = await response.json()
+    if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
     if (!response.ok) throw Error('Clarification could not be processed')
     return updated
   }
 
   const correctVisitText = async (r:StructureResult,tx:string,correction:string,noteId?:string) => {
+    const owner=audioOwnerRef.current
     if (pendingCorrection || correctionBusyRef.current || correctionStartRef.current || isCorrectingRecording) throw Error('Finish or discard the voice correction first.')
     const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
     const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
     })})
     const updated = await response.json()
+    if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
     if (!response.ok) {handleAiAccessResponse(response.status,updated);throw Error('Correction failed')}
     setTranscript(combined)
     await acceptVisit(updated,combined,noteId)
@@ -2951,6 +2962,7 @@ export default function Home() {
   }
 
   const processTypedNote = async () => {
+    const owner=audioOwnerRef.current
     if (pendingAudio || audioProcessingRef.current || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
@@ -2976,6 +2988,7 @@ export default function Home() {
         }),
       })
       const data = await res.json()
+      if(owner!==audioOwnerRef.current) return
       if (handleAiAccessResponse(res.status, data)) return
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
       if (data.schemaVersion === 2) { await acceptVisit(data,input); return }
@@ -2994,6 +3007,7 @@ export default function Home() {
       }
       final = applyConfidenceDefaults(final)
       await awaitMinProcessingDisplay()
+      if(owner!==audioOwnerRef.current) return
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: input })
       } else if (needsNextStepTargetPick(final)) {
@@ -3010,11 +3024,11 @@ export default function Home() {
           console.error('Save failed:', err)
         })
       }
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong.')
+    } catch (err: unknown) {
+      if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
       await new Promise((r) => setTimeout(r, 72))
-      setLoading(false)
+      if(owner===audioOwnerRef.current) setLoading(false)
     }
   }
 

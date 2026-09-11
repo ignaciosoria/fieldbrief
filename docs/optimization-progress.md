@@ -1,5 +1,20 @@
 # Folup optimization — sequential evaluation
 
+## Account-switch continuation guards — September 11, 2026, 16:04 UTC
+
+LOCAL ONLY, not deployed. Inspection found typed extraction could finish after a
+session switch and reach acceptVisit/saveNote; new-note save acknowledgements also
+updated the current history without an owner check. Added owner checks after typed
+JSON and legacy display delay, before/after new-note save, after text correction
+and clarification responses, and around typed error/finally and saved-toast timer.
+Account reset clears loading/saving indicators. No server authorization changes.
+Existing 120 tests and TypeScript pass. These are regression checks, NOT a new
+browser integration test of session switching. Must verify synthetic delayed
+response + switch before deployment. Guards compare email as existing voice flow
+does; A-to-B-to-A generations and unobserved cross-tab cookie changes are not fully
+covered. In-flight server writes are not cancelled by these UI checks. Do not
+claim universal session-race isolation. No paid calls. Production remains 0db80a8.
+
 ## CURRENT PRODUCTION — September 11, 2026, 15:15 UTC
 
 0db80a8 is DEPLOYED on www.folup.app. Vercel Ready, Production domain and exact
