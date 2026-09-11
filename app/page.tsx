@@ -13,6 +13,7 @@ import VisitSummary from './components/VisitSummary'
 import AudioRecovery from './components/AudioRecovery'
 import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
+import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
 import { notesRequest } from '../lib/notesClient'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -2032,6 +2033,9 @@ export default function Home() {
   const [noteSaved, setNoteSaved] = useState(false)
   const [showEditArea, setShowEditArea] = useState(false)
   const [isCorrectingRecording, setIsCorrectingRecording] = useState(false)
+  const [pendingCorrection,setPendingCorrection] = useState<VoiceCorrectionDraft<StructureResult>|null>(null)
+  const correctionBusyRef=useRef(false)
+  const correctionStartRef=useRef(false)
   const [correctingSeconds, setCorrectingSeconds] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [showCalendarToast, setShowCalendarToast] = useState(false)
@@ -2204,7 +2208,13 @@ export default function Home() {
     setSavedNotes([])
     setSelectedNote(null)
     setPendingAudio(null)
+    setPendingCorrection(null)
     setTranscriptContext(null)
+    setResult(null)
+    setTranscript('')
+    setInput('')
+    setPendingVisit(null)
+    setCurrentNoteId(null)
     if (!sessionEmail) return
     const load = async () => {
       try {
@@ -2522,6 +2532,7 @@ export default function Home() {
   }
 
   const deleteNote = async (id: string) => {
+    if(pendingCorrection || correctionBusyRef.current || isCorrectingRecording) {setError('Finish or discard the voice correction first.');return}
     try {
       await notesRequest('/api/notes?id=' + encodeURIComponent(id), { method: 'DELETE' })
       setSavedNotes(prev => prev.filter(n => n.id !== id))
@@ -2542,9 +2553,11 @@ export default function Home() {
   }
 
   const updateNote = async (id: string, res: StructureResult, tx: string) => {
+    const owner=audioOwnerRef.current
     setSavingStatus('saving')
     try {
       await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify({ id, result: res, transcript: tx }) })
+      if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       setSavedNotes(prev => prev.some(n=>n.id===id)
         ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx } : n)
         : [{id,date:res.capturedAt || new Date().toISOString(),result:res,transcript:tx},...prev])
@@ -2552,6 +2565,7 @@ export default function Home() {
       if (result) setResult(res)
       setSavingStatus('saved')
     } catch (err) {
+      if(owner!==audioOwnerRef.current) throw err
       setSavingStatus('error')
       setError(err instanceof Error ? err.message : 'Update failed.')
       throw err
@@ -2581,6 +2595,7 @@ export default function Home() {
   }
 
   const correctVisitText = async (r:StructureResult,tx:string,correction:string,noteId?:string) => {
+    if (pendingCorrection || correctionBusyRef.current || correctionStartRef.current || isCorrectingRecording) throw Error('Finish or discard the voice correction first.')
     const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
     const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
@@ -2602,12 +2617,81 @@ export default function Home() {
 
   const correctRecorderRef = useRef<MediaRecorder | null>(null)
 
+  const processCorrectionAudio = async (draft:VoiceCorrectionDraft<StructureResult>) => {
+    if(correctionBusyRef.current || draft.owner!==audioOwnerRef.current) return
+    correctionBusyRef.current=true
+    setPendingCorrection(draft)
+    setLoading(true)
+    setError('')
+    try {
+      await resumeVoiceCorrection(draft,{
+        currentOwner:()=>audioOwnerRef.current,
+        checkpoint:setPendingCorrection,
+        transcribe:async blob=>{
+          if(blob.size>MAX_AUDIO_BYTES) throw Error(AUDIO_TOO_LARGE)
+          const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm'
+          const fd=new FormData()
+          fd.append('file',new File([blob],`correction.${ext}`,{type:blob.type}))
+          const response=await fetchWithTimeout('/api/transcribe',{method:'POST',body:fd})
+          const data=await response.json().catch(()=>({error:response.status===413?AUDIO_TOO_LARGE:'Audio upload failed. Please retry.'}))
+          if(draft.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
+          if(!response.ok) {handleAiAccessResponse(response.status,data);throw Error(data.error || 'Failed to transcribe correction.')}
+          return data.transcript || data.text || ''
+        },
+        structure:async (note,now,timezone)=>{
+          const response=await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,clientNow:now,timezone})})
+          const data=await response.json().catch(()=>({error:'Correction could not be processed. Please retry.'}))
+          if(draft.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
+          if(!response.ok) {handleAiAccessResponse(response.status,data);throw Error(data.error || 'Correction failed.')}
+          return normalizeStructureResult({...emptyResult,...data})
+        },
+        accept:async (next,combined,noteId)=>{
+          if(next.extraction?.questions.length) {await acceptVisit(next,combined,noteId);return}
+          // Do not replace the visible original until its update is durably saved.
+          await updateNote(noteId,next,combined)
+          setResult(next)
+          setTranscript(combined)
+          setCurrentNoteId(noteId)
+        },
+      })
+      setPendingCorrection(null)
+    } catch(err:unknown) {
+      if(!(err instanceof CorrectionOwnerChanged) && draft.owner===audioOwnerRef.current) setError(err instanceof Error?err.message:'Correction failed.')
+    } finally {
+      correctionBusyRef.current=false
+      setLoading(false)
+    }
+  }
+
+  useEffect(()=>()=>{
+    const recorder=correctRecorderRef.current
+    if(recorder) {
+      recorder.onstop=null
+      try {if(recorder.state!=='inactive')recorder.stop()} catch {}
+      recorder.stream.getTracks().forEach(t=>t.stop())
+      correctRecorderRef.current=null
+    }
+    clearInterval(correctTimerRef.current!)
+    setIsCorrectingRecording(false)
+  },[sessionEmail])
+
   const startCorrectionRecording = async (noteId: string, originalTranscript: string) => {
-    if (!session?.user) { setShowLoginPrompt(true); return }
+    if (correctionStartRef.current || correctionBusyRef.current || correctRecorderRef.current || pendingCorrection || isCorrectingRecording ||
+        recordingStartRef.current || audioProcessingRef.current || pendingAudio || isRecording || loading || pendingVisit) return
+    if (!session?.user || !sessionEmail) { setShowLoginPrompt(true); return }
+    const originalNote=savedNotes.find(n=>n.id===noteId)
+    if(!originalNote) {setError('The original note is unavailable. Reload history before correcting it.');return}
+    correctionStartRef.current=true
+    const owner=sessionEmail
+    let recordingStream:MediaStream|undefined
     try {
       setError('')
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Audio not supported.')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordingStream=stream
+      if(owner!==audioOwnerRef.current) {stream.getTracks().forEach(t=>t.stop());return}
+      const capturedAt=getClientNowIso()
+      const correctionTimezone=getClientTimezone()
       const mimeType = pickSupportedMimeType()
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
       correctRecorderRef.current = recorder
@@ -2615,58 +2699,26 @@ export default function Home() {
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
+        correctRecorderRef.current=null
         setIsCorrectingRecording(false)
         clearInterval(correctTimerRef.current!)
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
-        if (blob.size === 0) return
-        processingStartedAtRef.current = Date.now()
-        setLoading(true)
-        try {
-          const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
-          const file = new File([blob], `correction.${ext}`, { type: blob.type })
-          const fd = new FormData()
-          fd.append('file', file)
-          const txRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: fd })
-          const txData = await txRes.json()
-          if (handleAiAccessResponse(txRes.status, txData)) return
-          if (!txRes.ok) throw new Error(txData.error || 'Failed to transcribe correction.')
-          const correction = txData.transcript || txData.text || ''
-          const originalNote = savedNotes.find(n => n.id === noteId)
-          const referenceNow = originalNote?.result.capturedAt || originalNote?.date || getClientNowIso()
-          const combined = appendVisitCorrection(originalTranscript,correction,getClientNowIso(),getClientTimezone())
-          const strRes = await fetch('/api/structure', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              note: combined,
-              timezone: originalNote?.result.noteTimezone || getClientTimezone(),
-              clientNow: referenceNow,
-            }),
-          })
-          const strData = await strRes.json()
-          if (handleAiAccessResponse(strRes.status, strData)) return
-          if (!strRes.ok) throw new Error(strData.error)
-          if (strData.schemaVersion === 2) { await acceptVisit(strData,combined,noteId); return }
-          let final = normalizeStructureResult({ ...emptyResult, ...strData } as StructureResult)
-          final = inferMissingContact(final)
-          final = finalizeNextStepFields(final, combined)
-          final = applyConfidenceDefaults(final)
-          await awaitMinProcessingDisplay()
-          await updateNote(noteId, final, combined)
-        } catch (err: any) {
-          setError(err?.message || 'Correction failed.')
-        } finally {
-          await new Promise((r) => setTimeout(r, 72))
-          setLoading(false)
-        }
+        chunks.length=0
+        if(owner!==audioOwnerRef.current) return
+        if(blob.size===0) {setError('No audio was captured. Please check your microphone and try again.');return}
+        await processCorrectionAudio({blob,owner,noteId,originalTranscript,capturedAt,correctionTimezone,
+          referenceNow:originalNote.result.capturedAt || originalNote.date,
+          noteTimezone:originalNote.result.noteTimezone || correctionTimezone})
       }
+      recorder.start()
       setCorrectingSeconds(0)
       correctTimerRef.current = setInterval(() => setCorrectingSeconds((s) => s + 1), 1000)
-      recorder.start()
       setIsCorrectingRecording(true)
-    } catch (err: any) {
-      setError(err?.message || 'Could not start correction.')
-    }
+    } catch (err: unknown) {
+      recordingStream?.getTracks().forEach(t=>t.stop())
+      correctRecorderRef.current=null
+      setError(err instanceof Error?err.message:'Could not start correction.')
+    } finally {correctionStartRef.current=false}
   }
 
   const stopCorrectionRecording = () => {
@@ -2721,7 +2773,7 @@ export default function Home() {
       try { mediaRecorderRef.current?.stop() } catch { setIsRecording(false) }
       return
     }
-    if (recordingStartRef.current || audioProcessingRef.current || pendingAudio) return
+    if (recordingStartRef.current || audioProcessingRef.current || pendingAudio || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!session?.user || !sessionEmail) { setShowLoginPrompt(true); return }
     recordingStartRef.current=true
     let recordingStream:MediaStream|undefined
@@ -2901,7 +2953,7 @@ export default function Home() {
   }
 
   const processTypedNote = async () => {
-    if (pendingAudio || audioProcessingRef.current) return
+    if (pendingAudio || audioProcessingRef.current || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
     processingStartedAtRef.current = Date.now()
@@ -3943,6 +3995,25 @@ export default function Home() {
         </div>
       )}
 
+      {pendingCorrection && pendingCorrection.owner===sessionEmail && <div
+        role="dialog" aria-modal="true" aria-label="Recover voice correction"
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/30 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-5 text-gray-900 shadow-xl">
+          <h2 className="text-lg font-semibold">Voice correction</h2>
+          {pendingCorrection.correction && <>
+            <p className="mt-2 text-sm">Transcription ready. Retrying will not transcribe again.</p>
+            <textarea aria-label="Correction transcript" readOnly value={pendingCorrection.correction}
+              className="mt-2 w-full select-text rounded-xl border border-gray-200 p-3 text-sm" />
+          </>}
+          {pendingCorrection.result && <p className="mt-2 text-sm">The corrected result is ready. Retry to save it.</p>}
+          {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+          <AudioRecovery blob={pendingCorrection.blob} busy={processingBusy}
+            retryLabel={pendingCorrection.result?'Retry saving correction':pendingCorrection.combined?'Retry processing correction':'Retry correction'}
+            onRetry={()=>{void processCorrectionAudio(pendingCorrection)}}
+            onDiscard={()=>{setPendingCorrection(null);setError('')}} />
+        </div>
+      </div>}
+
       {pendingVisit?.result.extraction?.questions[0] && <VisitClarification
         key={JSON.stringify(pendingVisit.result.extraction.questions[0])}
         extraction={pendingVisit.result.extraction}
@@ -4041,7 +4112,7 @@ export default function Home() {
                 ref={tryWalkthroughRecordTargetRef}
                 onClick={toggleRecording}
                 aria-label={isRecording ? 'Stop recording' : 'Record visit'}
-                disabled={processingBusy || !!pendingAudio}
+                disabled={processingBusy || !!pendingAudio || !!pendingCorrection || isCorrectingRecording}
                 className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#4F46E5',

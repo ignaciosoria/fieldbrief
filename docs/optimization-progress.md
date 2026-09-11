@@ -1,5 +1,41 @@
 # Folup optimization — sequential evaluation
 
+## Correction recovery checkpoint — September 11, 2026, 12:40 UTC
+
+LOCAL ONLY — do not claim deployed or browser-verified yet. Correction recording
+now retains a tab-local VoiceCorrectionDraft with audio, original note/owner,
+original reference date/zone and a correction timestamp captured at recording start.
+resumeVoiceCorrection checkpoints successful transcription and extraction, so
+structure retries skip ASR and save retries skip both AI calls. An unsuccessful
+save does not replace the visible original. Ambiguous results transfer to the
+existing clarification flow. A global recovery dialog offers download, stage-specific
+retry, transcript preview and explicitly confirmed discard; audio is not durable
+across tab closure. No localStorage audio or production test data was created.
+
+Recording now guards duplicate starts and overlap with main recording/processing,
+releases the stream on constructor/start failure and stops the correction recorder
+on account change/unmount. Owner checks reject late transcription/extraction
+results; updateNote also rejects late UI writes after an account change. Session
+change clears visible result/transcript/input and pending clarification/correction.
+This is not a full audit of every unrelated async frontend callback.
+
+Five new deterministic tests cover failed ASR, structure retry with stable dates,
+save-only retry, account changes at every stage and blank speech. All 103 unit
+tests pass; `next build --webpack` passes including TypeScript. No paid API calls;
+ledger remains $4.0527455 available. Existing deployed commit remains c4bd917.
+
+NEXT: verify the recovery dialog and the full correction path on mobile/desktop
+with synthetic transport failures, including constructor failure, download/discard,
+and successful retry targeting the same history note; then deploy this checkpoint.
+Do not conflate controller tests with browser/microphone evidence. Browser actions
+must use CUA; its current API does not expose route interception. Existing
+scripts/ui-smoke.mjs uses standalone Playwright, so it was not rerun under the
+current CUA-only computer-interaction instruction. A local mock HTTP gateway can
+provide synthetic API failures while CUA drives the actual app if needed.
+Remaining limitation: notesRequest save has no timeout yet (offline rejection is
+recoverable, but a hanging save can keep its spinner). Address before deployment.
+Original overnight stop deadline stays 2026-09-11T16:18:51.084Z.
+
 ## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 12:02 UTC
 
 Code through **c4bd917** is DEPLOYED. Vercel reports Ready / Production / Current
