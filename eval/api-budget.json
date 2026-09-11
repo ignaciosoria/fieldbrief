@@ -9,7 +9,8 @@
     {"id":"production-text-smoke-1","model":"gpt-5.4-2026-03-05","maxRequests":1,"reservedUsd":0.1,"status":"completed","actualUsd":0.0088075,"inputTokens":1387,"outputTokens":356,"note":"Vercel log 2026-09-11T11:19:24Z: 5236ms, 2 actions, 0 questions. Persisted synthetic note; no calendar save or charges."}
     ,{"id":"visit-v2-run-6","model":"gpt-5.4-2026-03-05","maxRequests":27,"reservedUsd":1.8,"status":"completed","actualUsd":0.18838}
     ,{"id":"visit-v2-run-7","model":"gpt-5.4-2026-03-05","maxRequests":30,"reservedUsd":2,"status":"completed","actualUsd":0.222915}
+    ,{"id":"asr-pilot-1","maxRequests":12,"reservedUsd":0.2,"status":"completed","actualUsd":0.0133725,"note":"Usage-based estimate at published rates: Whisper 116 billed seconds; mini 554 input and 216 output tokens. Not an invoice reconciliation."}
   ],
-  "unreservedUsd": 4.0527455,
-  "note":"Conservative reservation includes unknown-cost failures. Do not repeat this run without recording its result and a new reservation. No audio calls yet."
+  "unreservedUsd": 4.039373,
+  "note":"Conservative reservation includes unknown-cost failures. Do not repeat a run without recording its result and a new reservation. Twelve synthetic audio calls completed."
 }

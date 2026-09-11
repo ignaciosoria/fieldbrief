@@ -1,5 +1,45 @@
 # Folup optimization — sequential evaluation
 
+## ASR pilot checkpoint — September 11, 2026, 14:34 UTC
+
+NO PRODUCTION CHANGE. Ran 12 real transcription calls on two locally generated
+TTS clips (ES 14.15s / EN 13.60s), each clean and with seeded 12dB white noise.
+Compared current Whisper agriculture/product prompt, Whisper without prompt,
+and pinned gpt-4o-mini-transcribe-2025-12-15 without prompt. All requests completed.
+Inputs and synthesis limitations: eval/asr-audio/README.md; raw outputs/usage/latency:
+eval/asr-pilot-1.jsonl. Explicit runner requires active reservation; no retries.
+
+Observed: both Whisper arms preserved the two commitments, relative dates, no-price
+restriction and no-extra-meeting statement across the four clips. Neither solved
+company spelling reliably: Soltec became Soltech or Solset; Northstar became
+Northster in clean EN. Current context kept clean ES product spacing better than
+no context, but this is one example, not proof of universal benefit or no bias.
+Mini's noisy ES output changed Quantum Flower 75 to QuantumFlow X35, mixed language
+and changed company names. Its EN output changed "I met" to "I'm at", and noisy
+EN also damaged the self-correction phrase. Do not switch production to mini based
+on this pilot. Keep current Whisper configuration pending stronger real-audio evals.
+
+Important: Maya/Maia spelling is acoustically ambiguous and NOT scored as a model
+failure. Speech errors that confidently produce a wrong name will not necessarily
+trigger extraction's textual uncertainty questions. Preserve easy user correction;
+do not promise the high/low label measures acoustic confidence. No calibration done.
+Two TTS utterances plus white noise do not establish real mobile/field accuracy.
+No extraction calls were made on these transcripts in this block.
+
+Cost estimate from returned usage and published rates: Whisper 116 billed seconds
+at $0.006/min + mini 554 input/216 output tokens at $1.25/$5 per million = $0.0133725.
+Ledger reservation closed, remaining $4.039373; not a billing invoice reconciliation.
+Official docs also list gpt-transcribe at estimated $0.0045/min; it was NOT tested.
+Sources checked: https://developers.openai.com/api/docs/guides/speech-to-text
+https://developers.openai.com/api/docs/models/whisper-1
+https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe
+https://developers.openai.com/api/docs/pricing
+
+Next safe block: reject invalid structure requests BEFORE quota reservation, then
+isolate malformed history rows. Do not burn the remaining budget on more tiny ASR
+variants and claim a winner; collect representative human field audio when available.
+Original automation deadline 2026-09-11T16:18:51.084Z stays unchanged.
+
 ## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 13:57 UTC
 
 **fe04ca3 is DEPLOYED** on www.folup.app. Vercel Ready, exact source fe04ca3,
