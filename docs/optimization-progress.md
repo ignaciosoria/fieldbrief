@@ -1,5 +1,42 @@
 # Folup optimization — sequential evaluation
 
+## Transcription transport checkpoint — September 11, 2026
+
+Local only. Authentication remains first; empty/malformed multipart and oversized files
+are now rejected BEFORE quota reservation. Shared server quota reservation uses only
+the server-authenticated email. Provider failures still count as attempts; refund or
+idempotent retry accounting has NOT been implemented.
+
+Upload cap changed from the ineffective 10 MB to 4,000,000 bytes, leaving multipart
+headroom under Vercel's documented 4.5 MB limit. Primary recording checks this locally
+and preserves oversized audio for download; server checks both declared request length
+and actual file size. This is not a generic streaming parser/slow-upload protection;
+production also relies on Vercel's request boundary. Nonempty invalid audio can still
+reach the provider, which validates/decodes the actual audio format.
+
+OpenAI client now has 45-second timeout and zero implicit retries, route maxDuration=60.
+Browser transcription fetch (primary and correction) uses a single 75-second attempt
+with AbortController. The browser timeout covers waiting for response headers, not a
+separate body-read deadline. Error responses never echo provider messages; empty text
+returns NO_SPEECH instead of being sent on to structure. Successful transcripts are
+no-store. Existing whisper-1 model and its domain-biased context prompt remain unchanged
+pending a controlled quality comparison; no unsupported claim of improved ASR accuracy.
+
+Eight new tests cover validation-before-quota, anonymous/denied access, database failure,
+sanitized provider errors/timeouts, blank transcripts and browser abort without retries.
+All 96 tests pass and the production build passes. Local real-route anonymous POST
+returns 401 AUTH_REQUIRED. Mocked browser regression also passes at 390px and 1280px,
+including audio retries, download, original date anchor and HTTP 413 handling.
+No paid API calls or remote writes. Official transport/input
+docs checked alongside the installed OpenAI SDK README timeout/retry implementation:
+https://developers.openai.com/api/docs/guides/speech-to-text
+https://vercel.com/docs/errors/function_payload_too_large
+
+Next prioritize checking the real Supabase/Stripe deployment prerequisites below; avoid
+letting verified local checkpoints accumulate indefinitely. If authenticated access is
+unavailable, record that and continue correction-audio recovery, duration/bitrate limits,
+ASR comparison and account-switch/persistence tests. Hard stop remains 16:18:51 UTC.
+
 ## Recording recovery checkpoint — September 11, 2026
 
 Local only. Failed primary-visit transcription now retains the Blob with its original
@@ -20,8 +57,9 @@ to be audited).
 Limits: this is TAB-MEMORY recovery, not durable offline storage. UI explicitly tells
 users to download before refresh/close, and has a best-effort beforeunload warning.
 The warning is not guaranteed on mobile. Correction-by-audio uses a separate legacy
-pipeline and still needs equivalent recovery; practical duration/upload limits and API
-timeouts are also pending. No physical microphone or real ASR was used in these tests.
+pipeline and still needs equivalent recovery; practical recording-duration/bitrate limits
+remain pending. Upload bounds and API timeouts were added in the checkpoint above.
+No physical microphone or real ASR was used in these tests.
 
 Verification: production build and all 88 unit/database tests pass. Extended browser
 smoke passes at 390px and 1280px with a fake MediaRecorder and fully mocked APIs:
@@ -116,7 +154,7 @@ document it and work on a different safe local block instead of repeatedly reque
 Next output/reliability priorities:
 - Partial clarifications: local fix verified in the checkpoint above; do not redo.
 - Mobile recording: primary recording retry/download is locally verified above. Next:
-  correction-audio recovery, practical duration/upload bounds and bounded API timeouts.
+  correction-audio recovery and practical recording-duration/bitrate limits.
 - Transcription: evaluate neutral context against hard-coded crop/product vocabulary;
   compare candidates on synthetic ES/EN audio within the remaining $4.472848 ledger.
 - Privacy: local restrictive page-count policy implemented and tested above; do not redo.

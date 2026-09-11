@@ -11,6 +11,8 @@ import { confirmVisitField, visitExtractionResult, type VisitExtraction } from '
 import { appendVisitCorrection } from '../lib/visitCorrection'
 import VisitSummary from './components/VisitSummary'
 import AudioRecovery from './components/AudioRecovery'
+import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
+import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import { notesRequest } from '../lib/notesClient'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -2624,7 +2626,7 @@ export default function Home() {
           const file = new File([blob], `correction.${ext}`, { type: blob.type })
           const fd = new FormData()
           fd.append('file', file)
-          const txRes = await fetch('/api/transcribe', { method: 'POST', body: fd })
+          const txRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: fd })
           const txData = await txRes.json()
           if (handleAiAccessResponse(txRes.status, txData)) return
           if (!txRes.ok) throw new Error(txData.error || 'Failed to transcribe correction.')
@@ -2798,12 +2800,13 @@ export default function Home() {
     setPendingCompanyPick(null)
     setPendingNextStepClarifyPick(null)
     try {
+      if(blob.size>MAX_AUDIO_BYTES) throw Error(AUDIO_TOO_LARGE)
       const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
       const file = new File([blob], `voice-note.${extension}`, { type: blob.type || 'audio/webm' })
       const formData = new FormData()
       formData.append('file', file)
 
-      const transcribeRes = await fetch('/api/transcribe', { method: 'POST', body: formData })
+      const transcribeRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData })
       const transcribeData = await transcribeRes.json().catch(()=>({error:transcribeRes.status===413?'The recording is too large to upload. Download a copy before discarding it.':'Audio upload failed. Your recording is still here; please retry.'}))
       if (audio.owner!==audioOwnerRef.current) return
       if (handleAiAccessResponse(transcribeRes.status, transcribeData)) return
