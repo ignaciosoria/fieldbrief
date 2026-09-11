@@ -1,5 +1,18 @@
 # Folup optimization — sequential evaluation
 
+## History recovery checkpoint — September 11, 2026
+
+LOCAL ONLY. Both initial and paginated history loads now isolate failed row
+normalization, validate v2 extraction against its saved transcript, and reject
+invalid legacy text field types. A failed row retains its id, date and original
+transcript with empty actions, a 'Note needs review' list label and an explicit
+detail warning. No database writes, deletion or automatic paid reprocessing.
+Keeping the row preserves pagination offsets. Successful explicit correction
+clears its recovery flag. Late pagination results/errors are ignored after an
+account switch. Three new regression tests cover neighbour isolation, unchanged
+source payloads, malformed output and valid v2 extraction. Browser visual checks
+and deployment remain pending; production remains fe04ca3.
+
 ## Invalid extraction requests — September 11, 2026, 14:40 UTC
 
 LOCAL ONLY, not deployed. Structure now authenticates before parsing, validates

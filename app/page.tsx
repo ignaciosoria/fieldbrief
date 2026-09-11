@@ -15,6 +15,7 @@ import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
 import { notesRequest } from '../lib/notesClient'
+import { recoverHistoryRow, type HistoryRow } from '../lib/historyRecovery'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
 import { stripExecutionBlocksFromCrmNarrative } from '../lib/crmNarrativeSanitize'
@@ -1545,6 +1546,7 @@ function KeyInsightsList({
 type Tab = 'record' | 'history' | 'settings'
 
 type SavedNote = {
+  recoveryRequired?: boolean
   id: string
   date: string
   result: StructureResult
@@ -2220,10 +2222,7 @@ export default function Home() {
       try {
         const data = await notesRequest('/api/notes')
         if (cancelled) return
-        setSavedNotes(data.notes.map((n: { id: string; created_at: string; raw_text: string; structured_output: unknown }) => ({
-          id: n.id, date: n.created_at, transcript: n.raw_text,
-          result: normalizeStructureResult({ ...emptyResult, ...(n.structured_output as Partial<StructureResult>) }),
-        })))
+        setSavedNotes(data.notes.map((n: HistoryRow) => recoverHistoryRow(n,emptyResult,normalizeStructureResult)))
         setHasMoreNotes(data.hasMore)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load notes.')
@@ -2541,15 +2540,14 @@ export default function Home() {
   }
 
   const loadMoreNotes = async () => {
+    const owner=audioOwnerRef.current
     try {
       const data = await notesRequest('/api/notes?offset=' + savedNotes.length)
-      const rows = data.notes.map((n: { id: string; created_at: string; raw_text: string; structured_output: Partial<StructureResult> }) => ({
-        id: n.id, date: n.created_at, transcript: n.raw_text,
-        result: normalizeStructureResult({ ...emptyResult, ...n.structured_output }),
-      }))
+      if(owner!==audioOwnerRef.current) return
+      const rows = data.notes.map((n: HistoryRow) => recoverHistoryRow(n,emptyResult,normalizeStructureResult))
       setSavedNotes(prev => [...prev, ...rows.filter((n: SavedNote) => !prev.some(p => p.id === n.id))])
       setHasMoreNotes(data.hasMore)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load notes.') }
+    } catch (err) { if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Unable to load notes.') }
   }
 
   const updateNote = async (id: string, res: StructureResult, tx: string) => {
@@ -2559,9 +2557,9 @@ export default function Home() {
       await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify({ id, result: res, transcript: tx }) })
       if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       setSavedNotes(prev => prev.some(n=>n.id===id)
-        ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx } : n)
+        ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx, recoveryRequired: false } : n)
         : [{id,date:res.capturedAt || new Date().toISOString(),result:res,transcript:tx},...prev])
-      if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx })
+      if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx, recoveryRequired: false })
       if (result) setResult(res)
       setSavingStatus('saved')
     } catch (err) {
@@ -4644,6 +4642,10 @@ export default function Home() {
                 </button>
 
                 <div className="space-y-7">
+                  {selectedNote.recoveryRequired && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    This note’s saved summary could not be read. The original transcript is shown below; no saved data has been changed. Review it before creating follow-ups.
+                    <p className="mt-2 whitespace-pre-wrap">{selectedNote.transcript || 'No transcript available.'}</p>
+                  </div>}
                   {selectedNote.result.schemaVersion === 2 && <VisitSummary
                     text={formatProfessionalCrmNote(selectedNote.result)} language={selectedNote.result.noteLanguage || 'English'}
                     hasQuestions={!!selectedNote.result.extraction?.questions.length}
@@ -4974,7 +4976,7 @@ export default function Home() {
                               </span>
                             </div>
                             <p className="mt-1 truncate text-[13px] font-semibold leading-tight text-[#111111]">
-                              {contactLine}
+                              {note.recoveryRequired ? 'Note needs review' : contactLine}
                             </p>
                             <p
                               className="mt-0.5 truncate text-[12px] leading-snug text-[#4F46E5]"
