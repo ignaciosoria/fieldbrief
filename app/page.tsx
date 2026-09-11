@@ -4014,6 +4014,11 @@ export default function Home() {
         </div>
       </div>}
 
+      {error && !pendingCorrection && !processingBusy && (activeTab==='history' || recordHasResult) && <div
+        role="alert" className="fixed bottom-24 left-1/2 z-[85] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-lg">
+        {error}
+      </div>}
+
       {pendingVisit?.result.extraction?.questions[0] && <VisitClarification
         key={JSON.stringify(pendingVisit.result.extraction.questions[0])}
         extraction={pendingVisit.result.extraction}

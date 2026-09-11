@@ -1,5 +1,41 @@
 # Folup optimization — sequential evaluation
 
+## Correction browser verification — September 11, 2026, 13:55 UTC
+
+CUA drove the REAL local compiled app through scripts/correction-ui-fixture.mjs,
+a localhost-only gateway that intercepts ALL /api requests, uses synthetic session/
+notes/audio and blocks external connections with CSP. No real microphone, external
+API, Supabase or payment was used. Fixture is not imported by production.
+
+At 390x844, history correction encountered ASR 503, then structure 503, then a
+saved-but-unacknowledged PUT 503. Each visible retry button matched its stage.
+Final CRM/title changed Maya to Maia and History stayed at 1 note. Fixture counters:
+2 transcriptions, 2 extractions, 2 saves, one same id synthetic-correction-note.
+Both structure attempts used IDENTICAL combined text, original reference
+2026-09-10T18:00:00Z, America/Los_Angeles and the same captured correction timestamp.
+The original remained visible until save success. Mobile screenshot showed readable
+recovery text and accessible retry/download/discard controls without clipping.
+
+Constructor failure released the synthetic stream but exposed an existing UX bug:
+the error wasn't visible from history. Added a visible alert for history/results.
+Rebuilt, restarted and reloaded; CUA verified the constructor error now appears.
+At 1280x900 a non-JSON HTML 413 showed the size/recovery message and retained the
+audio link and retry button. 108 unit tests, webpack build and whitespace check pass.
+
+LIMITATION: clicking Download did not produce a download event within 5s in this
+in-app browser; actual file download is unverified. Existing native window.confirm
+for discard appeared, but the browser tool could not retrieve/dismiss it and that
+synthetic tab (5) became blocked. No discard was accepted, no real data involved.
+Do not claim download/discard end-to-end verified; unchanged native-confirm/download
+behavior remains a manual browser compatibility check. Other tab 4 works normally.
+Viewport override reset. No browser restrictions bypassed. Test tab is temporary,
+not marked for handoff; cleanup may close it after the turn.
+
+Proceed with deployment of the tested correction/timeout changes and error alert;
+check Vercel's default build and anonymous endpoints. No migration/config changes.
+Next independent block: ASR context/evaluation, then quota/history hardening within
+remaining time. Ledger unchanged $4.0527455. Original cutoff 16:18:51.084Z remains.
+
 ## Notes transport checkpoint — September 11, 2026, 13:17 UTC
 
 LOCAL ONLY. Closed the remaining hanging-save limitation from the correction
