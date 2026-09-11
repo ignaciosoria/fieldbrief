@@ -1,5 +1,18 @@
 # Folup optimization — sequential evaluation
 
+## Invalid extraction requests — September 11, 2026, 14:40 UTC
+
+LOCAL ONLY, not deployed. Structure now authenticates before parsing, validates
+before reserving usage, then uses only the authenticated identity for quota.
+Bounded streaming JSON read (256,000 bytes, independent of Content-Length), same
+20,000-character note limit; date/timezone fallbacks and model remain unchanged.
+Empty, malformed, primitive/array and oversized input no longer burns allowance.
+Four new tests cover ordering, owner spoofing, context preservation and closed
+quota/database denial; complete unit suite 112/112 passes. No paid calls.
+Production remains fe04ca3 until a subsequent verified deployment. Remaining
+priorities: malformed history row isolation and full AI response-body timeouts.
+Overnight automation remains ACTIVE with original 16:18:51 UTC stop deadline.
+
 ## ASR pilot checkpoint — September 11, 2026, 14:34 UTC
 
 NO PRODUCTION CHANGE. Ran 12 real transcription calls on two locally generated

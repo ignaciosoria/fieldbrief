@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server"
 import { DateTime } from "luxon"
-import { requireAiAccess } from "../../../lib/aiAccessServer"
+import { prepareStructureRequest } from "../../../lib/aiAccessServer"
 import { extractVisit } from "../../../lib/extractVisitServer"
 
 export async function POST(request: Request) {
-  const denied = await requireAiAccess("structure")
-  if (denied) return denied
-  let body: Record<string, unknown>
-  try { body = await request.json() } catch { return NextResponse.json({error:"Invalid JSON"},{status:400}) }
-  if (typeof body?.note !== "string" || !body.note.trim()) return NextResponse.json({error:"Missing note"},{status:400})
-  if (body.note.length > 20000) return NextResponse.json({error:"Note is too long"},{status:413})
+  const body = await prepareStructureRequest(request)
+  if (body instanceof Response) return body
   const timezone = typeof body.timezone === "string" && DateTime.now().setZone(body.timezone).isValid ? body.timezone : "America/Los_Angeles"
   const supplied = typeof body.clientNow === "string" ? DateTime.fromISO(body.clientNow) : null
   const now = supplied?.isValid ? supplied.toUTC().toISO()! : new Date().toISOString()

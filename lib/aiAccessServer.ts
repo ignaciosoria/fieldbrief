@@ -1,6 +1,16 @@
 import { auth } from '../auth'
 import { createClient } from '@supabase/supabase-js'
 import { checkAiAccess, type AiOperation, type AiAccessDecision } from './aiAccess'
+import { readStructureInput } from './structureInput'
+import { prepareStructure } from './structureAccess'
+
+export async function prepareStructureRequest(request: Request) {
+  return prepareStructure(request, {
+    getEmail: async () => (await auth())?.user?.email?.trim() || null,
+    reserve: reserveAiUsage,
+    readInput: readStructureInput,
+  })
+}
 
 /** Only pass the server-authenticated identity, never a request body field. */
 export async function reserveAiUsage(email:string,kind:AiOperation):Promise<AiAccessDecision> {
