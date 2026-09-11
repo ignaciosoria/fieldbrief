@@ -1,5 +1,42 @@
 # Folup optimization — sequential evaluation
 
+## Temporal fidelity checkpoint — September 11, 2026, 12:04 UTC
+
+LOCAL ONLY pending deployment verification. Added one focused prompt paragraph
+and contrasting examples separating actual visit discussion from future-action
+purpose. No model, API, schema, postprocessing, or production configuration change.
+The new summary regression catches the saved run-6 es-clear-purpose failure.
+Three new synthetic cases cover future-only purpose and actual sample/color
+discussion followed by an unrelated future warranty call in ES/EN.
+
+Paid run 7: 30/30 automated checks, $0.222915 conservative uncached GPT-5.4 cost.
+Manual review confirms the original Lucía case now says only "Visitó a Lucía de
+Beta" in summary; the Q7/price questions and no-send restriction remain in the
+call description. Both past/future cases preserve R8/color discussion in summary
+and Z9 warranty only in the future call. Both action-constraint cases still pass.
+Some other summaries still redundantly mention a promised catalog; not presented
+as resolved. This small synthetic corpus does not establish universal accuracy.
+
+98/98 unit tests, 33/33 output-quality tests and whitespace check pass.
+Default Turbopack build failed on CSS worker port binding (EPERM), including an
+escalated retry. Alternative `next build --webpack` completed successfully with
+TypeScript, all routes and prerendering. No build configuration was changed.
+Production default build must still be verified on Vercel before claiming deployed.
+
+Current remaining ledger $4.0527455 (including a separate $0.08 hold already
+deducted for earlier unknown-cost failures). No ASR calls, notes or calendar writes
+in this block. Official guidance and prices checked:
+https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.4
+https://developers.openai.com/api/docs/models/gpt-5.4
+
+Next independent block: correction recording recovery. Inspection confirmed the
+separate correction onstop flow still discards its only Blob after ASR failure,
+has no start/concurrency guard and does not stop the acquired stream if recorder
+construction fails (app/page.tsx startCorrectionRecording). Reuse recovery concepts
+with captured correction timestamp and original note owner; avoid another ASR call
+if only structure/save fails. Then neutral/noisy ASR tests and remaining quota/history
+hardening. Keep original automation stop deadline 2026-09-11T16:18:51.084Z.
+
 ## Action restrictions checkpoint — September 11, 2026, 11:28 UTC
 
 LOCAL ONLY, not deployed. One authenticated synthetic production text note was

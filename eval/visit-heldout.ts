@@ -2,6 +2,18 @@ import type { VisitCase } from './visit-corpus'
 import { appendVisitCorrection } from '../lib/visitCorrection'
 
 export const VISIT_HELDOUT: VisitCase[] = [
+  {id:'en-future-purpose',language:'English',tags:['temporal-factuality'],
+    note:'Visited Maya at Northstar. Tomorrow I will call her to discuss the Z9 warranty and check whether the replacement arrived.',
+    actions:[{type:'call',contact:'Maya',company:'Northstar',object:null,date:'2026-09-11',evidence:'Tomorrow I will call her to discuss the Z9 warranty and check whether the replacement arrived'}],
+    crmFacts:['Visited Maya at Northstar.'],forbiddenClaims:['Discussed the Z9 warranty during the visit.','Replacement received.'],clarification:[]},
+  {id:'es-past-and-future',language:'Spanish',tags:['temporal-factuality'],
+    note:'Visité a Rosa de Delta. Hoy revisamos las muestras R8 y le preocupó el color. Mañana la llamaré para hablar de la garantía Z9, que todavía no hemos comentado.',
+    actions:[{type:'call',contact:'Rosa',company:'Delta',object:null,date:'2026-09-11',evidence:'Mañana la llamaré para hablar de la garantía Z9'}],
+    crmFacts:['Revisamos las muestras R8.','Preocupación por el color.'],forbiddenClaims:['Se revisó la garantía Z9.'],clarification:[]},
+  {id:'en-past-and-future',language:'English',tags:['temporal-factuality'],
+    note:'Visited Rosa from Delta. We reviewed the R8 samples today and she was concerned about the color. Tomorrow I will call her about the Z9 warranty, which we have not discussed yet.',
+    actions:[{type:'call',contact:'Rosa',company:'Delta',object:null,date:'2026-09-11',evidence:'Tomorrow I will call her about the Z9 warranty'}],
+    crmFacts:['Reviewed R8 samples.','Concern about the color.'],forbiddenClaims:['Reviewed the Z9 warranty.'],clarification:[]},
   {id:'es-action-constraint',language:'Spanish',tags:['action-constraint','multiple-contacts'],
     note:'Salí de visitar a Ana de Acme y después hablé con Luis de Beta. A Ana le enviaré mañana la ficha técnica completa de Quantum Flower 75, pero no le enviaré precios todavía. A Luis lo llamaré el lunes 14 de septiembre de 2026 a las once de la mañana para confirmar la fecha de entrega. No quedamos en ninguna reunión adicional.',
     actions:[{type:'send',contact:'Ana',company:'Acme',object:'ficha técnica completa de Quantum Flower 75',date:'2026-09-11',evidence:'A Ana le enviaré mañana la ficha técnica completa de Quantum Flower 75'},

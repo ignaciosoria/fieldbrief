@@ -37,6 +37,13 @@ async function main() {
         if (c.id === 'es-secondary-meeting' && !actual.some(a=>a.type==='meeting' && a.time==='10:00')) issues.push('meeting-time')
         if (c.id === 'en-long-product' && !actual.some(a=>/intensive care unit in Baja California/i.test(a.object))) issues.push('truncated-deliverable')
         const prose = [result.extraction.summary,...result.extraction.insights].join(' ')
+        // Summary deliberately excludes rep commitments (rendered from actions).
+        if (c.id === 'es-clear-purpose' && /Q7|precio|propuesta/i.test(result.extraction.summary)) issues.push('future-purpose-in-visit-summary')
+        if (c.tags.includes('temporal-factuality')) {
+          if (/Z9|warranty|garant[ií]a/i.test(result.extraction.summary)) issues.push('future-purpose-in-visit-summary')
+          if (!actual.some(a=>/Z9/.test(a.description))) issues.push('lost-future-purpose')
+          if (c.id.includes('past-and-future') && (!/R8/.test(prose) || !/color/i.test(prose))) issues.push('lost-stated-visit-discussion')
+        }
         if (c.tags.includes('action-constraint')) {
           const send = actual.find(a=>a.type==='send')
           const call = actual.find(a=>a.type==='call')

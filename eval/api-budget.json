@@ -8,7 +8,8 @@
     {"id":"visit-v2-run-5","model":"gpt-5.4-2026-03-05","maxRequests":25,"reservedUsd":1.7,"status":"completed","actualUsd":0.1699875},
     {"id":"production-text-smoke-1","model":"gpt-5.4-2026-03-05","maxRequests":1,"reservedUsd":0.1,"status":"completed","actualUsd":0.0088075,"inputTokens":1387,"outputTokens":356,"note":"Vercel log 2026-09-11T11:19:24Z: 5236ms, 2 actions, 0 questions. Persisted synthetic note; no calendar save or charges."}
     ,{"id":"visit-v2-run-6","model":"gpt-5.4-2026-03-05","maxRequests":27,"reservedUsd":1.8,"status":"completed","actualUsd":0.18838}
+    ,{"id":"visit-v2-run-7","model":"gpt-5.4-2026-03-05","maxRequests":30,"reservedUsd":2,"status":"completed","actualUsd":0.222915}
   ],
-  "unreservedUsd": 4.2756605,
+  "unreservedUsd": 4.0527455,
   "note":"Conservative reservation includes unknown-cost failures. Do not repeat this run without recording its result and a new reservation. No audio calls yet."
 }
