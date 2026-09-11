@@ -1,5 +1,20 @@
 # Folup optimization — sequential evaluation
 
+## AI transport deadline checkpoint — September 11, 2026
+
+LOCAL ONLY. fetchWithTimeout now bounds headers AND full response body, buffers
+the small API response before returning, honors caller cancellation, and races
+against the deadline even when a transport does not settle on abort. No automatic
+retry. All five previously unbounded /api/structure calls now use the same helper,
+covering primary recording, typed notes, text correction and clarification refresh.
+HTTP status/headers and non-JSON errors are preserved for existing upload recovery.
+Not a streaming-response utility; response URL metadata is not preserved or used
+by these callers. Five new tests cover hanging bodies/transport, cancellation,
+HTTP error preservation and successful timer cleanup. 120/120 unit tests pass;
+TypeScript, git diff --check and local production webpack build pass. No API spend.
+Not yet deployed: production remains fe04ca3. Next: browser verification of pending
+history recovery plus the accumulated transport/quota changes, then deployment.
+
 ## History recovery checkpoint — September 11, 2026
 
 LOCAL ONLY. Both initial and paginated history loads now isolate failed row

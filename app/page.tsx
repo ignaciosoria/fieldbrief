@@ -1915,7 +1915,7 @@ Customer: ${result.customer || ''}
 Contact: ${result.contact || ''}
 `
 
-  const res = await fetch('/api/structure', {
+  const res = await fetchWithTimeout('/api/structure', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2584,7 +2584,7 @@ export default function Home() {
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
 
   const refreshClarifiedVisit = async (r:StructureResult, tx:string):Promise<StructureResult> => {
-    const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       note:tx,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
     })})
     const updated = await response.json()
@@ -2595,7 +2595,7 @@ export default function Home() {
   const correctVisitText = async (r:StructureResult,tx:string,correction:string,noteId?:string) => {
     if (pendingCorrection || correctionBusyRef.current || correctionStartRef.current || isCorrectingRecording) throw Error('Finish or discard the voice correction first.')
     const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
-    const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
     })})
     const updated = await response.json()
@@ -2870,7 +2870,7 @@ export default function Home() {
       // Once transcribed, recovery continues from editable text, not another paid ASR call.
       setPendingAudio(null)
 
-      const structureRes = await fetch('/api/structure', {
+      const structureRes = await fetchWithTimeout('/api/structure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2966,7 +2966,7 @@ export default function Home() {
     setPendingNextStepClarifyPick(null)
     setCopied(false)
     try {
-      const res = await fetch('/api/structure', {
+      const res = await fetchWithTimeout('/api/structure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
