@@ -1,5 +1,27 @@
 # Folup optimization — sequential evaluation
 
+## Notes transport checkpoint — September 11, 2026, 13:17 UTC
+
+LOCAL ONLY. Closed the remaining hanging-save limitation from the correction
+checkpoint: notesRequest now bounds the ENTIRE request plus JSON body at 60s,
+aborts transport, honors caller cancellation, preserves Headers objects and uses
+no-store. There are no implicit retries. Non-JSON proxy responses produce a useful
+retry message instead of a JSON parsing exception. The timeout explicitly warns
+that the save may already have completed; it does not claim the server rolled back.
+
+Four new transport tests cover preserved id/headers, stalled connection/body,
+HTTP/non-JSON errors and cancellation. An additional correction integration test
+simulates a successful server upsert whose acknowledgement stalls: retry keeps
+one note under the SAME id and invokes ASR/extraction only once. This is a mocked
+server test, not a new live Supabase write. All 108 unit tests, 33 output-quality
+tests, whitespace check and webpack production build pass. No paid API calls.
+
+Not deployed: production stays c4bd917. The next block remains CUA visual/interaction
+verification of correction recovery on a local synthetic API fixture, then deploy
+the correction and timeout commits together. Do not repeat completed controller
+work or the paid prompt corpus. No new authorization needed. Ledger remains
+$4.0527455 available; original automation cutoff 2026-09-11T16:18:51.084Z unchanged.
+
 ## Correction recovery checkpoint — September 11, 2026, 12:40 UTC
 
 LOCAL ONLY — do not claim deployed or browser-verified yet. Correction recording

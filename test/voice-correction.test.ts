@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {CorrectionOwnerChanged,resumeVoiceCorrection,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
+import {notesRequest} from '../lib/notesClient'
 
 const initial=():VoiceCorrectionDraft<{summary:string}>=>( {
   blob:new Blob(['synthetic-audio'],{type:'audio/webm'}),owner:'one@example.test',noteId:'existing-note',
@@ -77,4 +78,27 @@ test('blank speech keeps audio and does not append an empty correction',async()=
     transcribe:async()=> '  ',structure:async()=>{throw Error('Unexpected structure')},accept:async()=>assert.fail('Unexpected save'),
   }),/No speech/)
   assert.equal(draft.combined,undefined)
+})
+
+test('a saved-but-unacknowledged correction retries the same id without another AI call',async()=>{
+  let draft=initial(),asrCalls=0,structureCalls=0,saveCalls=0
+  const saved=new Map<string,unknown>()
+  const fetcher:typeof fetch=async(_url,init)=>{
+    saveCalls++
+    const note=JSON.parse(init!.body as string)
+    saved.set(note.id,note)
+    if(saveCalls===1) return {ok:true,json:()=>new Promise(()=>{})} as Response
+    return Response.json({saved:true})
+  }
+  const deps={currentOwner:()=>draft.owner,checkpoint:(next:typeof draft)=>{draft=next},
+    transcribe:async()=>{asrCalls++;return 'Anna, not Ana'},
+    structure:async()=>{structureCalls++;return {summary:'Met Anna.'}},
+    accept:async(result:{summary:string},transcript:string,id:string)=>{
+      await notesRequest('/api/notes',{method:'PUT',body:JSON.stringify({id,result,transcript})},{fetcher,timeoutMs:5})
+    },
+  }
+  await assert.rejects(resumeVoiceCorrection(draft,deps),/too long/)
+  await resumeVoiceCorrection(draft,deps)
+  assert.equal(saved.size,1);assert.ok(saved.has('existing-note'))
+  assert.equal(asrCalls,1);assert.equal(structureCalls,1);assert.equal(saveCalls,2)
 })
