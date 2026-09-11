@@ -1,5 +1,17 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION CHECKPOINT — September 11, 2026, 13:57 UTC
+
+**fe04ca3 is DEPLOYED** on www.folup.app. Vercel Ready, exact source fe04ca3,
+24s build, deployment:
+https://vercel.com/ignaciosorias-projects/fieldbrief/9qc9QqD4cW5P4Zu3F4LN2vhMA9cK
+Includes correction recovery, bounded notes transport and visible history errors.
+Post-deploy: homepage GET 200; anonymous notes/subscription GET and
+structure/transcribe POST all 401. No authenticated paid production test repeated.
+No configuration/migration changes. The two local fixture server processes were
+stopped after testing. Earlier LOCAL ONLY sections are historical for these commits.
+Native download/discard compatibility limitations below remain explicitly unverified.
+
 ## Correction browser verification — September 11, 2026, 13:55 UTC
 
 CUA drove the REAL local compiled app through scripts/correction-ui-fixture.mjs,
