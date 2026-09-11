@@ -22,6 +22,8 @@ export type ActionStructuredFields = {
   time: string
   /** Brief action-specific instruction, grounded in the visit; not the entire CRM note. */
   description?: string
+  /** Exact source quote for this action only, used for suggested calendar timing. */
+  evidence?: string
 }
 
 function isSpanish(noteLanguage: string): boolean {

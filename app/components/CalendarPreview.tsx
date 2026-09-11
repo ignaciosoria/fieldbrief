@@ -34,7 +34,7 @@ export default function CalendarPreview({ initial, onClose, onOpened }: {
         <label className="block text-sm">{es ? 'Fecha' : 'Date'}<input required type="date" className={fieldClass} value={draft.date} onChange={e => edit('date',e.target.value)} /></label>
         <label className="block text-sm">{es ? 'Hora' : 'Time'}<input required type="time" className={fieldClass} value={draft.time} onChange={e => edit('time',e.target.value)} /></label>
       </div>
-      {draft.timeSuggested && <p className="text-sm text-amber-800">{es ? '09:00 sugerida: no indicaste una hora exacta. Puedes cambiarla.' : '09:00 suggested: no exact time was provided. You can change it.'}</p>}
+      {draft.timeSuggested && <p className="text-sm text-amber-800">{draft.time} {es ? 'sugerida según la franja indicada; sin franja usamos las 09:00. Puedes cambiarla.' : 'suggested from the stated time of day; without one we use 09:00. You can change it.'}</p>}
       <p className="text-sm text-gray-600">{es ? 'Duración: 30 minutos.' : 'Duration: 30 minutes.'} {draft.timezone}</p>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="flex justify-end gap-3">

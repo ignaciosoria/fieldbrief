@@ -1,5 +1,18 @@
 # Folup optimization — sequential evaluation
 
+## Requested daypart defaults — September 11, 2026
+
+Calendar suggestions now read the action's own exact evidence retained by the v2
+adapter: ES morning/afternoon/night and EN morning/afternoon/evening/tonight map
+to 09:00/15:00/19:00. Explicit structured HH:mm always wins. Tomorrow/manana alone
+does not count as morning wording; date is unchanged. No evidence/window defaults
+to 09:00. Multiple matched windows default to reviewable 09:00 rather than picking
+one. UI displays actual suggested time, not hardcoded 09:00. No model/prompt or
+paid API changes. Three new tests cover bilingual windows, exact-time precedence,
+and per-action adapter isolation. 124/124 tests and production build pass. This
+does not claim general language understanding of arbitrary daypart paraphrases,
+negation or multiple actions within a broad evidence quote. Publish status below.
+
 ## CURRENT PRODUCTION — September 11, 2026, 16:40 UTC
 
 0e0a806 DEPLOYED, Vercel Ready 22s, exact source and www.folup.app verified:

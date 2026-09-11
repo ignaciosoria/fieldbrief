@@ -3,6 +3,21 @@ import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitl
 
 export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean }
 
+/** Suggestions are UI defaults, never written back as explicitly agreed times. */
+export function suggestedCalendarTime(action: ActionStructuredFields): string {
+  if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(action.time)) return action.time
+  // The adapter retains each action's evidence. Never inspect the whole transcript.
+  const text=(action.evidence || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  const afternoon=/\b(?:por la tarde|en la tarde|a la tarde|esta tarde|afternoon)\b/.test(text)
+  const night=/\b(?:por la noche|en la noche|a la noche|esta noche|evening|tonight|at night)\b/.test(text)
+  const morning=/\b(?:por la manana|en la manana|a la manana|esta manana|morning)\b/.test(text)
+  // Conflicting windows are left as a reviewable morning default, not guessed.
+  if (Number(afternoon)+Number(night)+Number(morning)>1) return '09:00'
+  if(night) return '19:00'
+  if(afternoon) return '15:00'
+  return '09:00'
+}
+
 export function shortCalendarTitle(action: ActionStructuredFields, es: boolean): string {
   const object=action.object || ''
   const sendObject=/ficha|technical sheet|data\s?sheet/i.test(object)?(es?'ficha técnica':'technical sheet'):
@@ -27,7 +42,7 @@ export function calendarDraftFromAction(
   const title = shortCalendarTitle(action,es)
   const date = DateTime.fromFormat(action.date.trim(), 'MM/dd/yyyy', { zone: timezone })
   const timeSuggested = !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(action.time)
-  const time = timeSuggested ? '09:00' : action.time
+  const time = suggestedCalendarTime(action)
   const instruction = buildPrimaryBaseTitle({...action,contact:'',company:''},language)
   const details = action.description?.trim() || `${instruction.replace(/[.!?]+$/, '')}.`
   return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English' }
