@@ -1,5 +1,19 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION — September 11, 2026, 16:40 UTC
+
+0e0a806 DEPLOYED, Vercel Ready 22s, exact source and www.folup.app verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/Agj9Rfc6vrAFe22RJ9sq4hgCygJv
+Includes requested compact calendar titles, required time with explicit 09:00
+suggestion preview, prominent voice correction, and prior account continuation
+guards. 121/121 full unit suite passed, final production build passed, synthetic
+browser voice-to-CRM/action/calendar correction verified. Specific account-switch
+browser test remains pending, as documented. Homepage 200, unauthenticated notes
+GET and structure POST 401. Test servers stopped, test tab closed. No additional
+paid calls in this QoL block; earlier visible production demo retained 0.10 USD
+unknown-cost allowance. Already-open Calendar forms do not refresh automatically.
+Overnight automation PAUSED; future work requires normal user request/resumption.
+
 ## Requested calendar/voice UX — September 11, 2026, 16:38 UTC
 
 User explicitly changed requirements: short calendar titles, always a clock time,
