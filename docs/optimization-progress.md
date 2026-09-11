@@ -1,5 +1,13 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION — daypart defaults verified
+
+7b6b1a2 DEPLOYED on www.folup.app. Vercel Ready 21s, exact source/domain verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/4rd2CDyeKzqWDrH2QQLyBMiuKrRu
+124 tests pass and local build passes. Homepage 200, anonymous structure POST401.
+No paid calls in this block. See daypart limitations below; only matched action
+evidence drives suggested hours, explicit structured clocks retain priority.
+
 ## Requested daypart defaults — September 11, 2026
 
 Calendar suggestions now read the action's own exact evidence retained by the v2
