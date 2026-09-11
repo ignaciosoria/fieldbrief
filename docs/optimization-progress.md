@@ -1,5 +1,36 @@
 # Folup optimization — sequential evaluation
 
+## Recording recovery checkpoint — September 11, 2026
+
+Local only. Failed primary-visit transcription now retains the Blob with its original
+recording timestamp, time zone and owner. A visible recovery panel offers retry, a local
+audio download and explicit confirmed discard. Starting another recording/text note
+is blocked while that failed recording awaits a decision. Empty transcripts retain the
+audio too. Non-JSON upload failures (including infrastructure HTTP 413) show a useful
+recovery message instead of a JSON parse exception.
+
+After successful ASR the editable transcript becomes the recovery path: if structuring
+fails, Process Note reuses the original recording date/zone without another ASR request.
+New notes reset that date context. Recorder-construction failures release the acquired
+microphone tracks; stop also clears chunk/recorder references. Per-operation guards
+prevent repeated recording starts and simultaneous audio retries. Owner checks discard
+late audio API responses after an account change (broader account-switch flows remain
+to be audited).
+
+Limits: this is TAB-MEMORY recovery, not durable offline storage. UI explicitly tells
+users to download before refresh/close, and has a best-effort beforeunload warning.
+The warning is not guaranteed on mobile. Correction-by-audio uses a separate legacy
+pipeline and still needs equivalent recovery; practical duration/upload limits and API
+timeouts are also pending. No physical microphone or real ASR was used in these tests.
+
+Verification: production build and all 88 unit/database tests pass. Extended browser
+smoke passes at 390px and 1280px with a fake MediaRecorder and fully mocked APIs:
+failed ASR -> successful local download -> retry -> failed structure -> text-only retry
+(exact original timestamp/zone, two ASR attempts total, one note); constructor failure
+releases its microphone; HTML 413 retains audio; explicit discard restores recording.
+Existing clarification/save/calendar regression cases also pass. No paid API calls,
+remote configuration changes, migration or deployment in this block.
+
 ## Analytics privacy checkpoint — September 11, 2026
 
 Local only. PostHog now explicitly disables DOM/autocapture, dead/rage clicks, replay,
@@ -84,8 +115,8 @@ document it and work on a different safe local block instead of repeatedly reque
 
 Next output/reliability priorities:
 - Partial clarifications: local fix verified in the checkpoint above; do not redo.
-- Mobile recording: retain audio on upload/ASR failure; retry/download without recording
-  again; enforce practical upload/duration bounds and reliably release microphone tracks.
+- Mobile recording: primary recording retry/download is locally verified above. Next:
+  correction-audio recovery, practical duration/upload bounds and bounded API timeouts.
 - Transcription: evaluate neutral context against hard-coded crop/product vocabulary;
   compare candidates on synthetic ES/EN audio within the remaining $4.472848 ledger.
 - Privacy: local restrictive page-count policy implemented and tested above; do not redo.

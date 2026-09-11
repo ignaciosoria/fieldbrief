@@ -10,6 +10,7 @@ import VisitClarification from './components/VisitClarification'
 import { confirmVisitField, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
 import { appendVisitCorrection } from '../lib/visitCorrection'
 import VisitSummary from './components/VisitSummary'
+import AudioRecovery from './components/AudioRecovery'
 import { notesRequest } from '../lib/notesClient'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -2008,6 +2009,12 @@ export default function Home() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [pendingAudio,setPendingAudio] = useState<{blob:Blob;capturedAt:string;timezone:string;owner:string} | null>(null)
+  const [transcriptContext,setTranscriptContext] = useState<{capturedAt:string;timezone:string}|null>(null)
+  const recordingStartRef=useRef(false)
+  const audioProcessingRef=useRef(false)
+  const audioOwnerRef=useRef(sessionEmail)
+  useEffect(()=>{audioOwnerRef.current=sessionEmail},[sessionEmail])
   const [showWakeLockFallbackTip, setShowWakeLockFallbackTip] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [transcript, setTranscript] = useState('')
@@ -2194,6 +2201,8 @@ export default function Home() {
     let cancelled = false
     setSavedNotes([])
     setSelectedNote(null)
+    setPendingAudio(null)
+    setTranscriptContext(null)
     if (!sessionEmail) return
     const load = async () => {
       try {
@@ -2710,7 +2719,10 @@ export default function Home() {
       try { mediaRecorderRef.current?.stop() } catch { setIsRecording(false) }
       return
     }
-    if (!session?.user) { setShowLoginPrompt(true); return }
+    if (recordingStartRef.current || audioProcessingRef.current || pendingAudio) return
+    if (!session?.user || !sessionEmail) { setShowLoginPrompt(true); return }
+    recordingStartRef.current=true
+    let recordingStream:MediaStream|undefined
     try {
       setError('')
       setCopied(false)
@@ -2723,12 +2735,17 @@ export default function Home() {
       setPendingNextStepClarifyPick(null)
       setTranscript('')
       setInput('')
+      setTranscriptContext(null)
 
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Audio recording is not supported on this device/browser.')
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordingStream=stream
+      const capturedAt=getClientNowIso()
+      const timezone=getClientTimezone()
+      const owner=sessionEmail
       const mimeType = pickSupportedMimeType()
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 
@@ -2739,17 +2756,21 @@ export default function Home() {
 
       recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+        chunksRef.current=[]
+        mediaRecorderRef.current=null
         setIsRecording(false)
         stream.getTracks().forEach((t) => t.stop())
-        if (blob.size > 0) await processRecordedAudio(blob)
+        if (blob.size > 0) await processRecordedAudio({blob,capturedAt,timezone,owner})
+        else setError('No audio was captured. Please check your microphone and try again.')
       }
 
       recorder.start()
       setIsRecording(true)
-    } catch (err: any) {
-      setError(err?.message || 'Could not start recording.')
+    } catch (err: unknown) {
+      recordingStream?.getTracks().forEach(t=>t.stop())
+      setError(err instanceof Error ? err.message : 'Could not start recording.')
       setIsRecording(false)
-    }
+    } finally {recordingStartRef.current=false}
   }
 
   const handleAiAccessResponse = (statusCode: number, data: { code?: string }): boolean => {
@@ -2761,8 +2782,11 @@ export default function Home() {
     return false
   }
 
-  const processRecordedAudio = async (blob: Blob) => {
-
+  const processRecordedAudio = async (audio:NonNullable<typeof pendingAudio>) => {
+    if (audioProcessingRef.current || audio.owner!==audioOwnerRef.current) return
+    audioProcessingRef.current=true
+    setPendingAudio(audio)
+    const {blob}=audio
     processingStartedAtRef.current = Date.now()
     setLoading(true)
     clearTryWalkthrough()
@@ -2780,25 +2804,31 @@ export default function Home() {
       formData.append('file', file)
 
       const transcribeRes = await fetch('/api/transcribe', { method: 'POST', body: formData })
-      const transcribeData = await transcribeRes.json()
+      const transcribeData = await transcribeRes.json().catch(()=>({error:transcribeRes.status===413?'The recording is too large to upload. Download a copy before discarding it.':'Audio upload failed. Your recording is still here; please retry.'}))
+      if (audio.owner!==audioOwnerRef.current) return
       if (handleAiAccessResponse(transcribeRes.status, transcribeData)) return
       if (!transcribeRes.ok) throw new Error(transcribeData.error || 'Failed to transcribe.')
 
       const tx = transcribeData.transcript || transcribeData.text || ''
+      if (typeof tx!=='string' || !tx.trim()) throw Error('No speech was detected. You can download your audio or retry.')
       setTranscript(tx)
       setInput(tx)
+      setTranscriptContext({capturedAt:audio.capturedAt,timezone:audio.timezone})
+      // Once transcribed, recovery continues from editable text, not another paid ASR call.
+      setPendingAudio(null)
 
       const structureRes = await fetch('/api/structure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           note: tx,
-          timezone: getClientTimezone(),
-          clientNow: getClientNowIso(),
+          timezone: audio.timezone,
+          clientNow: audio.capturedAt,
         }),
       })
       
       const structureData = await structureRes.json()
+      if (audio.owner!==audioOwnerRef.current) return
       if (handleAiAccessResponse(structureRes.status, structureData)) return
       if (!structureRes.ok) {
         throw new Error(structureData.error || 'Failed to structure.')
@@ -2861,12 +2891,14 @@ export default function Home() {
     } catch (err: any) {
       setError(err?.message || 'Something went wrong.')
     } finally {
+      audioProcessingRef.current=false
       await new Promise((r) => setTimeout(r, 72))
       setLoading(false)
     }
   }
 
   const processTypedNote = async () => {
+    if (pendingAudio || audioProcessingRef.current) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
     processingStartedAtRef.current = Date.now()
@@ -2886,8 +2918,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           note: input,
-          timezone: getClientTimezone(),
-          clientNow: getClientNowIso(),
+          timezone: transcriptContext?.timezone || getClientTimezone(),
+          clientNow: transcriptContext?.capturedAt || getClientNowIso(),
         }),
       })
       const data = await res.json()
@@ -2978,6 +3010,7 @@ export default function Home() {
     setPendingNextStepClarifyPick(null)
     setError('')
     setTranscript('')
+    setTranscriptContext(null)
     setCopied(false)
     setSelectedNote(null)
     setShowEditArea(false)
@@ -4004,7 +4037,8 @@ export default function Home() {
               <button
                 ref={tryWalkthroughRecordTargetRef}
                 onClick={toggleRecording}
-                disabled={processingBusy}
+                aria-label={isRecording ? 'Stop recording' : 'Record visit'}
+                disabled={processingBusy || !!pendingAudio}
                 className="relative z-[1] mb-2 flex h-36 w-36 shrink-0 items-center justify-center rounded-full transition-[transform,box-shadow] duration-200 ease-out active:scale-[0.94] disabled:pointer-events-none disabled:active:scale-100"
                 style={{
                   backgroundColor: isRecording ? '#dc2626' : '#4F46E5',
@@ -4131,7 +4165,7 @@ export default function Home() {
               )}
 
               {/* Manual textarea */}
-              {!isRecording && !processingBusy && (
+              {!isRecording && !processingBusy && !pendingAudio && (
                 <div className="mt-1.5 w-full max-w-md px-1">
                   <textarea
                     className="mb-3 w-full resize-none rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3 text-[13px] leading-relaxed text-[#111111] outline-none placeholder:text-[#6b7280]/40 min-h-[68px] shadow-inner shadow-zinc-200/50"
@@ -4153,6 +4187,10 @@ export default function Home() {
               )}
 
               {/* Error */}
+              {pendingAudio && pendingAudio.owner===sessionEmail && !processingBusy && <AudioRecovery
+                blob={pendingAudio.blob} busy={processingBusy}
+                onRetry={()=>{void processRecordedAudio(pendingAudio)}}
+                onDiscard={()=>{setPendingAudio(null);setError('')}} />}
               {error && (
                 <div className="mt-3 w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
                   {error}

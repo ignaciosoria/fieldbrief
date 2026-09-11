@@ -15,12 +15,29 @@ try {
   for (const width of [390,1280]) {
     const context=await browser.newContext({viewport:{width,height:900}})
     const notes=new Map();const queue=[];const errors=[];let failSave=true;let failStructure=false
+    let transcribeCalls=0;let rejectOversize=false;const structureBodies=[]
+    await context.addInitScript(()=>{
+      window.__micStops=0
+      Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>{window.__micStops++}}]})},configurable:true})
+      window.MediaRecorder=class {
+        static isTypeSupported(){return true}
+        constructor(){if(window.__failRecorder)throw Error('Synthetic recorder failure');this.mimeType='audio/webm';this.state='inactive'}
+        start(){this.state='recording'}
+        stop(){this.state='inactive';this.ondataavailable?.({data:new Blob(['synthetic-audio'],{type:this.mimeType})});this.onstop?.()}
+      }
+    })
     await context.route('**/*',async route=>{
       const req=route.request();const url=new URL(req.url())
       const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)})
       if(url.origin!==new URL(baseUrl).origin) return route.fulfill({status:200,contentType:req.resourceType()==='script'?'application/javascript':'text/html',body:req.resourceType()==='script'?'':'External navigation intercepted by test'})
       if(url.pathname==='/api/auth/session') return json({user:{name:'Test Rep',email:'synthetic@example.test'},expires:'2099-01-01T00:00:00Z'})
       if(url.pathname==='/api/subscription') return json({active:false})
+      if(url.pathname==='/api/transcribe') {
+        transcribeCalls++
+        if(rejectOversize) return route.fulfill({status:413,contentType:'text/html',body:'Payload too large'})
+        if(transcribeCalls===1) return json({error:'Synthetic audio upload failure'},503)
+        return json({transcript:'Visité a Ana de Acme. Mañana tengo que llamarla.'})
+      }
       if(url.pathname==='/api/notes') {
         if(req.method()==='GET') return json({notes:[...notes.values()].reverse(),hasMore:false})
         if(req.method()==='PUT') {
@@ -30,6 +47,7 @@ try {
         throw Error('Unexpected notes mutation')
       }
       if(url.pathname==='/api/structure') {
+        structureBodies.push(req.postDataJSON())
         if(failStructure) {failStructure=false;return json({error:'Synthetic structure failure'},503)}
         assert.ok(queue.length,'Unexpected extraction request')
         return json(visitExtractionResult(queue.shift(),'2026-09-10T18:00:00Z','America/Los_Angeles'))
@@ -118,8 +136,56 @@ try {
     await page.getByRole('heading',{name:'Nota para CRM',exact:true}).waitFor()
     assert.equal(notes.size,5)
     assert.equal(queue.length,0)
+
+    // Fake microphone only: failed ASR retains downloadable audio, then a failed
+    // extraction is retried from text without paying for another transcription.
+    await page.getByRole('button',{name:'New',exact:true}).click()
+    await page.getByRole('button',{name:'Record visit',exact:true}).click()
+    await page.getByRole('button',{name:'Stop recording',exact:true}).click()
+    await page.getByRole('region',{name:'Recover recording'}).waitFor()
+    assert.equal(transcribeCalls,1)
+    assert.equal(await page.evaluate(()=>window.__micStops),1)
+    assert.equal(await page.getByRole('button',{name:'Record visit',exact:true}).isDisabled(),true)
+    const downloadPromise=page.waitForEvent('download')
+    await page.getByRole('link',{name:'Download audio',exact:true}).click()
+    const download=await downloadPromise
+    assert.equal(download.suggestedFilename(),'folup-recording.webm')
+    assert.equal(await download.failure(),null)
+    failStructure=true
+    await page.getByRole('button',{name:'Retry recording',exact:true}).click()
+    await page.getByText('Synthetic structure failure',{exact:true}).waitFor()
+    assert.equal(transcribeCalls,2)
+    const firstAudioStructure=structureBodies.at(-1)
+    assert.equal(await page.getByRole('region',{name:'Recover recording'}).count(),0)
+    assert.equal(await page.getByPlaceholder('Or type a note…').inputValue(),'Visité a Ana de Acme. Mañana tengo que llamarla.')
+    queue.push(fixture('es-two-companies'))
+    await page.getByRole('button',{name:'Process Note',exact:true}).click()
+    await page.getByRole('heading',{name:'Nota para CRM',exact:true}).waitFor()
+    assert.equal(transcribeCalls,2,'Successful ASR is not repeated after extraction fails')
+    assert.equal(structureBodies.at(-1).clientNow,firstAudioStructure.clientNow,'Retry retains original visit timestamp')
+    assert.equal(structureBodies.at(-1).timezone,firstAudioStructure.timezone)
+    assert.equal(notes.size,6)
+
+    // Constructor failure releases the acquired mic; HTML upload errors retain audio.
+    await page.getByRole('button',{name:'New',exact:true}).click()
+    await page.evaluate(()=>{window.__failRecorder=true})
+    await page.getByRole('button',{name:'Record visit',exact:true}).click()
+    await page.getByText('Synthetic recorder failure',{exact:true}).waitFor()
+    assert.equal(await page.evaluate(()=>window.__micStops),2)
+    assert.equal(transcribeCalls,2)
+    await page.evaluate(()=>{window.__failRecorder=false})
+    rejectOversize=true
+    await page.getByRole('button',{name:'Record visit',exact:true}).click()
+    await page.getByRole('button',{name:'Stop recording',exact:true}).click()
+    await page.getByRole('region',{name:'Recover recording'}).waitFor()
+    await page.getByText('The recording is too large to upload. Download a copy before discarding it.',{exact:true}).waitFor()
+    page.once('dialog',dialog=>dialog.accept())
+    await page.getByRole('button',{name:'Discard recording',exact:true}).click()
+    await page.getByRole('region',{name:'Recover recording'}).waitFor({state:'hidden'})
+    assert.equal(await page.getByRole('button',{name:'Record visit',exact:true}).isEnabled(),true)
+    assert.equal(notes.size,6)
     assert.deepEqual(errors,[])
-    console.log(JSON.stringify({viewport:width,passed:true,checks:['save retry','calendar own context','written correction same id','clarification refresh','no invented followup','partial clarification skip with failed refresh retry','escape without unnecessary refresh'],mocked:true}))
+    console.log(JSON.stringify({viewport:width,passed:true,checks:['save retry','calendar own context','written correction same id','clarification refresh','no invented followup','partial clarification skip with failed refresh retry','escape without unnecessary refresh','failed audio download and retry','text-only retry preserves visit timestamp','constructor failure releases mic','HTML 413 recovery and explicit discard'],mocked:true}))
     await context.close()
   }
 } finally {await browser.close()}
