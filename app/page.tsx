@@ -2054,7 +2054,7 @@ export default function Home() {
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [primaryAdded, setPrimaryAdded] = useState(false)
   const [calendarDraft, setCalendarDraft] = useState<CalendarDraft | null>(null)
-  const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string} | null>(null)
+  const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string; hasAnswers?:boolean} | null>(null)
   const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
   const [subscriptionError, setSubscriptionError] = useState(false)
@@ -2559,6 +2559,15 @@ export default function Home() {
   }
 
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
+
+  const refreshClarifiedVisit = async (r:StructureResult, tx:string):Promise<StructureResult> => {
+    const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      note:tx,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
+    })})
+    const updated = await response.json()
+    if (!response.ok) throw Error('Clarification could not be processed')
+    return updated
+  }
 
   const correctVisitText = async (r:StructureResult,tx:string,correction:string,noteId?:string) => {
     const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
@@ -3902,23 +3911,26 @@ export default function Home() {
         key={JSON.stringify(pendingVisit.result.extraction.questions[0])}
         extraction={pendingVisit.result.extraction}
         question={pendingVisit.result.extraction.questions[0]}
-        onSkip={() => { void acceptVisit(pendingVisit.result,pendingVisit.transcript,pendingVisit.noteId,true).catch(()=>{}) }}
+        onSkip={async () => {
+          // Collected answers must reach the prose even when another question is skipped.
+          // Skipping without answering anything needs no extra model call.
+          const updated = pendingVisit.hasAnswers
+            ? await refreshClarifiedVisit(pendingVisit.result,pendingVisit.transcript)
+            : pendingVisit.result
+          await acceptVisit(updated,pendingVisit.transcript,pendingVisit.noteId,true)
+        }}
         onConfirm={async answer => {
           const question = pendingVisit.result.extraction!.questions[0]
           const extraction = confirmVisitField(pendingVisit.result.extraction!,question,answer)
           const clarification = `Answer to clarification question ${JSON.stringify(question.question)}: ${JSON.stringify(answer.trim())}. This replaces the earlier uncertainty.`
           const tx = appendVisitCorrection(pendingVisit.transcript,clarification,getClientNowIso(),getClientTimezone())
           if (extraction.questions.length) {
-            setPendingVisit({...pendingVisit,result:{...pendingVisit.result,extraction},transcript:tx})
+            setPendingVisit({...pendingVisit,result:{...pendingVisit.result,extraction},transcript:tx,hasAnswers:true})
             return
           }
           // Regenerate the prose once all answers are collected: never save a stale
           // CRM summary saying "Marta or María" after the user confirmed María.
-          const response = await fetch('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-            note:tx,clientNow:pendingVisit.result.capturedAt,timezone:pendingVisit.result.noteTimezone || getClientTimezone(),
-          })})
-          const updated = await response.json()
-          if (!response.ok) throw Error('Clarification could not be processed')
+          const updated = await refreshClarifiedVisit(pendingVisit.result,tx)
           await acceptVisit(updated,tx,pendingVisit.noteId)
         }} />}
       {calendarDraft && <CalendarPreview initial={calendarDraft} onClose={() => setCalendarDraft(null)} onOpened={() => setShowCalendarToast(true)} />}

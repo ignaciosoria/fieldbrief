@@ -1,5 +1,20 @@
 # Folup optimization — sequential evaluation
 
+## Verified clarification checkpoint — September 11, 2026, 09:00 UTC
+
+Local only. Partial answers are now regenerated into CRM prose when leaving remaining
+questions unresolved. Leaving without any answers avoids an extra model call. Escape
+uses the same awaitable path; refresh failures keep the dialog, confirmed answers and
+retry control. Inputs are disabled during submission to avoid editing an in-flight answer.
+Production build passed. Mocked browser smoke passed at 390px and 1280px, including
+partial answer + skipped date + injected refresh failure + retry; the saved note retained
+María, no stale Marta, no invented date and the unresolved date question. Existing save,
+correction, calendar and no-action checks also passed. No paid calls or remote changes.
+This checks frontend integration with synthetic responses, not new model accuracy.
+
+Night automation creation timestamp is 1789114731084 (2026-09-11T08:18:51.084Z).
+Hard stop/pause due at 2026-09-11T16:18:51.084Z. Do not reset the eight-hour window.
+
 ## Overnight checkpoint — subscriptions ready for further integration verification
 
 September 11, 2026. Local only; NOT deployed and migration 003 NOT applied remotely.
@@ -42,9 +57,7 @@ subagents, no real charges, no plan purchases, no data deletion. If access is bl
 document it and work on a different safe local block instead of repeatedly requesting it.
 
 Next output/reliability priorities:
-- Partial clarifications: answering one question then leaving others unresolved currently
-  skips the final prose regeneration; CRM text can retain an already-corrected uncertainty.
-  Make skip awaitable/retryable and regenerate once when collected answers exist.
+- Partial clarifications: local fix verified in the checkpoint above; do not redo.
 - Mobile recording: retain audio on upload/ASR failure; retry/download without recording
   again; enforce practical upload/duration bounds and reliably release microphone tracks.
 - Transcription: evaluate neutral context against hard-coded crop/product vocabulary;
