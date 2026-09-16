@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitleContract'
+import { buildPrimaryBaseTitle, normalizePrimarySendObjectField, type ActionStructuredFields } from './actionTitleContract'
 
 export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean }
 
@@ -18,13 +18,22 @@ export function suggestedCalendarTime(action: ActionStructuredFields): string {
   return '09:00'
 }
 
+/** Keep an unclassified deliverable instead of silently dropping it from the title. */
+function compactDeliverable(object:string):string {
+  const phrase=object.replace(/^(?:el|la|los|las|un|una|the|a|an)\s+/i,'').replace(/\s+/g,' ').trim()
+  if(phrase.length<=42)return phrase
+  const prefix=phrase.slice(0,42)
+  const boundary=prefix.lastIndexOf(' ')
+  return (boundary>=24?prefix.slice(0,boundary):prefix).trimEnd()+'…'
+}
+
 export function shortCalendarTitle(action: ActionStructuredFields, es: boolean): string {
-  const object=action.object || ''
+  const object=normalizePrimarySendObjectField(action.object || '',action.contact,action.verb,es?'Spanish':'English')
   const sendObject=/ficha|technical sheet|data\s?sheet/i.test(object)?(es?'ficha técnica':'technical sheet'):
     /presupuesto|cotizaci[oó]n|quote|quotation/i.test(object)?(es?'presupuesto':'quote'):
     /cat[aá]logo|catalog/i.test(object)?(es?'catálogo':'catalog'):
     /muestras?|samples?/i.test(object)?(es?'muestras':'samples'):
-    /informe|report|results|resultados/i.test(object)?(es?'informe':'report'):''
+    /informe|report|results|resultados/i.test(object)?(es?'informe':'report'):compactDeliverable(object)
   const verb=action.type==='send' ? `${es?'Enviar':'Send'} ${sendObject}`.trim() :
     action.type==='call'?(es?'Llamar':'Call'):action.type==='meeting'?(es?'Reunión':'Meeting'):
     action.type==='follow_up'?(es?'Seguimiento':'Follow up'):

@@ -18,7 +18,11 @@
     ,{"id":"visit-v2-run-8","model":"gpt-5.4-2026-03-05","maxRequests":34,"reservedUsd":1,"status":"completed","actualUsd":0.28882,"note":"32/34 checks passed; priority incidents omitted from visible insights in both languages. Correction downstream checks passed. Not deployed; contradiction removed for next run."}
     ,{"id":"visit-v2-run-9","model":"gpt-5.4-2026-03-05","maxRequests":34,"reservedUsd":1,"status":"completed","actualUsd":0.28558,"note":"33/34 automated checks passed. Incident now visible; future-purpose regression and manually observed invented request in insight prevent deployment."}
     ,{"id":"visit-v2-run-10","model":"gpt-5.4-2026-03-05","maxRequests":34,"reservedUsd":1,"status":"completed","actualUsd":0.29543,"note":"34/34 automated checks passed. Manual review of priority incidents, corrected identity/date outputs, ambiguity and future purpose. Not a universal factuality/ASR score. No production writes."}
+    ,{"id":"visit-roles-baseline-1","model":"gpt-5.4-2026-03-05","maxRequests":8,"reservedUsd":0.2,"status":"completed","actualUsd":0.0802125,"note":"Unchanged production prompt/title baseline: 2/8 cases pass; competitors and merely mentioned approvers leak into headers. Anonymized fixture, no production writes."}
+    ,{"id":"visit-v2-run-11","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":1,"status":"completed","actualUsd":0.4039175,"note":"40/42 checks pass; all eight role cases pass. One invalid verbatim evidence and one lost customer context in an internal task. Not deployed; targeted prompt fixes before next run."}
+    ,{"id":"visit-user-roles-1","model":"gpt-5.4-2026-03-05","maxRequests":1,"reservedUsd":0.05,"status":"completed","actualUsd":0.017205,"note":"Initial attempt blocked before execution; user explicitly authorized exact payload to OpenAI, then one call succeeded. Expected header, one send, third-party Friday promise retained in context, day-of-week clarification. Input/output only in local temporary files, not committed; no production writes."}
+    ,{"id":"visit-v2-run-12","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":1,"status":"completed","actualUsd":0.4063925,"note":"42/42 automated checks passed, manual role/mixed-ownership review. No new model or additional inference call in app. No production writes."}
   ],
-  "unreservedUsd": 2.603593,
+  "unreservedUsd": 1.6958655,
   "note":"Conservative reservation includes unknown-cost failures. Do not repeat a run without recording its result and a new reservation. Twelve synthetic audio calls completed."
 }

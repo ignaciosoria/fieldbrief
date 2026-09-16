@@ -18,6 +18,9 @@ export type VisitCase = {
   crmFacts: string[]
   forbiddenClaims: string[]
   clarification: string[]
+  /** Role-sensitive header expectations; not a list of all mentioned entities. */
+  headerContacts?: string[]
+  headerCompanies?: string[]
 }
 // Fixed reference: Thursday Sep 10, 2026, 11:00 in Los Angeles.
 export const VISIT_NOW = '2026-09-10T18:00:00.000Z'

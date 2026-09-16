@@ -1,6 +1,46 @@
 # Folup optimization — sequential evaluation
 
+## Role-aware visit headers and meaningful send titles — September 15, 2026
+
+Root cause: prompt asked for all confirmed names "mentioned in the visit", and
+both compact UI and CRM header join those arrays. Revised existing fields to mean
+actual counterparties (interacted-with contacts or explicit rep-action recipients),
+not mere competitors/approvers/suppliers. Preserve third parties with their roles in
+context. No hardcoded competitor list, new schema, migration or extra model call.
+Added explicit per-clause task ownership: a customer's Friday order confirmation
+does not become a rep follow-up or supply a date to another action. A stated week
+window asks which day; absent timing still does not invent a question. Existing
+09:00/15:00/19:00 suggested-clock behavior is unchanged.
+
+Calendar title whitelist previously erased unrecognized deliverables (tank mix
+program, calibration certificate). Now uses a bounded noun-phrase fallback with
+existing send-object normalization. Full action description remains unchanged.
+No UI design changes and existing saved extractions are not silently reprocessed.
+
+API eval: unchanged production baseline 2/8 new role cases pass ($0.0802125).
+First candidate 40/42 ($0.4039175), all role cases pass but unrelated evidence quote
+and internal-task customer context regressions prevented deployment. Refined those
+rules; final run12 42/42 automated checks ($0.4063925). User explicitly authorized
+one exact-note OpenAI test after permission gate; passed ($0.017205). Exact note and
+response remain local temporary files, NOT committed. Committed equivalents use
+fictional names/brands. No synthetic production notes, no Calendar saves.
+Total $0.9077275 at usage-token rates, no cached discount; not invoice reconciliation.
+Budget unreserved $1.6958655. Text extraction tested, not microphone/transcription.
+144 offline tests pass, including recorded ES/EN API output replay through compact
+UI, CRM header and confirmed Calendar URL. Production webpack build passes.
+
+OpenAI Docs informed schema-vs-semantic validation and evaluated prompt changes:
+https://developers.openai.com/api/docs/guides/structured-outputs
+Current pinned GPT-5.4 pricing verified ($2.50/$15 per million input/output tokens):
+https://developers.openai.com/api/docs/models/gpt-5.4
+
 ## Public landing refresh — September 15, 2026
+
+DEPLOYED 52321dc. Vercel Ready, exact source commit and www.folup.app verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/3YwhBhwhm4GN4Qu2rUoSb9gWXZPQ
+Local servers stopped and responsive viewport override reset after QA.
+Production browser retains the user's active session and correctly shows the app;
+signed-out visual checks were local, not a production logout. Session left intact.
 
 Replaced only the signed-out non-demo branch with PublicLanding. Existing Google
 auth callback, /try walkthrough and authenticated compact UI remain unchanged.

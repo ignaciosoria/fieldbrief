@@ -2,6 +2,7 @@
 import { extractVisit, VisitExtractionError } from '../lib/extractVisitServer'
 import { VISIT_CORPUS, VISIT_NOW, VISIT_ZONE } from './visit-corpus'
 import { VISIT_HELDOUT } from './visit-heldout'
+import { VISIT_ROLES, roleIssues } from './visit-roles'
 import { readFileSync } from 'node:fs'
 import {calendarDraftFromAction,googleCalendarUrl} from '../lib/calendarDraft'
 import {visitActionFields} from '../lib/visitExtraction'
@@ -10,11 +11,12 @@ import {formatProfessionalCrmNote} from '../lib/formatCrmSalesNote'
 async function main() {
   const ledger = JSON.parse(readFileSync(new URL('./api-budget.json',import.meta.url),'utf8'))
   const reservation = ledger.reservations.find((r:{id:string;status:string}) => r.id === process.env.FOLUP_EVAL_RUN && r.status === 'reserved')
-  const cases = [...VISIT_CORPUS,...VISIT_HELDOUT]
+  const cases = process.env.FOLUP_EVAL_FILE ? JSON.parse(readFileSync(process.env.FOLUP_EVAL_FILE,'utf8')) as typeof VISIT_CORPUS :
+    process.env.FOLUP_EVAL_SUITE === 'roles' ? VISIT_ROLES : [...VISIT_CORPUS,...VISIT_HELDOUT,...VISIT_ROLES]
   if (!reservation || reservation.maxRequests !== cases.length) throw Error('Explicit active reservation required')
   const model = reservation.model || 'gpt-4.1-2025-04-14'
   const rates = model === 'gpt-5.4-mini-2026-03-17' ? {input:0.75,output:4.5} : model === 'gpt-5.4-2026-03-05' ? {input:2.5,output:15} : {input:2,output:8}
-  if (cases.some(c=>c.note.length>1000)) throw Error('Benchmark scope changed')
+  if (cases.some(c=>c.note.length>1800)) throw Error('Benchmark scope changed')
   let cost = 0
   let failed = 0
   // Four at a time; bounded request count, no automatic retries.
@@ -26,7 +28,7 @@ async function main() {
         const usd = ((usage?.prompt_tokens || 0)*rates.input + (usage?.completion_tokens || 0)*rates.output)/1e6
         cost += usd // Conservative: no cached-input discount.
         const actual = result.extraction.actions
-        const issues:string[] = []
+        const issues:string[] = roleIssues(c,result.extraction)
         if (result.extraction.language !== c.language) issues.push('language')
         if (actual.length !== c.actions.length) issues.push(`action-count:${actual.length}/${c.actions.length}`)
         for (const expected of c.actions) {

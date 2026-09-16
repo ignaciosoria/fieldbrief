@@ -3,6 +3,25 @@ import { test } from 'node:test'
 import { calendarDraftFromAction, googleCalendarUrl } from '../lib/calendarDraft'
 const action = {type:'send',verb:'Send',object:'the complete clinical trial results from the ICU study in Baja California',contact:'Ana',company:'Acme',date:'12/31/2026',time:'23:45'}
 const draft = () => calendarDraftFromAction(action,'English','America/Los_Angeles')
+test('unclassified send deliverables remain meaningful in Spanish and English titles',()=>{
+  for(const [language,object,title] of [
+    ['Spanish','el programa de tank mix','Enviar programa de tank mix a Ana — Acme'],
+    ['English','the tank mix program','Send tank mix program to Ana — Acme'],
+    ['English','the calibration certificate','Send calibration certificate to Ana — Acme'],
+    ['Spanish','Enviar el programa de tank mix','Enviar programa de tank mix a Ana — Acme'],
+  ]){
+    const d=calendarDraftFromAction({...action,object,description:'Complete deliverable without prices.'},language,'America/Los_Angeles')
+    assert.equal(d.title,title)
+    assert.equal(d.details,'Complete deliverable without prices.')
+  }
+})
+test('long unknown deliverables are shortened only in the title, not Calendar details',()=>{
+  const object='the calibration certificate for the northern production line with all attachments and serial numbers'
+  const d=calendarDraftFromAction({...action,object},'English','America/Los_Angeles')
+  assert.match(d.title,/Send calibration certificate.*… to Ana — Acme/)
+  assert.ok(d.title.length<80)
+  assert.ok(d.details.includes(object))
+})
 test('Spanish calendar keeps restrictions in details and revised fields replace original drafts',()=>{
   const original={...action,object:'ficha técnica de Quantum Flower 75 sin precios',description:'Enviar la ficha técnica de Quantum Flower 75 sin precios',contact:'José Martínez',company:'AgroSol',time:''}
   const before=calendarDraftFromAction(original,'Spanish','America/Los_Angeles')
