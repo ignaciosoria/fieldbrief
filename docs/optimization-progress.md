@@ -1,5 +1,15 @@
 # Folup optimization — sequential evaluation
 
+## CURRENT PRODUCTION — September 15 compact output
+
+ef1d6c7 DEPLOYED, Vercel Ready 26s; exact commit and www.folup.app verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/DDpYY8b1A1F6rji7oFioG6UirPC9
+Homepage 200, anonymous structure POST 401. Compact v2 output and direct calendar
+opening now live. Existing 124 tests and two new component tests passed; build
+passed. No API spending. Local fixture servers stopped and tab closed. Synthetic
+Google form was opened but NOT saved. Provider latency benchmarking remains
+pending; only artificial UI delay and wait-for-save display latency removed.
+
 ## Simplified output requested — September 15, 2026
 
 New shared compact result for v2 recorded/typed output and history: discreet people/
