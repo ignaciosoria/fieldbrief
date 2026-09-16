@@ -49,9 +49,10 @@ for(const id of ['es-messy-roles','en-messy-roles']){
     const confirmed=confirmVisitField(extraction,q,'2026-09-11')
     const draft=calendarDraftFromAction(visitActionFields(confirmed.actions[0],confirmed.language),confirmed.language,'America/Los_Angeles')
     const params=new URL(googleCalendarUrl(draft)!).searchParams
-    assert.match(params.get('text')!,/tank mix.*Carlos — Robles Family Farms/i)
+    assert.match(params.get('text')!,/tank mix.*Carlos/i)
     assert.doesNotMatch(params.get('text')!,/Oscar|AgriWest/)
-    assert.equal(params.get('details'),extraction.actions[0].description)
+    assert.ok(params.get('details')!.endsWith(extraction.actions[0].description))
+    assert.ok([params.get('text'),params.get('details')].join(' ').includes('Robles Family Farms'))
     assert.equal(params.get('dates'),'20260911T160000Z/20260911T163000Z')
     assert.equal(draft.timeSuggested,true)
   })

@@ -1,6 +1,30 @@
 # Folup optimization — sequential evaluation
 
+## Calendar title length — September 15, 2026
+
+Generated titles now have a hard 44-code-point ceiling. Prioritize the action,
+short deliverable category and recipient; retain company in the title only if it
+fits. Tank-mix programs simplify to tank mix, technical sheets to ficha/datasheet.
+Unrecognized objects retain a bounded noun phrase rather than disappearing. Long
+phrases shorten at word boundaries with an ellipsis; never invent abbreviations.
+When a full identity is omitted/shortened, full contact/company are prepended to
+the unchanged action description. Full CRM/extraction fields stay untouched.
+Existing dates, hours, durations, timezone and user-edited titles are unchanged.
+
+No model/prompt changes, added dependencies or paid calls. 147 tests pass; production
+webpack build, focused ESLint and diff check pass. New coverage includes long ES/EN
+names, all five action types, missing identities and Unicode, plus URL title/details
+round-trip. Recorded role-output replay adjusted for company moving to details.
+Title length is a presentation budget, not a guarantee of no clipping in every
+Google Calendar view or device width. Already-saved Google events are not modified.
+CUA verified a synthetic Google Calendar draft: "Enviar tank mix a Carlos", full
+Carlos/Robles Family Farms identity and send-without-prices instructions in details,
+September 18 2026 15:00–15:30. Draft tab closed without saving any event.
+
 ## Role-aware visit headers and meaningful send titles — September 15, 2026
+
+DEPLOYED 705c2ac. Vercel Production Deployment Ready, exact source and www.folup.app
+verified: https://vercel.com/ignaciosorias-projects/fieldbrief/7CxDT1BuxkiaHAzFMi2L1wMQ9VAT
 
 Root cause: prompt asked for all confirmed names "mentioned in the visit", and
 both compact UI and CRM header join those arrays. Revised existing fields to mean

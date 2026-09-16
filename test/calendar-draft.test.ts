@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { calendarDraftFromAction, googleCalendarUrl } from '../lib/calendarDraft'
+import { CALENDAR_TITLE_LIMIT, calendarDraftFromAction, googleCalendarUrl } from '../lib/calendarDraft'
 const action = {type:'send',verb:'Send',object:'the complete clinical trial results from the ICU study in Baja California',contact:'Ana',company:'Acme',date:'12/31/2026',time:'23:45'}
 const draft = () => calendarDraftFromAction(action,'English','America/Los_Angeles')
 test('unclassified send deliverables remain meaningful in Spanish and English titles',()=>{
   for(const [language,object,title] of [
-    ['Spanish','el programa de tank mix','Enviar programa de tank mix a Ana — Acme'],
-    ['English','the tank mix program','Send tank mix program to Ana — Acme'],
-    ['English','the calibration certificate','Send calibration certificate to Ana — Acme'],
-    ['Spanish','Enviar el programa de tank mix','Enviar programa de tank mix a Ana — Acme'],
+    ['Spanish','el programa de tank mix','Enviar tank mix a Ana — Acme'],
+    ['English','the tank mix program','Send tank mix to Ana — Acme'],
+    ['English','the calibration certificate','Send certificate to Ana — Acme'],
+    ['Spanish','Enviar el programa de tank mix','Enviar tank mix a Ana — Acme'],
   ]){
     const d=calendarDraftFromAction({...action,object,description:'Complete deliverable without prices.'},language,'America/Los_Angeles')
     assert.equal(d.title,title)
@@ -16,21 +16,53 @@ test('unclassified send deliverables remain meaningful in Spanish and English ti
   }
 })
 test('long unknown deliverables are shortened only in the title, not Calendar details',()=>{
-  const object='the calibration certificate for the northern production line with all attachments and serial numbers'
+  const object='the compliance documentation for the northern production line with all attachments and serial numbers'
   const d=calendarDraftFromAction({...action,object},'English','America/Los_Angeles')
-  assert.match(d.title,/Send calibration certificate.*… to Ana — Acme/)
-  assert.ok(d.title.length<80)
+  assert.match(d.title,/Send compliance.*… to Ana/)
+  assert.ok(d.title.length<=CALENDAR_TITLE_LIMIT)
   assert.ok(d.details.includes(object))
 })
 test('Spanish calendar keeps restrictions in details and revised fields replace original drafts',()=>{
   const original={...action,object:'ficha técnica de Quantum Flower 75 sin precios',description:'Enviar la ficha técnica de Quantum Flower 75 sin precios',contact:'José Martínez',company:'AgroSol',time:''}
   const before=calendarDraftFromAction(original,'Spanish','America/Los_Angeles')
-  assert.equal(before.title,'Enviar ficha técnica a José Martínez — AgroSol')
+  assert.equal(before.title,'Enviar ficha a José Martínez — AgroSol')
   assert.equal(before.details,original.description);assert.equal(before.time,'09:00');assert.equal(before.timeSuggested,true)
   const after=calendarDraftFromAction({...original,contact:'Ana',company:'Beta',time:'15:30',date:'01/04/2027'},'Spanish','America/Los_Angeles')
-  assert.equal(after.title,'Enviar ficha técnica a Ana — Beta');assert.equal(after.time,'15:30');assert.equal(after.timeSuggested,false)
+  assert.equal(after.title,'Enviar ficha a Ana — Beta');assert.equal(after.time,'15:30');assert.equal(after.timeSuggested,false)
   assert.equal(after.date,'2027-01-04')
   assert.doesNotMatch(new URL(googleCalendarUrl(after)!).searchParams.get('text')!,/José|AgroSol/)
+})
+test('long company moves to details while the title keeps the follow-up essentials',()=>{
+  const d=calendarDraftFromAction({...action,object:'programa de tank mix por escrito',contact:'Manuel',company:'Gutierrez Family Farms',description:'Enviar el programa de tank mix por escrito, sin precios.'},'Spanish','America/Los_Angeles')
+  assert.equal(d.title,'Enviar tank mix a Manuel')
+  assert.equal(d.details,'Manuel — Gutierrez Family Farms\n\nEnviar el programa de tank mix por escrito, sin precios.')
+  const q=new URL(googleCalendarUrl(d)!).searchParams
+  assert.equal(q.get('text'),d.title)
+  assert.equal(q.get('details'),d.details)
+  assert.equal(q.get('dates'),'20270101T074500Z/20270101T081500Z')
+})
+test('all generated title variants are bounded without losing full identities or instructions',()=>{
+  for(const language of ['Spanish','English'])for(const type of ['call','send','meeting','follow_up','other']){
+    for(const contact of ['','María del Carmen Fernández de la Fuente','Alexandertheverylongsingletokenname😀']){
+      const company='International Agricultural Research and Development Cooperative'
+      const description='Review Q7 packaging damage, but do not include prices or ship replacements.'
+      const source={...action,type,contact,company,description,object:'the documentation for the northern production line with all safety restrictions'}
+      const d=calendarDraftFromAction(source,language,'America/Los_Angeles')
+      assert.ok(Array.from(d.title).length<=CALENDAR_TITLE_LIMIT,d.title)
+      assert.ok(!d.title.includes('\ufffd'),d.title)
+      assert.ok(d.details.endsWith(description))
+      assert.ok(d.details.includes(company))
+      if(contact)assert.ok(d.details.includes(contact))
+      assert.equal(d.date,'2026-12-31');assert.equal(d.time,'23:45')
+    }
+  }
+})
+test('company remains the target when no contact is known; no made-up person or subject',()=>{
+  const d=calendarDraftFromAction({...action,type:'call',verb:'Call',object:'',contact:'',company:'Acme',description:'Call.'},'English','America/Los_Angeles')
+  assert.equal(d.title,'Call — Acme')
+  assert.equal(d.details,'Call.')
+  const missing=calendarDraftFromAction({...action,object:'',contact:'',company:'',description:'Send.'},'English','America/Los_Angeles')
+  assert.equal(missing.title,'Send')
 })
 test('short calendar title keeps recipient while description preserves full deliverable', () => {
   const d = draft()
