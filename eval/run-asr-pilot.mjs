@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,createReadStream} from 'node:fs'
 const ledger=JSON.parse(readFileSync(new URL('./api-budget.json',import.meta.url),'utf8'))
 const reservation=ledger.reservations.find(r=>r.id===process.env.FOLUP_EVAL_RUN && r.status==='reserved')
 if(reservation?.id!=='asr-pilot-1' || reservation.maxRequests!==12)throw Error('Explicit active 12-request reservation required')
-const source=readFileSync(new URL('../app/api/transcribe/route.ts',import.meta.url),'utf8')
+const source=readFileSync(new URL('../lib/transcriptionModel.ts',import.meta.url),'utf8')
 const currentPrompt=source.match(/const WHISPER_CONTEXT_PROMPT =\s*'([^']+)'/)?.[1]
 if(!currentPrompt)throw Error('Current context prompt unavailable')
 const arms=[{id:'whisper-current',model:'whisper-1',prompt:currentPrompt},{id:'whisper-no-context',model:'whisper-1'},{id:'mini-no-context',model:'gpt-4o-mini-transcribe-2025-12-15'}]

@@ -1,5 +1,56 @@
 # Folup optimization — sequential evaluation
 
+## Transcription upgrade — September 15, 2026
+
+Default changed to gpt-transcribe with concise bilingual field-sales vocabulary
+and context stressing numbers, negations and spoken corrections. No UI, extraction,
+quota, auth, upload-limit or retry-policy changes. No forced language or subsequent
+LLM transcript rewrite. TRANSCRIPTION_MODEL=whisper-1 restores original model and
+prompt; invalid values fail before API calls. New model available on local key.
+Official docs checked: https://developers.openai.com/api/docs/models/gpt-transcribe
+and https://developers.openai.com/api/docs/guides/speech-to-text . Published cost
+$0.0045/min: 100 one-minute notes $0.45; 1,000 $4.50, transcription only.
+
+Evidence: eval/asr-upgrade-1.jsonl (12 calls, four synthetic clean/noisy variants,
+current Whisper vs vocabulary-only Whisper vs candidate). Candidate average 1781ms
+vs current 2788ms; single samples, not a latency SLA. Candidate corrected Soltec in
+clean ES and Northstar clean EN; noisy ES still Soltex, so proper nouns unresolved.
+eval/asr-upgrade-safety-1.jsonl adds six calls: messy ES/EN plus silence, two models.
+Candidate retains surname/time self-corrections, product numbers and negations;
+both models mishear English Send as sent. Candidate returns empty on silence while
+Whisper invents a FEMA phrase. Existing no-speech recovery handles empty output.
+These are four base TTS utterances, two noise variants and silence, NOT field/audio
+accuracy proof. Real-mobile and code-switching validation remain outstanding.
+131 tests pass, TypeScript and webpack production build pass. Five new tests check
+SDK multipart contract, unchanged audio/text, explicit rollback, empty output,
+invalid configuration and no paid fallback. No microphone or interface changes.
+
+## Live messy-text browser trial — September 15, 2026
+
+Same synthetic Spanish scenario entered via visible production UI after user
+requested text instead of audio. History 4 to 5 confirms saved note. Three actions:
+Jose Martinez/AgroSol technical sheet Sep16 15:00 suggested; Ana Lopez/Campo Verde
+call Sep18 11:30 explicit; Pedro/Distribuciones Levante catalog date pending.
+Corrected surname/time retained; cancelled meeting and third-party report not
+turned into own actions. Jose Google Calendar draft URL verified product Quantum
+Flower75, without prices or quote, 22:00Z = 15:00 America/Los_Angeles. No event saved.
+Pedro calendar button opens review with blank date and 09:00 suggestion; it did not
+ask an automatic post-extraction question. Packaging damage was absent from the
+three visible insights; CRM clipboard content not checked. No additional API call
+for clarification. $0.10 conservative unknown-cost reservation retained.
+
+## Live messy-audio browser attempt — September 15, 2026
+
+User watched production Folup record microphone audio while local macOS Paulina
+played synthetic Spanish speech (corrected Jose surname, two companies, Quantum
+Flower 75 not 50, no prices, Ana call corrected to 11:30, cancelled meeting,
+third-party report obligation, Pedro catalog without date). Recording started and
+stopped through UI. Processing returned "No speech was detected" with retry,
+download and discard recovery controls; history stayed at 4. No extraction result
+or calendar event. Speaker-to-microphone path did not produce recognizable speech;
+precise audio cause unverified. No retry. Budget retains $0.10 unknown-cost bound.
+This is a failed audio-input demo, not evidence of extraction accuracy.
+
 ## Natural calendar titles — September 15, 2026
 
 User confirmed natural action + person — company format in ES/EN. Shared title
@@ -9,6 +60,11 @@ meetings and followups con/with, no connector without person; company suffix onl
 when present. Short object categories, full descriptions, timing and compact UI
 remain unchanged. Both action cards and Google URL use the same builder. Updated
 five title expectations; 126 tests pass, TypeScript passes. No paid calls.
+
+28de01f DEPLOYED: Vercel Ready, exact source and current production domain
+www.folup.app verified in deployment details. Local production build passed.
+https://vercel.com/ignaciosorias-projects/fieldbrief/8yPR6brgu4x4BxSJMgLXcHZBPZGU
+Previously opened Google forms retain their old title; reopen from refreshed Folup.
 
 ## CURRENT PRODUCTION — September 15 compact output
 
