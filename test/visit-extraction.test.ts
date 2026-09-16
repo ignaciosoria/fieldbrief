@@ -12,7 +12,7 @@ test('Q02/Q03: meeting and its own company/description survive adapter and calen
   assert.equal(r.additionalSteps.length,1)
   assert.equal(r.additionalSteps[0].supportingType,'meeting')
   const draft = calendarDraftFromAction(r.additionalSteps[0].actionStructured,'English','America/Los_Angeles')
-  assert.equal(draft.title,'Meeting · Bob · Beta')
+  assert.equal(draft.title,'Meeting with Bob — Beta')
   assert.equal(draft.details,'Discuss the trial results.')
   assert.equal(draft.date,'2026-09-12')
   assert.equal(draft.time,'10:00')

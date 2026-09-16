@@ -29,7 +29,13 @@ export function shortCalendarTitle(action: ActionStructuredFields, es: boolean):
     action.type==='call'?(es?'Llamar':'Call'):action.type==='meeting'?(es?'Reunión':'Meeting'):
     action.type==='follow_up'?(es?'Seguimiento':'Follow up'):
     (action.description || action.verb || (es?'Tarea':'Task')).slice(0,48).trim()
-  return [verb,action.contact,action.company].filter(Boolean).join(' · ')
+  const contact=action.contact.trim()
+  const company=action.company.trim()
+  const connector=action.type==='send'?(es?' a ':' to '):
+    action.type==='call'?(es?' a ':' '):
+    action.type==='meeting' || action.type==='follow_up'?(es?' con ':' with '):' — '
+  const phrase=verb+(contact?connector+contact:'')
+  return phrase+(company?' — '+company:'')
 }
 
 /** Only this action's fields. Never borrow another action's person, company or topic. */

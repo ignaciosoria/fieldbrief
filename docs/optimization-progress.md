@@ -1,5 +1,15 @@
 # Folup optimization — sequential evaluation
 
+## Natural calendar titles — September 15, 2026
+
+User confirmed natural action + person — company format in ES/EN. Shared title
+builder now emits Llamar a Maya — Northstar / Call Maya — Northstar; Enviar ficha
+técnica a José — AgroSol / Send technical sheet to José — AgroSol. Send uses a/to,
+meetings and followups con/with, no connector without person; company suffix only
+when present. Short object categories, full descriptions, timing and compact UI
+remain unchanged. Both action cards and Google URL use the same builder. Updated
+five title expectations; 126 tests pass, TypeScript passes. No paid calls.
+
 ## CURRENT PRODUCTION — September 15 compact output
 
 ef1d6c7 DEPLOYED, Vercel Ready 26s; exact commit and www.folup.app verified:
