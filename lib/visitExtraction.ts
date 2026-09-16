@@ -26,12 +26,15 @@ date is YYYY-MM-DD or empty, time is HH:mm or empty. Use the supplied local date
 questions are only for genuine uncertainty in identities or in an action's meaning/date/time/object, NOT optional details the user never mentioned. ALL prose, including every question, must use the selected language (preserve proper names). action_index is the zero-based actions index. If uncertainty affects an action's contact or company, target that action, NOT -1. Use -1 only for a visit-level identity that affects NO action. Leave the uncertain field empty. Do not offer unsupported name guesses. Missing company alone need not interrupt; unclear Acme vs Apex should. Ambiguity in one action must not affect the others.
 Before returning, preserve negative constraints such as 'do not send the quote' as CRM context AND include explicit restrictions that govern an action in that action's description (what to omit, avoid, or wait for). Calendar descriptions must stand on their own without the CRM summary. Keep each restriction with its own action/contact only; never turn it into another task. Do not describe the purpose of a FUTURE call as something already discussed, reviewed or resolved during the visit. 'She liked Q7' does not mean the rep demonstrated or showed Q7. A brief 'Met Ana at Acme' is sufficient if the rest of the note is only future actions. No filler about interests, coordination, opportunities, agreements or discussion unless stated. Unknown identities belong in questions, not in summary. No uncertainty placeholders in descriptions.
 Examples: 'Juan, sorry José' means José. 'Do not send the quote; call Ana Friday' means one call, no send, with 'Do not send the quote' preserved as context and in that call's description. 'Send Ana the technical sheet without prices; call Bob about delivery' means two actions with descriptions 'Send the technical sheet without prices' and 'Discuss delivery', not a price restriction on Bob's call. 'I already left samples; she will send results' means no rep action. 'Send Ana the prices and call Bob Monday' means two actions; no date for the send.
-Final factuality check for BOTH summary and insights: a future call's purpose is not a reported customer concern or something discussed during the visit. 'I will call to confirm receipt and resolve price questions' does NOT establish that the customer expressed price doubts or that receipt is pending; keep that purpose only in the action. 'I will send a sheet' does NOT mean the customer requested it. Do not restate rep actions in insights as invented customer requests or needs. Only explicit reported incidents/feedback qualify for priority insights; otherwise fewer insights or [] is correct. Return the required structured object.`
+Negation scope: distinguish an explicit restriction ('do not promise a replacement') from a report about the past ('I did not promise a replacement'). The latter is context, NOT an instruction prohibiting future promises; do not append it as a command to an event. Likewise 'no purchase was mentioned' does not establish 'no purchase happened'. Preserve who accepted, rejected or offered something; do not switch the rep and customer when summarizing. Only action-governing restrictions belong in calendar instructions.
+Completeness check across the WHOLE note: retain each distinct outstanding rep commitment, even an earlier incidental promise to investigate, check internally or consult someone. A closing recap of sends/meetings does not cancel those earlier commitments. If the rep promises to consult a specialist OR find someone knowledgeable, that is ONE other action with the stated problem, not two tasks, an invented call, or a reason to omit it. Preserve expressly stated cancellations and conditions.
+Self-contained deliverables: resolve references like 'that report/ese informe' from earlier sentences. Keep the identifying subject, study, product, site or version in BOTH object and description when supported, so the recipient can tell which document to send without reading the note. A study's region can identify the document without becoming the visit location. Do not leave vague 'that trial' in the event if the note identifies it. Do not copy unrelated background into the deliverable.
+Final factuality check for BOTH summary and insights: a future call's purpose is not a reported customer concern or something discussed during the visit. 'I will call to confirm receipt and resolve price questions' does NOT establish that the customer expressed price doubts or that receipt is pending; keep that purpose only in the action. 'I will send a sheet' does NOT mean the customer requested it. Do not restate rep actions in insights as invented customer requests or needs. Only explicit reported incidents/feedback qualify for priority insights; otherwise fewer insights or [] is correct. Keep unresolved identity alternatives solely in their questions, not in CRM prose. Return the required structured object.`
 
 /** Validate even strict model output; schema adherence is not semantic truth. */
 export function parseVisitExtraction(raw: unknown, source: string): VisitExtraction {
   if (!raw || typeof raw !== 'object') throw Error('Invalid extraction')
-  const r = raw as VisitExtraction
+  const r = structuredClone(raw) as VisitExtraction
   if (!['Spanish','English'].includes(r.language) || !Array.isArray(r.actions) || !Array.isArray(r.questions) ||
       ![r.contacts,r.companies,r.insights].every(a => Array.isArray(a) && a.every(v => typeof v === 'string')) ||
       typeof r.location !== 'string' || typeof r.summary !== 'string') throw Error('Invalid extraction fields')
@@ -39,7 +42,15 @@ export function parseVisitExtraction(raw: unknown, source: string): VisitExtract
   for (const a of r.actions) {
     if (!a || !['call','send','meeting','follow_up','other'].includes(a.type) ||
       !['contact','company','object','description','date','time','evidence'].every(k => typeof a[k as keyof VisitAction] === 'string')) throw Error('Invalid action')
-    if (!a.evidence.trim() || !source.includes(a.evidence)) throw Error('Action evidence does not match note')
+    if (!a.evidence.trim()) throw Error('Action evidence does not match note')
+    if (!source.includes(a.evidence)) {
+      // Repair capitalization only, never paraphrases, punctuation or joined quotes.
+      // Keep the actual source span, and refuse a repair with multiple possible anchors.
+      const literal = a.evidence.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+      const matches = [...source.matchAll(new RegExp(literal,'giu'))]
+      if (matches.length !== 1) throw Error('Action evidence does not match note')
+      a.evidence = matches[0][0]
+    }
     if (a.date && (!/^\d{4}-\d{2}-\d{2}$/.test(a.date) || !DateTime.fromISO(a.date).isValid)) throw Error('Invalid date')
     if (a.time && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(a.time)) throw Error('Invalid time')
   }

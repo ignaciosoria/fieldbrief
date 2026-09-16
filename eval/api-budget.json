@@ -1,5 +1,5 @@
 {
-  "authorizedUsd": 5,
+  "authorizedUsd": 10,
   "reservations": [
     {"id":"visit-v2-run-1","maxRequests":16,"reservedUsd":1.6,"status":"completed","actualUsd":0.047756},
     {"id":"visit-v2-run-2","maxRequests":20,"reservedUsd":1.8,"status":"completed","actualUsd":0.066412},
@@ -22,7 +22,12 @@
     ,{"id":"visit-v2-run-11","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":1,"status":"completed","actualUsd":0.4039175,"note":"40/42 checks pass; all eight role cases pass. One invalid verbatim evidence and one lost customer context in an internal task. Not deployed; targeted prompt fixes before next run."}
     ,{"id":"visit-user-roles-1","model":"gpt-5.4-2026-03-05","maxRequests":1,"reservedUsd":0.05,"status":"completed","actualUsd":0.017205,"note":"Initial attempt blocked before execution; user explicitly authorized exact payload to OpenAI, then one call succeeded. Expected header, one send, third-party Friday promise retained in context, day-of-week clarification. Input/output only in local temporary files, not committed; no production writes."}
     ,{"id":"visit-v2-run-12","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":1,"status":"completed","actualUsd":0.4063925,"note":"42/42 automated checks passed, manual role/mixed-ownership review. No new model or additional inference call in app. No production writes."}
+    ,{"id":"messy-text-1","model":"gpt-5.4-2026-03-05","maxRequests":100,"reservedUsd":2.5,"status":"completed","actualUsd":1.4035775,"note":"User authorized +5 USD for TEXT ONLY testing on September 15. Baseline 94/100 contract checks passed: omitted consultation, capitalization-only evidence rejection, four incomplete report descriptions. No audio or production writes; no automatic retries. Costs conservatively exclude cached discount."}
+    ,{"id":"messy-text-2","model":"gpt-5.4-2026-03-05","maxRequests":100,"reservedUsd":2.5,"status":"completed","actualUsd":1.4239475,"note":"100/100 frozen v1 checks passed. Manual review found past negation converted to a future prohibition and unreported purchases converted to denials; strengthened separately reported audit checks before a final candidate. No production writes or audio."}
+    ,{"id":"visit-v2-run-13","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":0.9,"status":"completed","actualUsd":0.4323425,"note":"42/42 existing regression checks passed after messy-text fixes; same pinned model, text only, no production writes. No cached discount applied."}
+    ,{"id":"messy-text-3","model":"gpt-5.4-2026-03-05","maxRequests":100,"reservedUsd":2.5,"status":"completed","actualUsd":1.4805725,"note":"99/100 frozen v1 checks; failure is equivalent recipient wording father vs the father. 98/100 when adding separately reported factuality audit: one real residual unreported-purchase-to-denial error in CRM. 25 original holdout variants pass but were seen after round 2; not a new blind test. No audio or production writes. Conservative costs exclude cached discount."}
+    ,{"id":"visit-v2-run-14","model":"gpt-5.4-2026-03-05","maxRequests":42,"reservedUsd":0.9,"status":"completed","actualUsd":0.4468625,"note":"41/42 raw checks. Remaining es-past-and-future flag is a reviewed over-strict keyword check: source explicitly says the warranty has not been discussed, and output faithfully repeats that negative, not a fabricated discussion. No wrong action/date/recipient. Keep original result unchanged; no claim of 42/42 automated."}
   ],
-  "unreservedUsd": 1.6958655,
+  "unreservedUsd": 1.508563,
   "note":"Conservative reservation includes unknown-cost failures. Do not repeat a run without recording its result and a new reservation. Twelve synthetic audio calls completed."
 }

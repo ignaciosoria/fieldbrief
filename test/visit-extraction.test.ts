@@ -85,3 +85,22 @@ test('invalid evidence/date/question targets are rejected', () => {
     (v:VisitExtraction)=>{v.questions=[{action_index:99,field:'contact',question:'Who?'}]},
   ]) {const v=base();mutate(v);assert.throws(()=>parseVisitExtraction(v,'Send Ana the catalog. Meet Bob Saturday.'))}
 })
+test('case-only evidence drift is anchored back to a unique verbatim source span',()=>{
+  const v=base();v.actions[0].evidence='send ana the catalog'
+  const parsed=parseVisitExtraction(v,'Send Ana the catalog. Meet Bob Saturday.')
+  assert.equal(parsed.actions[0].evidence,'Send Ana the catalog')
+  assert.equal(v.actions[0].evidence,'send ana the catalog','Validation must not mutate caller data')
+})
+test('evidence repair rejects changed words, accents, punctuation and non-unique spans',()=>{
+  for(const [evidence,source] of [
+    ['send Ana a catalog','Send Ana the catalog.'],
+    ['Llamare a Ana','Llamaré a Ana'],
+    ['Send Ana the catalog!','Send Ana the catalog.'],
+    ['SEND ANA THE CATALOG','Send Ana the catalog. Later send Ana the catalog.'],
+    ['Send Ana.*catalog','Send Ana the catalog.'],
+    ['send Ana the catalog tomorrow','Send Ana the catalog. Call tomorrow.'],
+  ]){
+    const v=base();v.actions=v.actions.slice(0,1);v.actions[0].evidence=evidence
+    assert.throws(()=>parseVisitExtraction(v,source),/evidence/,evidence)
+  }
+})

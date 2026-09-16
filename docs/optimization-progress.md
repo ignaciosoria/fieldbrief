@@ -1,6 +1,40 @@
 # Folup optimization — sequential evaluation
 
+## Messy-text stress test and targeted extraction fixes — September 15, 2026
+
+Implementation complete; 158 offline tests, 44 legacy output-quality checks, focused
+ESLint, TypeScript and production webpack build pass. Production verification pending.
+
+100 fictional notes × three rounds, TEXT ONLY, plus two 42-case regression runs.
+No audio calls, saved production notes or Calendar events. Full evidence, costs,
+methodology and limitations are in `eval/README.md` and the unchanged JSONL runs.
+
+Changes are confined to the extraction prompt and evidence validator:
+
+- Preserve earlier secondary rep commitments when a final recap mentions only the
+  main sends/meetings; one promised consultation stays one task without inventing a call.
+- Resolve identifying report/product/site references across sentences into complete
+  calendar descriptions, without confusing the study's region with the visit location.
+- Separate past negation from future prohibition and absence of evidence from denial.
+- Repair capitalization-only evidence drift only when there is one literal source
+  match; preserve the exact source span and reject paraphrases, changed punctuation,
+  changed accents and ambiguous anchors. No extra API retry or semantic rewriting.
+
+Original contract checks: 94/100 → 100/100 → 99/100. Added factuality audit reapplied
+equally: combined 73/100 → 90/100 → 98/100. Final flags are equivalent `father` wording
+and one real CRM overstatement (“not mentioned” → “did not happen”). The old final
+regression's 41/42 raw score has one reviewed over-strict keyword check, not a wrong
+follow-up. These results are not a universal accuracy claim; residual risk remains.
+
+No model change, additional production inference, schema migration, UI redesign,
+calendar title expansion or automatic reprocessing of saved notes. Total conservative
+cost $5.1873025 ($3.6753025 with reported cache discount), within cumulative approval.
+Median latency approximately unchanged (5.219 s → 5.258 s), not a speed improvement.
+
 ## Calendar title length — September 15, 2026
+
+DEPLOYED 8a83a60. Ready/Production, exact source and www.folup.app verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/9vQ2zGFP7bJpmBGLuyBFbdEXFS9H
 
 Generated titles now have a hard 44-code-point ceiling. Prioritize the action,
 short deliverable category and recipient; retain company in the title only if it
