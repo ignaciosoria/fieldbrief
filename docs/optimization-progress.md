@@ -1,6 +1,38 @@
 # Folup optimization — sequential evaluation
 
+## Output quality and clarification safety — September 15, 2026
+
+No design/model changes. Prompt now prioritizes up to four explicit visit facts
+in visible insights, including incidents already in hidden summary, with qualifiers
+(damaged package BUT intact product). Removed contradictory additional-context-only
+rule. Explicit factuality check prevents future call purposes becoming past discussion
+or invented customer needs/requests. Existing action descriptions remain the canonical
+Calendar payload; restrictions retained when locally confirming a send deliverable.
+
+Compact Calendar button now routes unresolved questions for THAT action to existing
+clarification dialog, prioritizing its question without mutating question order in
+the original note. Other clear actions remain available. An absent date with no
+question continues to existing calendar review, not a fabricated date. Existing
+design/buttons unchanged. Questions aren't fabricated from missing optional fields.
+
+Paid regression: run8 32/34, run9 33/34 (neither deployed); run10 34/34 automated
+checks, final priority incident/correction/uncertainty outputs manually reviewed.
+Three rounds cost $0.86983 by reported tokens and existing benchmark rates (no cached
+discount); not invoice reconciliation. Runs retain failures for audit. New cases
+cover ES/EN package damage, correct recipient/company/date/time, retained Q7/no-price
+descriptions and actual Calendar URL instants. Two offline voice-pipeline tests use
+simulated ASR plus recorded API outputs, verify same note id, CRM and calendar export.
+136 local tests and final production webpack build passed. No real microphone or
+mobile recordings tested this turn; accents, code switching and field noise remain
+unvalidated. No production notes/events created during these tests. These scores
+apply to the tested checks, not general semantic accuracy.
+
 ## Transcription upgrade — September 15, 2026
+
+DEPLOYED 4b69362, Vercel Ready and current www.folup.app domain verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/9ZqJss2Q1o9AxD5UbZi3BTtKR1aL
+Post-deploy homepage 200, anonymous transcription POST 401. Authenticated real
+mobile recording not exercised in production this turn.
 
 Default changed to gpt-transcribe with concise bilingual field-sales vocabulary
 and context stressing numbers, negations and spoken corrections. No UI, extraction,

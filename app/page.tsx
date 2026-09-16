@@ -7,7 +7,7 @@ import { calendarExportDate, calendarTimedRange } from '../lib/calendarExportDat
 import { calendarDraftFromAction, googleCalendarUrl, type CalendarDraft } from '../lib/calendarDraft'
 import CalendarPreview from './components/CalendarPreview'
 import VisitClarification from './components/VisitClarification'
-import { confirmVisitField, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
+import { confirmVisitField, prioritizeVisitQuestions, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
 import { appendVisitCorrection } from '../lib/visitCorrection'
 import VisitSummary from './components/VisitSummary'
 import CompactVisitResult from './components/CompactVisitResult'
@@ -3128,7 +3128,7 @@ export default function Home() {
     onCalendar={draft=>{const url=googleCalendarUrl(draft);if(!url){setCalendarDraft(draft);return}const opened=window.open(url,'_blank');if(opened){opened.opener=null}else setCalendarDraft(draft)}}
     onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
     onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
-    onClarify={()=>setPendingVisit({result:r,transcript:tx,noteId:id})}
+    onClarify={index=>setPendingVisit({result:{...r,extraction:prioritizeVisitQuestions(r.extraction!,index)},transcript:tx,noteId:id})}
     recording={isCorrectingRecording} voiceDisabled={!id || savingStatus==='saving' || !!pendingCorrection}
     saving={savingStatus} onRetrySave={()=>{if(id)void updateNote(id,r,tx).catch(()=>{})}}
     onNew={history?undefined:handleReset}

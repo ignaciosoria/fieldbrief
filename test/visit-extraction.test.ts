@@ -1,11 +1,39 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { confirmVisitField, parseVisitExtraction, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
+import { confirmVisitField, parseVisitExtraction, visitExtractionResult, calendarActionNeedsClarification, prioritizeVisitQuestions, type VisitExtraction } from '../lib/visitExtraction'
 import { calendarDraftFromAction, googleCalendarUrl } from '../lib/calendarDraft'
 const base = ():VisitExtraction => ({language:'English',contacts:['Ana','Bob'],companies:['Acme','Beta'],location:'Fair',summary:'Met Ana and Bob at the fair.',insights:[],questions:[],actions:[
   {type:'send',contact:'Ana',company:'Acme',object:'catalog',description:'Send the complete catalog.',date:'2026-09-11',time:'',evidence:'Send Ana the catalog'},
   {type:'meeting',contact:'Bob',company:'Beta',object:'',description:'Discuss the trial results.',date:'2026-09-12',time:'10:00',evidence:'Meet Bob Saturday'},
 ]})
+test('confirming deliverable retains restrictions in both languages',()=>{
+ for(const language of ['English','Spanish'] as const){
+  const v=base();v.language=language;v.actions[0].object=''
+  v.actions[0].description=language==='Spanish'?'No incluir precios ni presupuesto.':'Do not include prices or a quote.'
+  v.questions=[{action_index:0,field:'object',question:'Which document?'}]
+  const updated=confirmVisitField(v,v.questions[0],'Q7')
+  assert.match(updated.actions[0].description,/Q7/)
+  assert.ok(updated.actions[0].description.includes(v.actions[0].description))
+  assert.deepEqual(updated.actions[1],v.actions[1])
+ }
+})
+test('known deliverable replacement preserves its original restriction',()=>{
+ const v=base();v.actions[0].description='Send catalog without prices.'
+ const updated=confirmVisitField(v,{action_index:0,field:'object',question:'Which?'},'technical sheet')
+ assert.equal(updated.actions[0].description,'Send technical sheet without prices.')
+})
+test('unclear action gates only itself; absent date does not become identity uncertainty',()=>{
+ const v=base();v.actions[1].date=''
+ v.questions=[{action_index:0,field:'contact',question:'Who?'}]
+ assert.equal(calendarActionNeedsClarification(v,0),true)
+ assert.equal(calendarActionNeedsClarification(v,1),false)
+ v.questions.push({action_index:1,field:'time',question:'Ten or eleven?'})
+ assert.equal(calendarActionNeedsClarification(v,1),true)
+ const reordered=prioritizeVisitQuestions(v,1)
+ assert.equal(reordered.questions[0].field,'time')
+ assert.equal(reordered.questions.length,2)
+ assert.equal(v.questions[0].field,'contact')
+})
 test('Q02/Q03: meeting and its own company/description survive adapter and calendar', () => {
   const v = parseVisitExtraction(base(),'Send Ana the catalog. Meet Bob Saturday.')
   const r = visitExtractionResult(v,'2026-09-10T18:00:00Z')

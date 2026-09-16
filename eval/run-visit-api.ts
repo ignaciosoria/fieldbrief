@@ -3,6 +3,9 @@ import { extractVisit, VisitExtractionError } from '../lib/extractVisitServer'
 import { VISIT_CORPUS, VISIT_NOW, VISIT_ZONE } from './visit-corpus'
 import { VISIT_HELDOUT } from './visit-heldout'
 import { readFileSync } from 'node:fs'
+import {calendarDraftFromAction,googleCalendarUrl} from '../lib/calendarDraft'
+import {visitActionFields} from '../lib/visitExtraction'
+import {formatProfessionalCrmNote} from '../lib/formatCrmSalesNote'
 
 async function main() {
   const ledger = JSON.parse(readFileSync(new URL('./api-budget.json',import.meta.url),'utf8'))
@@ -37,6 +40,25 @@ async function main() {
         if (c.id === 'es-secondary-meeting' && !actual.some(a=>a.type==='meeting' && a.time==='10:00')) issues.push('meeting-time')
         if (c.id === 'en-long-product' && !actual.some(a=>/intensive care unit in Baja California/i.test(a.object))) issues.push('truncated-deliverable')
         const prose = [result.extraction.summary,...result.extraction.insights].join(' ')
+        if(c.tags.includes('priority-insight')){
+          const first=result.extraction.insights[0] || ''
+          if(!/(envase|embalaje|packaging|package)/i.test(first)||!/(dañ|damag)/i.test(first)||!/(intact|bien|undamaged|unharmed)/i.test(first))issues.push('incident-with-qualification-not-first')
+          if(result.extraction.insights.length>4)issues.push('too-many-insights')
+          if(/pidi|pidie|solicit|request|asked/i.test(result.extraction.insights.join(' ')))issues.push('invented-customer-request')
+        }
+        if(c.tags.includes('correct-all')){
+          const action=actual[0]
+          const crm=formatProfessionalCrmNote(result)
+          if(/José|AgroSol|Maya|Northstar/.test(crm))issues.push('stale-identity-in-crm')
+          if(action?.time!=='11:30')issues.push('corrected-time')
+          if(action){
+            const url=googleCalendarUrl(calendarDraftFromAction(visitActionFields(action,c.language),c.language,VISIT_ZONE))
+            const params=url?new URL(url).searchParams:null
+            if(!params?.get('text')?.includes(c.actions[0].contact!))issues.push('stale-calendar-title')
+            if(!/Q7/.test(params?.get('details')||'') || !/(sin|no|without).*pric|sin.*precio/i.test(params?.get('details')||''))issues.push('incomplete-calendar-details')
+            if(params?.get('dates')!=='20260917T183000Z/20260917T190000Z')issues.push('wrong-calendar-instant')
+          }
+        }
         // Summary deliberately excludes rep commitments (rendered from actions).
         if (c.id === 'es-clear-purpose' && /Q7|precio|propuesta/i.test(result.extraction.summary)) issues.push('future-purpose-in-visit-summary')
         if (c.tags.includes('temporal-factuality')) {
