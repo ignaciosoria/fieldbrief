@@ -25,6 +25,7 @@ export async function POST() {
     const origin=process.env.NEXTAUTH_URL || 'https://www.folup.app'
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: "subscription",
+      locale: "en",
       payment_method_types: ["card"],
       line_items: [
         {
@@ -37,7 +38,7 @@ export async function POST() {
       cancel_url: new URL('/?canceled=true',origin).href,
       metadata: {user_email:email},
       subscription_data:{metadata:{user_email:email}},
-    },{idempotencyKey:createHash('sha256').update(`folup-checkout:${email}:${price}:${Math.floor(Date.now()/900000)}`).digest('hex')})
+    },{idempotencyKey:createHash('sha256').update(`folup-checkout:en:${email}:${price}:${Math.floor(Date.now()/900000)}`).digest('hex')})
 
     return NextResponse.json({ url: checkoutSession.url })
   } catch {

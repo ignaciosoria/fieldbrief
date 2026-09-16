@@ -1044,11 +1044,8 @@ function confidenceLow(r: StructureResult): boolean {
 }
 
 function primaryTitleForDisplay(r: StructureResult) {
-  if (r.schemaVersion === 2) return {...r,langEs:r.noteLanguage === 'Spanish',preserveStructuredTitle:true}
-  const langEs =
-    detectNoteLanguage(
-      `${r.crmText || ''} ${r.summary || ''} ${(r.crmFull || []).join('\n')} ${r.nextStep || ''} ${r.nextStepTitle || ''}`,
-    ).toLowerCase() === 'spanish'
+  // Interface timing stays English; the note/action text keeps its original language.
+  if (r.schemaVersion === 2) return {...r,langEs:false,preserveStructuredTitle:true}
   const resolvedForDisplay = r.nextStepTimeHint
     ? ensureCalendarDateTimeNotPast(
         r.nextStepDate || isoDateToMmddyyyy(todayIsoDate()),
@@ -1065,7 +1062,7 @@ function primaryTitleForDisplay(r: StructureResult) {
       ? `${String(resolvedForDisplay.hour).padStart(2,'0')}:${String(resolvedForDisplay.minute).padStart(2,'0')}`
       : r.nextStepTimeHint,
     nextStepSoftTiming: r.nextStepSoftTiming,
-    langEs,
+    langEs: false,
   }
 }
 
@@ -4366,16 +4363,7 @@ export default function Home() {
                                         action: s.action,
                                         resolvedDate: s.resolvedDate,
                                         timeHint: s.timeHint,
-                                        langEs:
-                                          detectNoteLanguage(
-                                            [
-                                              recordDisplayResult.nextStep,
-                                              recordDisplayResult.crmText,
-                                              recordDisplayResult.summary,
-                                            ]
-                                              .filter(Boolean)
-                                              .join(' '),
-                                          ).toLowerCase() === 'spanish',
+                                        langEs: false,
                                       })}
                                     </span>
                                     <button
@@ -4740,16 +4728,7 @@ export default function Home() {
                                       action: s.action,
                                       resolvedDate: s.resolvedDate,
                                       timeHint: s.timeHint,
-                                      langEs:
-                                        detectNoteLanguage(
-                                          [
-                                            selectedNote.result.nextStep,
-                                            selectedNote.result.crmText,
-                                            selectedNote.result.summary,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(' '),
-                                        ).toLowerCase() === 'spanish',
+                                      langEs: false,
                                     })}
                                   </span>
                                   <button
