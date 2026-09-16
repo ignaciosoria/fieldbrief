@@ -1,5 +1,25 @@
 # Folup optimization — sequential evaluation
 
+## Simplified output requested — September 15, 2026
+
+New shared compact result for v2 recorded/typed output and history: discreet people/
+company line, one card per action with inline editable time and calendar button,
+up to four existing insights with emoji, and Copy to CRM / Correct by voice footer.
+Full CRM narrative remains copy payload, not rendered. No writing/share/duplicate
+correction controls in this view. Conditional clarification/save failure recovery
+remain. Legacy notes/demo preserved unchanged. Old hidden recording panel is inert
+and aria-hidden once result is visible; transcript textarea not rendered there.
+Calendar opens directly even for suggested time, with fallback review only when
+invalid date/time or blocked popup. Inline hour edits affect the current export,
+not persisted original extraction; corrected extraction remounts draft state.
+Removed artificial 400ms/550ms/72ms waits. V2 result dismisses loading before note
+save finishes, retaining Saving/error+retry; New and voice blocked during save.
+No model changes or claim of reduced provider latency; no new paid calls.
+124 existing unit tests + two new component-render tests passed; final build passes.
+CUA synthetic history view verified minimal controls and Copy success UI; clipboard
+readback unavailable. Calendar button opened real Google URL directly with exact
+action description, date and 09:00 local. No event saved. Publish confirmation next.
+
 ## CURRENT PRODUCTION — daypart defaults verified
 
 7b6b1a2 DEPLOYED on www.folup.app. Vercel Ready 21s, exact source/domain verified:

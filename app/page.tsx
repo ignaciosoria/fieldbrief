@@ -10,6 +10,7 @@ import VisitClarification from './components/VisitClarification'
 import { confirmVisitField, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
 import { appendVisitCorrection } from '../lib/visitCorrection'
 import VisitSummary from './components/VisitSummary'
+import CompactVisitResult from './components/CompactVisitResult'
 import AudioRecovery from './components/AudioRecovery'
 import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
@@ -2161,13 +2162,6 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const processingStartedAtRef = useRef(0)
-
-  const awaitMinProcessingDisplay = async () => {
-    const minMs = 400
-    const elapsed = Date.now() - processingStartedAtRef.current
-    if (elapsed < minMs) await new Promise((r) => setTimeout(r, minMs - elapsed))
-  }
 
   useEffect(() => {
     setMounted(true)
@@ -2583,6 +2577,7 @@ export default function Home() {
     setPendingVisit(null)
     setResult(next)
     setTranscript(tx)
+    setLoading(false)
     if (noteId) setCurrentNoteId(noteId)
     if (noteId) await updateNote(noteId,next,tx)
     else await saveNote(next,tx)
@@ -2850,7 +2845,6 @@ export default function Home() {
     audioProcessingRef.current=true
     setPendingAudio(audio)
     const {blob}=audio
-    processingStartedAtRef.current = Date.now()
     setLoading(true)
     clearTryWalkthrough()
     setError('')
@@ -2934,7 +2928,6 @@ export default function Home() {
       }
       final = applyConfidenceDefaults(final)
 
-      await awaitMinProcessingDisplay()
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: tx })
       } else if (needsNextStepTargetPick(final)) {
@@ -2946,8 +2939,8 @@ export default function Home() {
       } else if (needsNextStepDatePick(final)) {
         setPendingDatePick({ result: final, transcript: tx })
       } else {
-        await new Promise((r) => setTimeout(r, 550))
         setResult(final)
+        setLoading(false)
         await saveNote(final, tx).catch((err) => {
           console.error('Save failed:', err)
         })
@@ -2956,7 +2949,6 @@ export default function Home() {
       setError(err?.message || 'Something went wrong.')
     } finally {
       audioProcessingRef.current=false
-      await new Promise((r) => setTimeout(r, 72))
       setLoading(false)
     }
   }
@@ -2966,7 +2958,6 @@ export default function Home() {
     if (pendingAudio || audioProcessingRef.current || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
-    processingStartedAtRef.current = Date.now()
     setLoading(true)
     clearTryWalkthrough()
     setError('')
@@ -3006,7 +2997,6 @@ export default function Home() {
         final = { ...final, nextStepConfidence: 'low' }
       }
       final = applyConfidenceDefaults(final)
-      await awaitMinProcessingDisplay()
       if(owner!==audioOwnerRef.current) return
       if (needsContactPick(final)) {
         setPendingContactPick({ result: final, transcript: input })
@@ -3027,7 +3017,6 @@ export default function Home() {
     } catch (err: unknown) {
       if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
-      await new Promise((r) => setTimeout(r, 72))
       if(owner===audioOwnerRef.current) setLoading(false)
     }
   }
@@ -3092,7 +3081,7 @@ export default function Home() {
     const language = r.noteLanguage || detectNoteLanguage(r.crmText || r.summary || action.verb)
     const draft = calendarDraftFromAction(action, language, r.noteTimezone || getClientTimezone())
     const url = googleCalendarUrl(draft)
-    if (!url || draft.timeSuggested) { setCalendarDraft(draft); return }
+    if (!url) { setCalendarDraft(draft); return }
     const opened = window.open(url, "_blank")
     if (!opened) { setCalendarDraft(draft); return }
     opened.opener = null
@@ -3134,6 +3123,16 @@ export default function Home() {
     [tryWalkthroughPreviewActive],
   )
   const recordDisplayResult = walkthroughDisplayResult ?? result
+  const compactResult = (r:StructureResult,tx:string,id?:string,history=false) => <CompactVisitResult
+    key={JSON.stringify(r.extraction)} extraction={r.extraction!} timezone={r.noteTimezone || getClientTimezone()}
+    onCalendar={draft=>{const url=googleCalendarUrl(draft);if(!url){setCalendarDraft(draft);return}const opened=window.open(url,'_blank');if(opened){opened.opener=null}else setCalendarDraft(draft)}}
+    onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
+    onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
+    onClarify={()=>setPendingVisit({result:r,transcript:tx,noteId:id})}
+    recording={isCorrectingRecording} voiceDisabled={!id || savingStatus==='saving' || !!pendingCorrection}
+    saving={savingStatus} onRetrySave={()=>{if(id)void updateNote(id,r,tx).catch(()=>{})}}
+    onNew={history?undefined:handleReset}
+  />
   const recordHasResult = !!recordDisplayResult
   const isTryWalkthroughPreview = !!walkthroughDisplayResult
   const processingWalkthrough = tryWalkthroughPhase === 'loading'
@@ -4094,6 +4093,8 @@ export default function Home() {
 
             {/* SCREEN 1 — Record (hidden when result exists) */}
             <div
+              inert={recordHasResult || processingBusy}
+              aria-hidden={recordHasResult || processingBusy}
               className="absolute inset-0 flex flex-col items-center justify-center gap-0 px-4 py-5 transition-[opacity,transform] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 opacity:
@@ -4256,7 +4257,7 @@ export default function Home() {
               )}
 
               {/* Manual textarea */}
-              {!isRecording && !processingBusy && !pendingAudio && (
+              {!recordHasResult && !isRecording && !processingBusy && !pendingAudio && (
                 <div className="mt-1.5 w-full max-w-md px-1">
                   <textarea
                     className="mb-3 w-full resize-none rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3 text-[13px] leading-relaxed text-[#111111] outline-none placeholder:text-[#6b7280]/40 min-h-[68px] shadow-inner shadow-zinc-200/50"
@@ -4290,7 +4291,9 @@ export default function Home() {
             </div>
 
             {/* SCREEN 2 — Result (slides up when result exists) */}
-            {recordHasResult && (
+            {recordHasResult && (recordDisplayResult.schemaVersion===2 && recordDisplayResult.extraction && !isTryWalkthroughPreview ? (
+              <div className="pt-2">{compactResult(recordDisplayResult,transcript,currentNoteId || undefined)}</div>
+            ) : (
               <div
                 className="flex flex-col px-0 pt-1 pb-0"
                 style={{
@@ -4638,7 +4641,7 @@ export default function Home() {
                   )}
                 </div>
               </div>
-            )}
+            ))}
           </div>
         )}
 
@@ -4657,7 +4660,7 @@ export default function Home() {
                   Back to history
                 </button>
 
-                <div className="space-y-7">
+                {selectedNote.result.schemaVersion===2 && selectedNote.result.extraction ? compactResult(selectedNote.result,selectedNote.transcript,selectedNote.id,true) : <div className="space-y-7">
                   {selectedNote.recoveryRequired && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                     This note’s saved summary could not be read. The original transcript is shown below; no saved data has been changed. Review it before creating follow-ups.
                     <p className="mt-2 whitespace-pre-wrap">{selectedNote.transcript || 'No transcript available.'}</p>
@@ -4884,7 +4887,7 @@ export default function Home() {
                       </>
                     )}
                   </button>
-                </div>
+                </div>}
               </div>
             ) : (
               <div>
