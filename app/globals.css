@@ -22,3 +22,27 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Same app and controls; constrain only wide desktop viewports. */
+@media (min-width: 1024px) {
+  .folup-shell {
+    --folup-desktop-width: 560px;
+    --folup-record-height: min(560px, calc(100dvh - 132px));
+    width: 100%;
+    max-width: var(--folup-desktop-width);
+    margin-inline: auto;
+  }
+
+  .folup-header {
+    padding-top: 20px;
+    padding-bottom: 12px;
+  }
+
+  .folup-bottom-nav {
+    width: var(--folup-desktop-width);
+    max-width: 100%;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+}

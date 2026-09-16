@@ -3351,10 +3351,10 @@ export default function Home() {
   const userInitial = (session?.user?.name?.trim()?.[0] || session?.user?.email?.[0] || '?').toUpperCase()
 
   return (
-    <main className="flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none">
+    <main className="folup-shell flex min-h-screen flex-col bg-white text-[#111111] antialiased select-none">
 
       {/* Header */}
-      <header className="relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
+      <header className="folup-header relative flex items-center border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
         <div className="relative z-10 flex min-w-0 flex-1 items-center">
           <button
             type="button"
@@ -4087,7 +4087,7 @@ export default function Home() {
             style={
               recordHasResult || pendingDatePick || pendingContactPick || pendingTargetPick || pendingCompanyPick || pendingNextStepClarifyPick
                 ? undefined
-                : { minHeight: 'calc(100vh - 132px)' }
+                : { minHeight: 'var(--folup-record-height, calc(100vh - 132px))' }
             }
           >
 
@@ -5098,7 +5098,7 @@ export default function Home() {
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-[#e5e7eb] bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
+      <nav className="folup-bottom-nav fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-[#e5e7eb] bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
         <NavBtn
           active={activeTab === 'record'}
           onClick={() => { setActiveTab('record'); setSelectedNote(null) }}

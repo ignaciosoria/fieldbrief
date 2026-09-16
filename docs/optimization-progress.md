@@ -1,6 +1,21 @@
 # Folup optimization — sequential evaluation
 
+## Compact desktop layout — September 15, 2026
+
+Desktop >=1024px uses a centered 560px app shell, matching fixed bottom nav,
+slightly shorter header padding and record-stage height capped at 560px (also
+bounded by viewport height). Under 1024px the previous CSS values remain intact.
+No new controls, colors, data/model/persistence changes or paid API calls.
+CUA local synthetic fixture: 1440x900 shell/header/nav all x440 width560; history
+and result verified, action card width520. At 390x844 shell/header/nav width390 x0.
+At 1024x640 record textarea bottom491 vs nav top574. No horizontal overflow in
+these checks. Screenshots reviewed desktop record and mobile result. Viewport
+override reset and synthetic tab closed. 136 tests and production build passed.
+
 ## Output quality and clarification safety — September 15, 2026
+
+DEPLOYED 6ea76c8, Ready and www.folup.app verified in Vercel details:
+https://vercel.com/ignaciosorias-projects/fieldbrief/31vpwyspBsA5JWYUMtq1FVJ3Thw6
 
 No design/model changes. Prompt now prioritizes up to four explicit visit facts
 in visible insights, including incidents already in hidden summary, with qualifiers
