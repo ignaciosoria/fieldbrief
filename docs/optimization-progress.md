@@ -1,6 +1,27 @@
 # Folup optimization — sequential evaluation
 
+## Public landing refresh — September 15, 2026
+
+Replaced only the signed-out non-demo branch with PublicLanding. Existing Google
+auth callback, /try walkthrough and authenticated compact UI remain unchanged.
+Desktop two-column hero, existing Folup branding, labeled illustrative voice-note
+and follow-up example, three-step explanation, demo links and Google sign-in.
+No fabricated testimonials, pricing promises, automatic CRM integration or automatic
+Calendar save claims. Static preview has no nonfunctional pretend buttons.
+Uses existing Tailwind, font and logo; no dependencies, paid calls or API changes.
+
+138 tests pass, production webpack build and focused landing/test ESLint pass.
+Two new tests check sample disclosure, navigation/semantic structure and both sign-in
+callbacks. CUA screenshots reviewed at 1440px desktop and 390px mobile, no horizontal
+overflow at 1440/390/320px. Navigation to #how-it-works and /try verified. Synthetic
+signed-in fixture still renders the 560px app/nav and no public landing. No actual
+Google sign-in, paid processing, production notes or Calendar saves during this QA.
+
 ## Compact desktop layout — September 15, 2026
+
+DEPLOYED 8ea277b, Ready/current www.folup.app verified:
+https://vercel.com/ignaciosorias-projects/fieldbrief/Cwv7b3tWSQn9n2u58hdXLFyuCSJL
+Local synthetic servers stopped after validation.
 
 Desktop >=1024px uses a centered 560px app shell, matching fixed bottom nav,
 slightly shorter header padding and record-stage height capped at 560px (also
