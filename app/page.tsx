@@ -4,8 +4,8 @@ import { initPosthog } from '../lib/posthog'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { calendarExportDate, calendarTimedRange } from '../lib/calendarExportDate'
-import { calendarDraftFromAction, googleCalendarUrl, type CalendarDraft } from '../lib/calendarDraft'
-import CalendarPreview from './components/CalendarPreview'
+import { calendarDraftFromAction } from '../lib/calendarDraft'
+import CalendarFollowUp from './components/CalendarFollowUp'
 import VisitClarification from './components/VisitClarification'
 import { confirmVisitField, prioritizeVisitQuestions, visitExtractionResult, type VisitExtraction } from '../lib/visitExtraction'
 import { appendVisitCorrection } from '../lib/visitCorrection'
@@ -1933,26 +1933,6 @@ Contact: ${result.contact || ''}
   return data.nextStep || result.nextStep || ''
 }
 
-function calendarResultFingerprint(r: StructureResult): string {
-  const steps = (r.additionalSteps || [])
-    .map((s) => `${s.action}|${s.resolvedDate}|${s.timeHint}`)
-    .join('¦')
-  return [
-    r.nextStep || '',
-    r.nextStepDate || '',
-    r.nextStepSoftTiming || '',
-    r.followUpStrength || '',
-    r.nextStepTimeHint || '',
-    r.contact || '',
-    steps,
-  ].join('§')
-}
-
-function getCalendarStorageKey(r: StructureResult, noteId: string | null | undefined): string {
-  if (noteId) return `id:${noteId}`
-  return `fp:${calendarResultFingerprint(r)}`
-}
-
 /** Stable id for a supporting row within a note (list order index). */
 function supportingCalendarStepId(index: number): string {
   return String(index)
@@ -2066,10 +2046,7 @@ export default function Home() {
   const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
-  const [primaryAdded, setPrimaryAdded] = useState(false)
-  const [calendarDraft, setCalendarDraft] = useState<CalendarDraft | null>(null)
   const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string; hasAnswers?:boolean} | null>(null)
-  const [supportingAdded, setSupportingAdded] = useState<Record<string, boolean>>({})
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
   const [subscriptionError, setSubscriptionError] = useState(false)
   const [subscriptionCheck, setSubscriptionCheck] = useState(0)
@@ -2180,22 +2157,6 @@ export default function Home() {
   useEffect(() => {
     initPosthog()
   }, [])
-
-  const calendarStorageKey = useMemo(() => {
-    if (activeTab === 'history' && selectedNote) {
-      return getCalendarStorageKey(selectedNote.result, selectedNote.id)
-    }
-    if (activeTab === 'record' && result) {
-      return getCalendarStorageKey(result, null)
-    }
-    return null
-  }, [activeTab, selectedNote, result])
-
-  /** Reset "+ Add" / primary calendar buttons when the note or result identity changes — never hydrate from storage (success state is click-only for this session). */
-  useEffect(() => {
-    setPrimaryAdded(false)
-    setSupportingAdded({})
-  }, [calendarStorageKey])
 
   useEffect(() => {
     let cancelled = false
@@ -3069,35 +3030,27 @@ export default function Home() {
     setSelectedNote(null)
     setShowEditArea(false)
     setShowCalendarToast(false)
-    setPrimaryAdded(false)
-    setSupportingAdded({})
   }
 
-  /** Google is the final review/save screen. Ask here only when date/time needs attention. */
-  const openActionCalendar = (action: ActionStructuredFields, r: StructureResult) => {
-    if (!session?.user) { setShowLoginPrompt(true); return }
+  /** Legacy notes use the same direct link and inline scheduling as new notes. */
+  const legacyCalendar = (action: ActionStructuredFields | undefined, r: StructureResult, disabled = false, actionNumber = 1) => {
+    if (!action) return <p className="text-sm text-gray-600">Please review this action before exporting.</p>
     const language = r.noteLanguage || detectNoteLanguage(r.crmText || r.summary || action.verb)
     const draft = calendarDraftFromAction(action, language, r.noteTimezone || getClientTimezone())
-    const url = googleCalendarUrl(draft)
-    if (!url) { setCalendarDraft(draft); return }
-    const opened = window.open(url, "_blank")
-    if (!opened) { setCalendarDraft(draft); return }
-    opened.opener = null
-    setShowCalendarToast(true)
+    return <CalendarFollowUp initial={draft} actionNumber={actionNumber} disabled={disabled || isCorrectingRecording}
+      onClarify={!session?.user ? () => setShowLoginPrompt(true) : undefined}
+      onOpen={() => setShowCalendarToast(true)} />
   }
 
-  const addResultToCalendar = (r: StructureResult, _opts?: { noteId?: string | null }) => {
-    if (isNoClearFollowUpResult(r)) return
-    const action = r.primaryActionStructured
-    if (!action) { setError("Please review this action before exporting."); return }
-    openActionCalendar({...action, date:r.nextStepDate || action.date, time:r.nextStepTimeHint || action.time}, r)
-  }
+  const primaryCalendar = (r: StructureResult, disabled = false) => legacyCalendar(r.primaryActionStructured && {
+    ...r.primaryActionStructured, date:r.nextStepDate || r.primaryActionStructured.date,
+    time:r.nextStepTimeHint || r.primaryActionStructured.time,
+  }, r, disabled)
 
-  const addSupportingStepToCalendar = (r: StructureResult, step: AdditionalStep, _index: number, _opts?: { noteId?: string | null }) => {
-    const action = step.actionStructured
-    if (!action) { setError("Please review this action before exporting."); return }
-    openActionCalendar({...action,date:step.structuredDate || step.resolvedDate || action.date,time:step.structuredTime || step.timeHint || action.time}, r)
-  }
+  const supportingCalendar = (r: StructureResult, step: AdditionalStep, index: number, disabled = false) => legacyCalendar(step.actionStructured && {
+    ...step.actionStructured, date:step.structuredDate || step.resolvedDate || step.actionStructured.date,
+    time:step.structuredTime || step.timeHint || step.actionStructured.time,
+  }, r, disabled, index+2)
 
   const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/try')
 
@@ -3123,7 +3076,7 @@ export default function Home() {
   const recordDisplayResult = walkthroughDisplayResult ?? result
   const compactResult = (r:StructureResult,tx:string,id?:string,history=false) => <CompactVisitResult
     key={JSON.stringify(r.extraction)} extraction={r.extraction!} timezone={r.noteTimezone || getClientTimezone()}
-    onCalendar={draft=>{const url=googleCalendarUrl(draft);if(!url){setCalendarDraft(draft);return}const opened=window.open(url,'_blank');if(opened){opened.opener=null}else setCalendarDraft(draft)}}
+    onCalendarOpened={()=>setShowCalendarToast(true)}
     onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
     onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
     onClarify={index=>setPendingVisit({result:{...r,extraction:prioritizeVisitQuestions(r.extraction!,index)},transcript:tx,noteId:id})}
@@ -4007,7 +3960,6 @@ export default function Home() {
           const updated = await refreshClarifiedVisit(pendingVisit.result,tx)
           await acceptVisit(updated,tx,pendingVisit.noteId)
         }} />}
-      {calendarDraft && <CalendarPreview initial={calendarDraft} onClose={() => setCalendarDraft(null)} onOpened={() => setShowCalendarToast(true)} />}
       {/* Opening Google is not confirmation that the user saved the event. */}
       {showCalendarToast && (
         <div
@@ -4297,37 +4249,7 @@ export default function Home() {
                       </div>
 
                       {tryWtPrimaryComplete && !isNoClearFollowUpResult(recordDisplayResult) ? (
-                        <button
-                          onClick={() => addResultToCalendar(recordDisplayResult)}
-                          type="button"
-                          disabled={isTryWalkthroughPreview || primaryAdded}
-                          title={isTryWalkthroughPreview ? 'Sign in to save and sync' : undefined}
-                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none antialiased transition-[transform,box-shadow,filter] duration-200 ease-out ${
-                            isTryWalkthroughPreview
-                              ? 'cursor-not-allowed bg-zinc-200 text-zinc-500 shadow-none'
-                              : primaryAdded
-                                ? 'cursor-default bg-emerald-600 text-white shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
-                                : 'text-white shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:shadow-[0_6px_22px_-4px_rgba(79,70,229,0.4),0_2px_10px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.2)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:shadow-[0_3px_12px_-2px_rgba(79,70,229,0.3),inset_0_1px_2px_rgba(0,0,0,0.12)] active:brightness-[0.95]'
-                          }`}
-                          style={
-                            isTryWalkthroughPreview
-                              ? undefined
-                              : primaryAdded
-                                ? undefined
-                                : { backgroundColor: '#4F46E5' }
-                          }
-                        >
-                          {primaryAdded ? (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ) : (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                          )}
-                          <span className="tracking-tight">{primaryAdded ? 'Added' : 'Add to calendar'}</span>
-                        </button>
+                        primaryCalendar(recordDisplayResult, isTryWalkthroughPreview)
                       ) : null}
 
                       {tryWtPrimaryComplete &&
@@ -4354,7 +4276,7 @@ export default function Home() {
                                 return (
                                   <li
                                     key={sid}
-                                    className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
+                                    className="space-y-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
                                   >
                                     <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                       <span className="select-none text-[#6b7280]">- </span>
@@ -4366,41 +4288,7 @@ export default function Home() {
                                         langEs: false,
                                       })}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        addSupportingStepToCalendar(recordDisplayResult, s, i)
-                                      }
-                                      disabled={!!supportingAdded[sid]}
-                                      className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
-                                        supportingAdded[sid]
-                                          ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
-                                          : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
-                                      }`}
-                                    >
-                                      {supportingAdded[sid] ? (
-                                        <span className="inline-flex items-center gap-1">
-                                          <svg
-                                            width="12"
-                                            height="12"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2.5"
-                                            aria-hidden
-                                          >
-                                            <path
-                                              d="M20 6L9 17l-5-5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                          </svg>
-                                          Added
-                                        </span>
-                                      ) : (
-                                        '+ Add'
-                                      )}
-                                    </button>
+                                    {supportingCalendar(recordDisplayResult, s, i, isTryWalkthroughPreview)}
                                   </li>
                                 )
                               })}
@@ -4683,28 +4571,7 @@ export default function Home() {
                       </div>
 
                       {!isNoClearFollowUpResult(selectedNote.result) ? (
-                        <button
-                          type="button"
-                          onClick={() => addResultToCalendar(selectedNote.result, { noteId: selectedNote.id })}
-                          disabled={primaryAdded}
-                          className={`group mt-2.5 inline-flex w-full select-none items-center justify-center gap-1.5 rounded-xl py-3.5 pl-4 pr-4 text-[15px] font-bold leading-none text-white antialiased transition-[transform,box-shadow,filter] duration-200 ${
-                            primaryAdded
-                              ? 'cursor-default bg-emerald-600 shadow-[0_4px_18px_-4px_rgba(5,150,105,0.35),0_2px_8px_rgba(5,150,105,0.2)]'
-                              : 'shadow-[0_4px_18px_-4px_rgba(79,70,229,0.35),0_2px_8px_rgba(79,70,229,0.2),inset_0_1px_0_rgba(255,255,255,0.18)] hover:brightness-[1.02] active:translate-y-px active:scale-[0.982] active:brightness-[0.95]'
-                          }`}
-                          style={primaryAdded ? undefined : { backgroundColor: '#4F46E5' }}
-                        >
-                          {primaryAdded ? (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ) : (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="block h-4 w-4 shrink-0 opacity-[0.95]" aria-hidden>
-                              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                          )}
-                          <span className="tracking-tight">{primaryAdded ? 'Added' : 'Add to calendar'}</span>
-                        </button>
+                        primaryCalendar(selectedNote.result)
                       ) : null}
 
                       {!isNoClearFollowUpResult(selectedNote.result) &&
@@ -4719,7 +4586,7 @@ export default function Home() {
                                 return (
                                 <li
                                   key={sid}
-                                  className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
+                                  className="space-y-2 border-b border-zinc-100 pb-2.5 last:border-0 last:pb-0"
                                 >
                                   <span className="min-w-0 flex-1 text-left text-[14px] font-semibold leading-snug tracking-tight text-[#374151]">
                                     <span className="select-none text-[#6b7280]">- </span>
@@ -4731,31 +4598,7 @@ export default function Home() {
                                       langEs: false,
                                     })}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      addSupportingStepToCalendar(selectedNote.result, s, i, {
-                                        noteId: selectedNote.id,
-                                      })
-                                    }
-                                    disabled={!!supportingAdded[sid]}
-                                    className={`shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-semibold leading-none shadow-sm transition-[transform,background-color] active:scale-[0.97] ${
-                                      supportingAdded[sid]
-                                        ? 'cursor-default border-emerald-200 bg-emerald-50 text-emerald-700'
-                                        : 'border-indigo-200/90 bg-white text-[#4F46E5] hover:bg-indigo-50'
-                                    }`}
-                                  >
-                                    {supportingAdded[sid] ? (
-                                      <span className="inline-flex items-center gap-1">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-                                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                        Added
-                                      </span>
-                                    ) : (
-                                      '+ Add'
-                                    )}
-                                  </button>
+                                  {supportingCalendar(selectedNote.result, s, i)}
                                 </li>
                                 )
                               })}

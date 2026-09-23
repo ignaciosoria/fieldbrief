@@ -6,7 +6,7 @@ import {renderToStaticMarkup} from 'react-dom/server'
 import CompactVisitResult from '../app/components/CompactVisitResult'
 import VisitClarification from '../app/components/VisitClarification'
 import VisitSummary from '../app/components/VisitSummary'
-import CalendarPreview from '../app/components/CalendarPreview'
+import CalendarFollowUp from '../app/components/CalendarFollowUp'
 import AudioRecovery from '../app/components/AudioRecovery'
 import {calendarDraftFromAction,googleCalendarUrl} from '../lib/calendarDraft'
 import {buildPrimaryDisplayTitle,buildSupportingDisplayTitle} from '../lib/displayActionTitle'
@@ -27,10 +27,10 @@ for(const language of ['Spanish','English'] as const){
     const extraction={...spanish,language}
     for(const saving of ['saving','error'])for(const recording of [false,true]){
       const html=renderToStaticMarkup(createElement(CompactVisitResult,{
-        extraction,timezone:'America/Los_Angeles',onCalendar:noop,onCopy:done,onVoice:noop,
+        extraction,timezone:'America/Los_Angeles',onCalendarOpened:noop,onCopy:done,onVoice:noop,
         onClarify:noop,onNew:noop,onRetrySave:noop,recording,voiceDisabled:false,saving,
       }))
-      for(const label of ['Visit result','New note','Add to calendar','Copy to CRM','Review unclear details','suggested','Dec 16'])assert.ok(html.includes(label),label)
+      for(const label of ['Visit result','New note','Add to calendar','Copy to CRM','Review unclear details','suggested','Date for follow-up 1','2026-12-16'])assert.ok(html.includes(label),label)
       assert.match(html,recording?/Finish correction/:/Correct by voice/)
       assert.match(html,saving==='saving'?/Saving…/:/Not saved\. Keep this page open\..*Retry/)
       assert.match(html,/Todavía no hay pedido/)
@@ -41,7 +41,7 @@ for(const language of ['Spanish','English'] as const){
 
 test('missing-date and no-action states use English without inventing a follow-up',()=>{
   const render=(extraction:VisitExtraction)=>renderToStaticMarkup(createElement(CompactVisitResult,{
-    extraction,timezone:'America/Los_Angeles',onCalendar:noop,onCopy:done,onVoice:noop,onClarify:noop,recording:false,voiceDisabled:false,
+    extraction,timezone:'America/Los_Angeles',onCalendarOpened:noop,onCopy:done,onVoice:noop,onClarify:noop,recording:false,voiceDisabled:false,
   }))
   assert.match(render({...spanish,actions:[{...spanish.actions[0],date:''}]}),/Date needed/)
   const empty=render({...spanish,actions:[],questions:[]})
@@ -71,12 +71,13 @@ test('CRM correction controls and placeholder are English without translating th
   }
 })
 
-test('calendar preview is English while the event payload remains in Spanish with the same time',()=>{
+test('direct calendar controls are English while the event payload remains in Spanish with the same time',()=>{
   const draft=calendarDraftFromAction(visitActionFields(spanish.actions[0],'Spanish'),'Spanish','America/Los_Angeles')
   const before=structuredClone(draft)
-  const html=renderToStaticMarkup(createElement(CalendarPreview,{initial:draft,onClose:noop,onOpened:noop}))
-  for(const label of ['Review calendar event','Title','Description','Date','Time','Duration: 30 minutes.','Cancel','Open Google Calendar'])assert.ok(html.includes(label),label)
-  assert.match(html,/Enviar la ficha técnica sin precios/)
+  const html=renderToStaticMarkup(createElement(CalendarFollowUp,{initial:draft,onOpen:noop}))
+  for(const label of ['Date for follow-up 1','Time for follow-up 1','Add to calendar'])assert.ok(html.includes(label),label)
+  assert.doesNotMatch(html,/Review calendar event|<dialog|<textarea/)
+  assert.match(decodeURIComponent(html),/Enviar\+la\+ficha\+técnica\+sin\+precios/)
   assert.doesNotMatch(html,/Revisar evento|Descripción|Duración|Cancelar|Abrir Google Calendar/)
   assert.deepEqual(draft,before)
   const url=new URL(googleCalendarUrl(draft)!)

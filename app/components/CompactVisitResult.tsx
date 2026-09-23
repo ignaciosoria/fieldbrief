@@ -1,16 +1,16 @@
 'use client'
 
 import {useState} from 'react'
-import {calendarDraftFromAction,type CalendarDraft} from '../../lib/calendarDraft'
+import {calendarDraftFromAction} from '../../lib/calendarDraft'
+import CalendarFollowUp from './CalendarFollowUp'
 import {visitActionFields,calendarActionNeedsClarification,type VisitExtraction} from '../../lib/visitExtraction'
 
-export default function CompactVisitResult({extraction,timezone,onCalendar,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
-  extraction:VisitExtraction;timezone:string;onCalendar:(draft:CalendarDraft)=>void;onCopy:()=>Promise<void>;
+export default function CompactVisitResult({extraction,timezone,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
+  extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:()=>Promise<void>;
   onVoice:()=>void;onClarify:(actionIndex?:number)=>void;recording:boolean;voiceDisabled:boolean;saving?:string;onRetrySave?:()=>void;onNew?:()=>void
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
-  const [times,setTimes]=useState<Record<number,string>>({})
   const actions=extraction.actions.map((action,index)=>({action,index})).sort((a,b)=>(a.action.date||'9999').localeCompare(b.action.date||'9999')||a.index-b.index)
   return <section className="space-y-5" aria-label="Visit result" lang="en">
     <header className="flex items-start justify-between gap-3">
@@ -21,15 +21,10 @@ export default function CompactVisitResult({extraction,timezone,onCalendar,onCop
       {actions.length===0 && <p className="text-base text-gray-600">No follow-up agreed.</p>}
       {actions.map(({action,index})=>{
         const initial=calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
-        const draft={...initial,time:times[index]??initial.time}
         return <article key={index} className="rounded-2xl border border-zinc-200 bg-white p-4">
-          <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold text-gray-900">{draft.title}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-            <span>{draft.date ? new Intl.DateTimeFormat('en-US',{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(draft.date+'T12:00:00Z')) : 'Date needed'}</span>
-            <input aria-label={`Time for follow-up ${index+1}`} type="time" required value={draft.time} onChange={e=>setTimes(prev=>({...prev,[index]:e.target.value}))} className="rounded-lg border border-zinc-200 bg-white p-1.5 text-sm" />
-            {initial.timeSuggested && times[index]===undefined && <span>suggested</span>}
-          </div>
-          <button type="button" disabled={recording} onClick={()=>calendarActionNeedsClarification(extraction,index)?onClarify(index):onCalendar(draft)} className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Add to calendar</button>
+          <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold text-gray-900">{initial.title}</p>
+          <CalendarFollowUp initial={initial} actionNumber={index+1} disabled={recording}
+            onOpen={onCalendarOpened} onClarify={calendarActionNeedsClarification(extraction,index)?()=>onClarify(index):undefined} />
         </article>
       })}
     </div>
