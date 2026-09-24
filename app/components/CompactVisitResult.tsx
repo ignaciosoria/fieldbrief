@@ -5,6 +5,7 @@ import {calendarDraftFromAction} from '../../lib/calendarDraft'
 import CalendarFollowUp from './CalendarFollowUp'
 import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
 import {insightPresentation} from '../../lib/insightPresentation'
+import {visitHeader} from '../../lib/visitHeader'
 
 export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
   extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:()=>Promise<void>;
@@ -17,7 +18,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
   const actions=extraction.actions.map((action,index)=>({action,index})).sort((a,b)=>(a.action.date||'9999').localeCompare(b.action.date||'9999')||a.index-b.index)
   return <section className="space-y-5" aria-label="Visit result" lang="en">
     <header className="flex items-start justify-between gap-3">
-      <p className="text-sm text-gray-600">{[extraction.contacts.join(', '),extraction.companies.join(', ')].filter(Boolean).join(' · ')}</p>
+      <p className="text-sm text-gray-600">{visitHeader(extraction)}</p>
       {onNew && <button type="button" disabled={saving==='saving' || recording} onClick={onNew} className="shrink-0 text-sm text-indigo-700 disabled:opacity-50">New note</button>}
     </header>
     <div className="space-y-3">
