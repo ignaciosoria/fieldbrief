@@ -5018,12 +5018,12 @@ export default function Home() {
             <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
               {showPaywall === 'upgrade'
                 ? 'Upgrade to Folup Pro'
-                : "You've used your free AI allowance"}
+                : "You've reached your free limit"}
             </h2>
             <p className="mb-6 text-center text-[14px] text-[#6b7280]">
               {showPaywall === 'upgrade'
                 ? 'Unlimited notes, never miss a follow-up. $19/month, cancel anytime.'
-                : 'Subscribe to Folup Pro to keep recording and never forget a follow-up again.'}
+                : 'Upgrade to Folup Pro for unlimited notes and follow-ups.'}
             </p>
             <button
               type="button"
@@ -5046,7 +5046,7 @@ export default function Home() {
               }}
               className="w-full rounded-xl bg-[#16a34a] py-4 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-[#15803d]"
             >
-              {checkoutBusy ? 'Opening secure checkout…' : 'Subscribe — $19/month'}
+              {checkoutBusy ? 'Opening secure checkout…' : 'Upgrade to Pro — $19/month'}
             </button>
             {checkoutError && <p role="alert" className="mt-3 text-sm text-red-700">{checkoutError}</p>}
             <button

@@ -13,7 +13,7 @@ export async function checkAiAccess(operation: AiOperation, deps: AiAccessDepend
     const decision = await deps.reserve(email, operation)
     if (decision === 'allowed') return null
     if (decision === 'quota_exceeded') {
-      return Response.json({ error: 'Your free AI allowance has been used. Upgrade to continue.', code: 'QUOTA_EXCEEDED' }, { status: 403 })
+      return Response.json({ error: "You've reached your free limit. Upgrade to Folup Pro to continue.", code: 'QUOTA_EXCEEDED' }, { status: 403 })
     }
     if (decision === 'rate_limited') {
       return Response.json({ error: 'Too many requests. Try again in a minute.', code: 'RATE_LIMITED' }, { status: 429, headers: { 'Retry-After': '60' } })

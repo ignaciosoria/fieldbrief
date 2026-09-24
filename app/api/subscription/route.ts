@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { serverDb } from "../../../lib/serverDb"
-import { hasCurrentPaidAccess } from "../../../lib/subscriptionPolicy"
 
 export async function GET() {
   try {
@@ -11,16 +10,14 @@ export async function GET() {
     }
 
     const supabase = serverDb()
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("status,paid_until")
-      .eq("user_id", session.user.email.trim())
-      .maybeSingle()
+    const { data, error } = await supabase.rpc('has_unlimited_ai_access', {
+      p_user_id: session.user.email.trim(),
+    })
 
-    if (error) throw error
+    if (error || typeof data !== 'boolean') throw error || new Error('Invalid access response')
 
     return NextResponse.json({
-      active: hasCurrentPaidAccess(data),
+      active: data,
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ error: 'Unable to verify your subscription. Please try again.' }, { status: 503 })
