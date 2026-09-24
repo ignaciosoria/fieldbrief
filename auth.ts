@@ -14,6 +14,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: '/',
+    error: '/auth/error',
   },
   events: {
     async signIn({user,account,profile}) {
