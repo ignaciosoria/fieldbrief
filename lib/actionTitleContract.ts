@@ -75,7 +75,8 @@ export function normalizePrimarySendObjectField(
   const c = contact.trim()
   if (c && o && o.toLowerCase() === c.toLowerCase()) return ''
   o = stripLeadingVerbFromObjectPhrase(o, verb.trim(), langEs)
-  return o.trim()
+  // Sentence case for this generic deliverable, without lowercasing brands or acronyms.
+  return langEs ? o.trim() : o.trim().replace(/^Label(?=\s+and\s+pricing\b)/, 'label')
 }
 
 /** Avoids "Call Call Sarah" when the model duplicates the action verb inside `contact`. */
