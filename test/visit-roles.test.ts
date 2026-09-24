@@ -41,7 +41,7 @@ for(const id of ['es-messy-roles','en-messy-roles']){
     assert.match(crm,/AgriWest/);assert.match(crm,/Oscar/)
     assert.match(crm,/viernes|Friday/)
     const html=renderToStaticMarkup(createElement(CompactVisitResult,{extraction,timezone:'America/Los_Angeles',onCalendarOpened:()=>{},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false}))
-    assert.match(html,/Carlos · Robles Family Farms/)
+    assert.match(html,/Carlos — Robles Family Farms/)
     assert.doesNotMatch(html,/Carlos, Oscar|Robles Family Farms, AgriWest/)
     const before=calendarDraftFromAction(visitActionFields(extraction.actions[0],extraction.language),extraction.language,'America/Los_Angeles')
     assert.equal(googleCalendarUrl(before),null)

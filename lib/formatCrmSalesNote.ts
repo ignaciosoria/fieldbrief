@@ -1,5 +1,7 @@
 import { normalizeProductField, productFieldToList } from './productField'
 import type { VisitExtraction } from './visitExtraction'
+import {compactCrmNarrative} from './compactCrmNarrative'
+import {visitHeader} from './visitHeader'
 import {
   stripExecutionBlocksFromCrmNarrative,
 } from './crmNarrativeSanitize'
@@ -67,17 +69,22 @@ function filterInsightsForNote(lines: string[]): string[] {
 }
 
 /**
- * Clean, professional sales note for CRM paste: header, situation / context, optional opportunities.
- * Does **not** include next steps, follow-up tasks, or scheduling — those live in the app’s Next step UI.
+ * Structured notes: identity, one compact narrative, then explicit next steps.
+ * Legacy notes retain their existing context-only export.
  */
 export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
   if (r.schemaVersion === 2 && r.extraction) {
     const v = r.extraction
     const es = v.language === 'Spanish'
-    const header = [v.contacts.join(', '),v.companies.join(', ')].filter(Boolean).join(' — ')
-    const commitments = v.actions.map(a => `${[a.contact,a.company].filter(Boolean).join(' — ')}${a.contact || a.company ? ': ' : ''}${a.description}${a.date ? ` (${a.date}${a.time ? ` ${a.time}` : ''})` : ''}`)
-    return [header,v.location,v.summary,...v.insights.filter(line=>!v.summary.includes(line)),
-      commitments.length ? `${es ? 'Acuerdos y próximos pasos' : 'Agreements and next steps'}:\n${commitments.map(a=>`- ${a}`).join('\n')}` : '',
+    const header = visitHeader(v)
+    const narrative = compactCrmNarrative(v.summary,v.insights,v.language,v.contacts,v.companies)
+    const soleOwner = v.contacts.length===1 && v.companies.length<=1 && v.actions.every(a=>a.contact===v.contacts[0] && a.company===(v.companies[0]||''))
+    const commitments = v.actions.map(a => {
+      const owner=soleOwner ? '' : [a.contact,a.company].filter(Boolean).join(' — ')
+      return `${owner ? `${owner}: ` : ''}${a.description}${a.date ? ` (${a.date}${a.time ? ` ${a.time}` : ''})` : ''}`
+    })
+    return [header,v.location && !narrative.toLowerCase().includes(v.location.toLowerCase()) && !header.toLowerCase().includes(v.location.toLowerCase()) ? v.location : '',narrative,
+      commitments.length ? `${es ? 'Próximos pasos' : 'Next steps'}:\n${commitments.map(a=>`- ${a}`).join('\n')}` : '',
       v.questions.length ? `${es ? 'Pendiente de aclarar' : 'To clarify'}: ${v.questions.map(q=>q.question).join(' ')}` : '',
     ].filter(Boolean).join('\n\n')
   }
