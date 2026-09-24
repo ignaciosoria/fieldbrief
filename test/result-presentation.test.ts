@@ -12,14 +12,14 @@ const note=():VisitExtraction=>({language:'Spanish',contacts:['Laura','Miguel'],
 
 test('header pairs explicit action identities, not array positions; does not mutate the note',()=>{
   const value=note(), before=structuredClone(value)
-  assert.equal(visitHeader(value),'Laura · AgroNorte / Miguel · CampoSur')
+  assert.equal(visitHeader(value),'Laura — AgroNorte / Miguel — CampoSur')
   assert.deepEqual(value,before)
 })
 test('repeated actions do not duplicate identities and unpaired contacts remain visible',()=>{
   const value=note()
   value.actions.push(action('Laura','AgroNorte'))
   value.contacts.push('Jay')
-  assert.equal(visitHeader(value),'Laura · AgroNorte / Miguel · CampoSur / Jay')
+  assert.equal(visitHeader(value),'Laura — AgroNorte / Miguel — CampoSur / Jay')
 })
 test('missing, conflicting or unresolved associations are not invented',()=>{
   const value=note()
@@ -54,7 +54,7 @@ test('actual financial context and other categories retain their icons',()=>{
 test('compact result renders the two corrections without changing action or CRM data',()=>{
   const value=note(), before=structuredClone(value)
   const html=renderToStaticMarkup(createElement(CompactVisitResult,{extraction:value,timezone:'America/Los_Angeles',onCalendarOpened:()=>{},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false}))
-  assert.ok(html.includes('Laura · AgroNorte / Miguel · CampoSur'))
+  assert.ok(html.includes('Laura — AgroNorte / Miguel — CampoSur'))
   assert.ok(html.includes('📄'))
   assert.ok(html.includes(value.insights[0]))
   assert.equal((html.match(/Add to calendar/g)||[]).length,2)

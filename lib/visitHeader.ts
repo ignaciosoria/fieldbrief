@@ -15,7 +15,7 @@ export function visitHeader(extraction: VisitExtraction): string {
     // Conflicting organizations are not a confirmed identity pairing.
     if (matches.length !== 1) return contact
     usedCompanies.add(key(matches[0]))
-    return `${contact} · ${matches[0]}`
+    return `${contact} — ${matches[0]}`
   })
   parts.push(...companies.filter(company => !usedCompanies.has(key(company))))
   return parts.join(' / ')
