@@ -3,11 +3,14 @@
 import {useState} from 'react'
 import {calendarDraftFromAction} from '../../lib/calendarDraft'
 import CalendarFollowUp from './CalendarFollowUp'
-import {visitActionFields,calendarActionNeedsClarification,type VisitExtraction} from '../../lib/visitExtraction'
+import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
+import {insightPresentation} from '../../lib/insightPresentation'
 
-export default function CompactVisitResult({extraction,timezone,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
+export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
   extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:()=>Promise<void>;
   onVoice:()=>void;onClarify:(actionIndex?:number)=>void;recording:boolean;voiceDisabled:boolean;saving?:string;onRetrySave?:()=>void;onNew?:()=>void
+  referenceAt?:string
+  noteId?:string;ownerEmail?:string
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
@@ -24,11 +27,13 @@ export default function CompactVisitResult({extraction,timezone,onCalendarOpened
         return <article key={index} className="rounded-2xl border border-zinc-200 bg-white p-4">
           <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold text-gray-900">{initial.title}</p>
           <CalendarFollowUp initial={initial} actionNumber={index+1} disabled={recording}
-            onOpen={onCalendarOpened} onClarify={calendarActionNeedsClarification(extraction,index)?()=>onClarify(index):undefined} />
+            noteId={noteId} actionIndex={index} ownerEmail={ownerEmail}
+            evidence={action.evidence} referenceAt={referenceAt}
+            onOpen={onCalendarOpened} onClarify={extraction.questions.some(q=>q.action_index===index && q.field!=='date' && q.field!=='time')?()=>onClarify(index):undefined} />
         </article>
       })}
     </div>
-    {extraction.insights.length>0 && <ul aria-label="Key insights" className="space-y-2 text-sm leading-relaxed text-gray-700">{extraction.insights.slice(0,4).map((line,i)=><li lang={extraction.language==='Spanish'?'es':'en'} key={i}>💡 {line.replace(/^[💡📌⚠️🌱]\s*/u,'')}</li>)}</ul>}
+    {extraction.insights.length>0 && <ul aria-label="Key insights" className="space-y-2 text-sm leading-relaxed text-gray-700">{extraction.insights.slice(0,4).map((line,i)=>{const insight=insightPresentation(line);return <li lang={extraction.language==='Spanish'?'es':'en'} key={i}><span aria-hidden="true">{insight.icon}</span> {insight.text}</li>})}</ul>}
     {extraction.questions.length>0 && <button type="button" onClick={()=>onClarify()} className="text-sm text-amber-800 underline">Review unclear details</button>}
     <footer className="grid grid-cols-2 gap-2 border-t border-zinc-100 pt-4">
       <button type="button" onClick={async()=>{try{await onCopy();setCopied(true);setError('')}catch{setError('Could not copy. Please retry.')}}} className="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold text-white">{copied?'Copied':'Copy to CRM'}</button>

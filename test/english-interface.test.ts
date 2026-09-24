@@ -43,7 +43,7 @@ test('missing-date and no-action states use English without inventing a follow-u
   const render=(extraction:VisitExtraction)=>renderToStaticMarkup(createElement(CompactVisitResult,{
     extraction,timezone:'America/Los_Angeles',onCalendarOpened:noop,onCopy:done,onVoice:noop,onClarify:noop,recording:false,voiceDisabled:false,
   }))
-  assert.match(render({...spanish,actions:[{...spanish.actions[0],date:''}]}),/Date needed/)
+  assert.match(render({...spanish,actions:[{...spanish.actions[0],date:''}]}),/edit if needed/)
   const empty=render({...spanish,actions:[],questions:[]})
   assert.match(empty,/No follow-up agreed/)
   assert.doesNotMatch(empty,/Add to calendar/)
@@ -77,7 +77,7 @@ test('direct calendar controls are English while the event payload remains in Sp
   const html=renderToStaticMarkup(createElement(CalendarFollowUp,{initial:draft,onOpen:noop}))
   for(const label of ['Date for follow-up 1','Time for follow-up 1','Add to calendar'])assert.ok(html.includes(label),label)
   assert.doesNotMatch(html,/Review calendar event|<dialog|<textarea/)
-  assert.match(decodeURIComponent(html),/Enviar\+la\+ficha\+técnica\+sin\+precios/)
+  assert.match(html,/Enviar la ficha técnica sin precios/)
   assert.doesNotMatch(html,/Revisar evento|Descripción|Duración|Cancelar|Abrir Google Calendar/)
   assert.deepEqual(draft,before)
   const url=new URL(googleCalendarUrl(draft)!)

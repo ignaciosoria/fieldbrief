@@ -2188,6 +2188,18 @@ export default function Home() {
     return () => { cancelled = true }
   }, [sessionEmail])
 
+  // Return to the saved note after optional Google Calendar consent. No event is
+  // created on redirect; the user reviews the restored draft and taps Add again.
+  useEffect(()=>{
+    if(!sessionEmail || !savedNotes.length)return
+    const url=new URL(window.location.href),id=url.searchParams.get('calendarNote')
+    if(!id)return
+    const note=savedNotes.find(n=>n.id===id)
+    if(!note)return
+    setSelectedNote(note);setActiveTab('history')
+    url.searchParams.delete('calendarNote');window.history.replaceState(null,'',url.pathname+url.search+url.hash)
+  },[sessionEmail,savedNotes])
+
   useEffect(() => {
     if (!copied) return
     const t = setTimeout(() => setCopied(false), 1500)
@@ -3038,6 +3050,8 @@ export default function Home() {
     const language = r.noteLanguage || detectNoteLanguage(r.crmText || r.summary || action.verb)
     const draft = calendarDraftFromAction(action, language, r.noteTimezone || getClientTimezone())
     return <CalendarFollowUp initial={draft} actionNumber={actionNumber} disabled={disabled || isCorrectingRecording}
+      noteId={(r===selectedNote?.result?selectedNote.id:currentNoteId) || undefined} actionIndex={actionNumber-1} ownerEmail={sessionEmail || undefined}
+      evidence={action.evidence} referenceAt={r.capturedAt}
       onClarify={!session?.user ? () => setShowLoginPrompt(true) : undefined}
       onOpen={() => setShowCalendarToast(true)} />
   }
@@ -3076,6 +3090,8 @@ export default function Home() {
   const recordDisplayResult = walkthroughDisplayResult ?? result
   const compactResult = (r:StructureResult,tx:string,id?:string,history=false) => <CompactVisitResult
     key={JSON.stringify(r.extraction)} extraction={r.extraction!} timezone={r.noteTimezone || getClientTimezone()}
+    referenceAt={r.capturedAt}
+    noteId={id} ownerEmail={sessionEmail || undefined}
     onCalendarOpened={()=>setShowCalendarToast(true)}
     onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
     onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
@@ -3960,7 +3976,7 @@ export default function Home() {
           const updated = await refreshClarifiedVisit(pendingVisit.result,tx)
           await acceptVisit(updated,tx,pendingVisit.noteId)
         }} />}
-      {/* Opening Google is not confirmation that the user saved the event. */}
+      {/* Shown only after Google confirms the exact event payload. */}
       {showCalendarToast && (
         <div
           className="pointer-events-none fixed left-1/2 z-[96] flex max-w-[min(18rem,92vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-[#e5e7eb] bg-white/96 px-3.5 py-2 pl-2.5 text-[13px] font-medium text-[#111111] shadow-[0_4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
@@ -3976,7 +3992,7 @@ export default function Home() {
               <path d="M20 6L9 17l-5-5" />
             </svg>
           </span>
-          Review and save in Google Calendar
+          Added to Google Calendar
         </div>
       )}
 

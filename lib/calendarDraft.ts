@@ -102,6 +102,6 @@ export function googleCalendarUrl(draft: CalendarDraft): string | null {
     dates = `${date.toFormat('yyyyMMdd')}/${date.plus({days:1}).toFormat('yyyyMMdd')}`
   }
   const query = new URLSearchParams({action:'TEMPLATE',text:draft.title.trim(),details:draft.details,
-    dates,ctz:draft.timezone})
-  return `https://calendar.google.com/calendar/render?${query}`
+    dates,ctz:draft.timezone,stz:draft.timezone,etz:draft.timezone})
+  return `https://calendar.google.com/calendar/r/eventedit?${query}`
 }
