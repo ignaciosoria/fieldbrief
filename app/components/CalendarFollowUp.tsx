@@ -6,6 +6,8 @@ import {googleCalendarUrl, type CalendarDraft} from '../../lib/calendarDraft'
 import {suggestCalendarSchedule} from '../../lib/calendarSuggestion'
 import {saveCalendarFromClient} from '../../lib/calendarSaveClient'
 import {GOOGLE_CALENDAR_SCOPE} from '../../lib/googleCalendarScope'
+import {sameActionSnapshot,type CalendarActionState} from '../../lib/calendarActionState'
+import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
 
 type Props = {
   initial: CalendarDraft
@@ -18,6 +20,7 @@ type Props = {
   now?: string
   noteId?: string
   actionIndex?: number
+  sourceAction?: unknown
   ownerEmail?: string
   /** Presentation only: the complete initial draft is still sent to Calendar. */
   previewDescription?: string
@@ -26,10 +29,10 @@ type Props = {
 
 /** Reset local scheduling edits when a corrected action replaces this draft. */
 export default function CalendarFollowUp(props: Props) {
-  return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial])} {...props} />
+  return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial,props.sourceAction])} {...props} />
 }
 
-function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, ownerEmail,previewDescription,compact=false}: Props) {
+function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false}: Props) {
   const [expanded,setExpanded]=useState(false)
   const description=previewDescription ?? initial.details
   const longDescription=compact && description.length>160
@@ -47,6 +50,35 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
   const [savedUrl,setSavedUrl]=useState('')
   const [reviewUrl,setReviewUrl]=useState('')
   const [saveError,setSaveError]=useState('')
+  const [actionState,setActionState]=useState<CalendarActionState>()
+  const readActionState=async()=>{
+    const response=await fetchWithTimeout(`/api/calendar/events?noteId=${encodeURIComponent(noteId || '')}`,{cache:'no-store'},15_000)
+    if(!response.ok)throw Error('Could not load calendar status. Please retry.')
+    const data=await response.json()
+    const state:CalendarActionState|undefined=data.actions?.find((a:CalendarActionState)=>a.actionIndex===actionIndex)
+    if(!state || !sameActionSnapshot(state.snapshot,sourceAction))throw Error('This note changed. Reload it before adding the follow-up.')
+    return state
+  }
+  useEffect(()=>{
+    if(!noteId || !ownerEmail || !sourceAction)return
+    let cancelled=false
+    void readActionState().then(state=>{
+      if(cancelled)return
+      setActionState(state)
+      if(state.saved){
+        if(sameActionSnapshot(state.snapshot,state.saved.sourceSnapshot)){
+          setSavedUrl(state.saved.url);setDate(state.saved.draft.date);setTime(state.saved.draft.time)
+          setDateEdited(true);setTimeEdited(true)
+        }else{
+          setReviewUrl(state.saved.url)
+          setSaveError('This follow-up is already in Google Calendar with different details. Review it there; it has not been changed.')
+        }
+      }
+    }).catch(()=>{/* A save retries the status check; never assume a missing event. */})
+    return ()=>{cancelled=true}
+  // Component remounts when the source action changes; status is advisory until save.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[noteId,ownerEmail,disabled])
   const storageKey=`folup-calendar-draft:${ownerEmail || ''}:${noteId || ''}:${actionIndex}`
   const initialJson=JSON.stringify(initial)
   useEffect(()=>{
@@ -87,7 +119,10 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
         })
         return
       }
-      const response=await saveCalendarFromClient({noteId,actionIndex,draft})
+      const state=sourceAction ? actionState || await readActionState() : undefined
+      if(!alive.current)return
+      if(state?.needsReview){setSaveError('This corrected action may already have a calendar event. Review it in Google Calendar; automatic creation is blocked to avoid duplicates.');return}
+      const response=await saveCalendarFromClient({noteId,actionIndex,draft,...(state?{actionId:state.actionId,sourceAction}:{})})
       if(!alive.current)return
       if(response.kind==='connect'){setConnectionNeeded(true);return}
       if(response.kind==='error'){setSaveError(response.message);setReviewUrl(response.url || '');return}

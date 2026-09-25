@@ -101,5 +101,5 @@ test('record and history paths no longer fall back to a provisional event editor
   assert.match(page,/supportingCalendar\(selectedNote\.result/)
   const component=readFileSync(new URL('../app/components/CalendarFollowUp.tsx',import.meta.url),'utf8')
   assert.doesNotMatch(component,/window\.open\(/)
-  assert.match(component,/key=\{JSON\.stringify\(\[props\.ownerEmail,props\.noteId,props\.actionIndex,props\.initial\]\)\}/)
+  assert.match(component,/key=\{JSON\.stringify\(\[props\.ownerEmail,props\.noteId,props\.actionIndex,props\.initial,props\.sourceAction\]\)\}/)
 })

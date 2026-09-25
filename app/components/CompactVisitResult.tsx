@@ -28,8 +28,8 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
         return <article key={index} className="rounded-2xl border border-zinc-200 bg-white p-4">
           {action.origin==='recommendation' && <p className="mb-1 text-xs font-medium text-indigo-700">Suggested by Folup</p>}
           <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold text-gray-900">{initial.title}</p>
-          <CalendarFollowUp initial={initial} previewDescription={action.description} compact actionNumber={index+1} disabled={recording}
-            noteId={noteId} actionIndex={index} ownerEmail={ownerEmail}
+          <CalendarFollowUp initial={initial} previewDescription={action.description} compact actionNumber={index+1} disabled={recording || saving==='saving'}
+            noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail}
             evidence={action.evidence} referenceAt={referenceAt}
             onOpen={onCalendarOpened} onClarify={extraction.questions.some(q=>q.action_index===index && q.field!=='date' && q.field!=='time')?()=>onClarify(index):undefined} />
         </article>

@@ -5,7 +5,7 @@ export function calendarEventLink(value:unknown):string|undefined {
   if(typeof value!=='string')return
   try {const u=new URL(value);if(u.protocol==='https:'&&['calendar.google.com','www.google.com'].includes(u.hostname)&&u.pathname.startsWith('/calendar'))return u.href}catch{}
 }
-export async function saveCalendarFromClient(input:{noteId:string;actionIndex:number;draft:CalendarDraft},fetcher:typeof fetch=fetch) {
+export async function saveCalendarFromClient(input:{noteId:string;actionIndex:number;draft:CalendarDraft;actionId?:string;sourceAction?:unknown},fetcher:typeof fetch=fetch) {
   const response=await fetchWithTimeout('/api/calendar/events',{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',
   },35_000,fetcher)

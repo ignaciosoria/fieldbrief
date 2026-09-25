@@ -7,7 +7,7 @@ import {calendarEventLink} from './calendarSaveClient'
 export class CalendarWriteError extends Error {
   constructor(readonly code:string,readonly status:number,message:string,readonly url?:string){super(message)}
 }
-export type CalendarSaveInput={noteId:string;actionIndex:number;draft:CalendarDraft}
+export type CalendarSaveInput={noteId:string;actionIndex:number;draft:CalendarDraft;actionId?:string;sourceAction?:unknown;serverEventId?:string}
 export function parseCalendarSaveInput(value:unknown):CalendarSaveInput|null {
   if(!value||typeof value!=='object')return null
   const body=value as Record<string,unknown>,d=body.draft as Record<string,unknown>|undefined
@@ -17,7 +17,9 @@ export function parseCalendarSaveInput(value:unknown):CalendarSaveInput|null {
   if(String(d.title).length>200||!String(d.title).trim()||String(d.details).length>8000||String(d.timezone).length>100)return null
   const draft:CalendarDraft={title:String(d.title),details:String(d.details),date:String(d.date),time:String(d.time),timezone:String(d.timezone),language:d.language==='Spanish'?'Spanish':'English'}
   if(!googleCalendarUrl(draft))return null
-  return {noteId:body.noteId,actionIndex:Number(body.actionIndex),draft}
+  if(body.actionId!==undefined && (typeof body.actionId!=='string'||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(body.actionId)))return null
+  return {noteId:body.noteId,actionIndex:Number(body.actionIndex),draft,
+    ...(body.actionId?{actionId:body.actionId as string,sourceAction:body.sourceAction}:{})}
 }
 export function googleEventPayload(email:string,input:CalendarSaveInput) {
   const {draft}=input
@@ -25,7 +27,7 @@ export function googleEventPayload(email:string,input:CalendarSaveInput) {
   if(!googleCalendarUrl(draft))throw Error('Invalid calendar event')
   // Stable across retries, devices and schedule edits: never create a second event
   // for the same saved-note action. A changed existing event requires manual review.
-  const id='f'+createHash('sha256').update(JSON.stringify([email.trim().toLowerCase(),input.noteId,input.actionIndex])).digest('hex')
+  const id=input.serverEventId || 'f'+createHash('sha256').update(JSON.stringify([email.trim().toLowerCase(),input.noteId,input.actionId || input.actionIndex])).digest('hex')
   return {id,summary:draft.title,description:draft.details,
     start:{dateTime:start.toISO()!,timeZone:draft.timezone},end:{dateTime:start.plus({minutes:30}).toISO()!,timeZone:draft.timezone},
     extendedProperties:{private:{folupSource:id}},reminders:{useDefault:true},

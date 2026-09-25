@@ -1,7 +1,7 @@
 import {auth} from '../../../../auth'
 import {serverDb} from '../../../../lib/serverDb'
 import {googleCalendarAccessToken} from '../../../../lib/googleCalendarConnection'
-import {saveGoogleCalendarEvent} from '../../../../lib/googleCalendarEvent'
+import {calendarActionStates,saveLinkedCalendarEvent} from '../../../../lib/calendarActionServer'
 import {handleCalendarSave} from '../../../../lib/calendarSaveHandler'
 
 export const runtime='nodejs'
@@ -13,6 +13,15 @@ export async function POST(request:Request) {
       if(error)throw Error('Unable to verify note ownership')
       return !!data
     },
-    getToken:googleCalendarAccessToken,save:saveGoogleCalendarEvent,
+    getToken:googleCalendarAccessToken,save:saveLinkedCalendarEvent,
   })
+}
+
+export async function GET(request:Request) {
+  const email=(await auth())?.user?.email?.trim()
+  if(!email)return Response.json({error:'Sign in to view follow-ups.'},{status:401})
+  const id=new URL(request.url).searchParams.get('noteId') || ''
+  if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id))return Response.json({error:'Invalid note.'},{status:400})
+  try {return Response.json({actions:await calendarActionStates(email,id)},{headers:{'Cache-Control':'no-store'}})}
+  catch{return Response.json({error:'Could not load calendar status.'},{status:503})}
 }
