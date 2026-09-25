@@ -88,7 +88,7 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
     const recommendations = v.actions.filter(a=>a.origin==='recommendation').map(describe)
     return [header,v.location && !narrative.toLowerCase().includes(v.location.toLowerCase()) && !header.toLowerCase().includes(v.location.toLowerCase()) ? v.location : '',narrative,
       commitments.length ? `${es ? 'Próximos pasos' : 'Next steps'}:\n${commitments.map(a=>`- ${a}`).join('\n')}` : '',
-      recommendations.length ? `${es ? 'Sugerencias de Folup (no acordadas; fechas sugeridas)' : 'Folup suggestions (not agreed; suggested dates)'}:\n${recommendations.map(a=>`- ${a}`).join('\n')}` : '',
+      recommendations.length ? `${es ? 'Seguimiento propuesto' : 'Proposed follow-up'}:\n${recommendations.map(a=>`- ${a}`).join('\n')}` : '',
       v.questions.length ? `${es ? 'Pendiente de aclarar' : 'To clarify'}: ${v.questions.map(q=>q.question).join(' ')}` : '',
     ].filter(Boolean).join('\n\n')
   }

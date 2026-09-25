@@ -23,7 +23,8 @@ test('suggestion provenance survives persistence, CRM and Calendar without alter
   assert.equal(visitHeader(restored),'Mike / Valley') // advice cannot establish identity pairing
   const result=visitExtractionResult(restored,now,zone)
   const crm=formatProfessionalCrmNote(result)
-  assert.match(crm,/Folup suggestions \(not agreed; suggested dates\)/)
+  assert.match(crm,/Proposed follow-up:/)
+  assert.doesNotMatch(crm,/Folup suggestions|not agreed; suggested dates/)
   assert.doesNotMatch(crm,/Next steps:/)
   const draft=calendarDraftFromAction(visitActionFields(restored.actions[0],'English'),'English',zone)
   assert.match(draft.details,/not an agreed commitment/)
@@ -38,9 +39,9 @@ test('explicit commitments remain distinct and historical payloads still render'
   assert.equal(parsed.actions[0].origin,'commitment')
   const crm=formatProfessionalCrmNote(visitExtractionResult(parsed,now,zone))
   assert.match(crm,/Next steps:\n- Call Mike/)
-  assert.match(crm,/Folup suggestions/)
+  assert.match(crm,/Proposed follow-up/)
   const legacy={...parsed,actions:[{...parsed.actions[0],origin:undefined}]}
-  assert.doesNotMatch(formatProfessionalCrmNote(visitExtractionResult(legacy,now,zone)),/Folup suggestions/)
+  assert.doesNotMatch(formatProfessionalCrmNote(visitExtractionResult(legacy,now,zone)),/Proposed follow-up/)
 })
 
 test('recommendations reject invented evidence, unknown recipients and invalid or past dates',()=>{
@@ -64,7 +65,8 @@ test('no forced recommendation; enforce cap, suppress duplicate and unresolved i
 test('Spanish recommendations export in a separate suggested section',()=>{
   const raw=fixture();raw.language='Spanish'
   const crm=formatProfessionalCrmNote(visitExtractionResult(parseSalesDecision(raw,source,now,zone),now,zone))
-  assert.match(crm,/Sugerencias de Folup \(no acordadas; fechas sugeridas\)/)
+  assert.match(crm,/Seguimiento propuesto:/)
+  assert.doesNotMatch(crm,/Sugerencias de Folup|no acordadas; fechas sugeridas/)
   assert.doesNotMatch(crm,/Próximos pasos:/)
 })
 
