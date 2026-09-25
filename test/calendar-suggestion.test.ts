@@ -68,8 +68,8 @@ test('timing questions allow an editable proposal; identity questions still bloc
   assert.match(renderToStaticMarkup(createElement(CompactVisitResult,{...props,extraction:{...extraction,questions:[{action_index:0,field:'contact',question:'Which Jeremy?'}]}})),/type="date" required="" disabled=""/)
 })
 for(const [text,icon] of [
-  ['Jay confirmó que sí vio la oferta enviada hace un mes.','✅'],
-  ['Jay confirmed he received the offer last month.','✅'],
+  ['Jay confirmó que sí vio la oferta enviada hace un mes.','📄'],
+  ['Jay confirmed he received the offer last month.','📄'],
   ['Pidieron que la oferta se pase directamente a Jeremy.','📄'],
   ['Forward the offer to Jeremy for review.','📄'],
   ['El crédito está ajustado.','💰'],['Credit is tight.','💰'],

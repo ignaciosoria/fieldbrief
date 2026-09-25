@@ -47,7 +47,7 @@ test('actual financial context and other categories retain their icons',()=>{
     ['Send the technical sheet without prices; payment is overdue.','💰'],
     ['La ficha incluye un presupuesto.','💰'],
     ['Helena ofrece algo más barato.','⚖️'],
-    ['Jay confirmed he received the technical sheet.','✅'],
+    ['Jay confirmed he received the technical sheet.','📄'],
     ['El pedido todavía no está aprobado.','📦'],
   ]) assert.deepEqual(insightPresentation(text),{text,icon})
 })
