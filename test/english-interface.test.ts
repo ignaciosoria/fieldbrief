@@ -43,7 +43,7 @@ test('missing-date and no-action states use English without inventing a follow-u
   const render=(extraction:VisitExtraction)=>renderToStaticMarkup(createElement(CompactVisitResult,{
     extraction,timezone:'America/Los_Angeles',onCalendarOpened:noop,onCopy:done,onVoice:noop,onClarify:noop,recording:false,voiceDisabled:false,
   }))
-  assert.match(render({...spanish,actions:[{...spanish.actions[0],date:''}]}),/edit if needed/)
+  assert.match(render({...spanish,actions:[{...spanish.actions[0],date:''}]}),/>suggested</)
   const empty=render({...spanish,actions:[],questions:[]})
   assert.match(empty,/No follow-up agreed/)
   assert.doesNotMatch(empty,/Add to calendar/)

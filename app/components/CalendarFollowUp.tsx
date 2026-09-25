@@ -19,6 +19,9 @@ type Props = {
   noteId?: string
   actionIndex?: number
   ownerEmail?: string
+  /** Presentation only: the complete initial draft is still sent to Calendar. */
+  previewDescription?: string
+  compact?: boolean
 }
 
 /** Reset local scheduling edits when a corrected action replaces this draft. */
@@ -26,7 +29,11 @@ export default function CalendarFollowUp(props: Props) {
   return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial])} {...props} />
 }
 
-function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, ownerEmail}: Props) {
+function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, ownerEmail,previewDescription,compact=false}: Props) {
+  const [expanded,setExpanded]=useState(false)
+  const description=previewDescription ?? initial.details
+  const longDescription=compact && description.length>160
+  const preview=longDescription ? description.slice(0,160).replace(/\s+\S*$/,'')+'…' : description
   const [suggestion] = useState(()=>suggestCalendarSchedule(initial,evidence,referenceAt,now))
   const [date, setDate] = useState(suggestion.date)
   const [time, setTime] = useState(suggestion.time)
@@ -91,7 +98,9 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
     finally{busyRef.current=false;if(alive.current)setBusy(false)}
   }
   return <div>
-    <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{initial.details}</p>
+    {longDescription ? <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)} className="mt-1 block text-left text-sm leading-relaxed text-gray-600">
+      {expanded?description:preview} <span className="text-xs text-indigo-700">{expanded?'Less':'More'}</span>
+    </button> : <p className="mt-1 text-sm leading-relaxed text-gray-600">{description}</p>}
     <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
       <input ref={dateInput} aria-label={`Date for follow-up ${actionNumber}`} aria-describedby={!date ? hintId : undefined}
         type="date" required disabled={locked} value={date}
@@ -99,9 +108,9 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
       <input ref={timeInput} aria-label={`Time for follow-up ${actionNumber}`}
         type="time" required disabled={locked} value={time}
         onChange={event => {setTime(event.target.value); setTimeEdited(true); setAttempted(false)}} className={fieldClass} />
-      {suggestion.timeSuggested && !timeEdited && <span>suggested</span>}
+      {((suggestion.timeSuggested && !timeEdited) || (compact && suggestion.dateSuggested && !dateEdited)) && <span className="text-xs text-gray-500">suggested</span>}
     </div>
-    {suggestion.dateSuggested && !dateEdited && <p className="mt-1 text-xs text-gray-500">{suggestion.suggestionReason} · edit if needed.</p>}
+    {!compact && suggestion.dateSuggested && !dateEdited && <p className="mt-1 text-xs text-gray-500">{suggestion.suggestionReason} · edit if needed.</p>}
     {!date && <p id={hintId} className="mt-1 text-xs text-gray-500">Date needed — choose it above.</p>}
     <button type="button" disabled={disabled || busy || !!savedUrl} className={buttonClass} onClick={()=>void save()}>
       {savedUrl?'Added ✓':busy?(connectionNeeded?'Connecting…':'Saving…'):connectionNeeded?'Connect Google Calendar':'Add to calendar'}
