@@ -1,6 +1,22 @@
 # Contact and company identity foundation
 
-Status: implemented locally; not migrated or deployed.
+Status: migrated and deployed on 2026-09-25.
+
+## Production verification
+
+- Commit `c5bec76fc798267dae4147fb0b0f0120de0d0d67`; Vercel production deployment
+  `A5Uxq5K5YNQ12c23oqDqRGn5pKK7` Ready on www.folup.app.
+- Applied to Supabase `iownaoghocmubpxwrnlk` via SQL editor with 5s lock / 30s
+  statement timeouts. Before: 18 notes, 18 revisions, 28,869 bytes of revision JSON.
+- After: 111 unresolved mentions, zero canonical entities and zero confirmations.
+  Full note fingerprint unchanged: `1c54cc4d6d5955eea78c3b6cf1c43238`.
+- RLS enabled; anon/client reads, anon confirmation and direct service-role mention
+  updates denied.
+- Rolled-back synthetic service-role transaction verified automatic mention
+  capture, no automatic identity creation, explicit confirmation, stable retry,
+  owner isolation and stale-revision rejection. No test rows retained.
+- Authenticated production browser loads the normal Record screen and 18-note
+  history count. No AI calls, real contact confirmations or Calendar writes made.
 
 ## Scope and safety boundary
 
@@ -56,7 +72,8 @@ Apply `20260925000400_entity_foundation.sql` in a quiet window with bounded lock
 and statement timeouts. It backfills all retained revisions under a note write
 lock. Check revision count/size before applying at larger scale. Verify unchanged
 note fingerprints and zero canonical entities before explicit confirmation.
-No app deployment is needed to start capture. No migration is applied yet.
+No app deployment is needed to start capture; this release also published the
+versioned migration, tests and documentation through the normal deployment.
 
 Next stage: design a lightweight identity-confirmation interaction and evaluate
 candidate precision on real permitted notes before enabling any automatic links.
