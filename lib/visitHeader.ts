@@ -9,7 +9,7 @@ export function visitHeader(extraction: VisitExtraction): string {
   const usedCompanies = new Set<string>()
   const parts = contacts.map(contact => {
     const matches = companies.filter(company => extraction.actions.some((action, index) =>
-      key(action.contact) === key(contact) && key(action.company) === key(company) &&
+      action.origin !== 'recommendation' && key(action.contact) === key(contact) && key(action.company) === key(company) &&
       !extraction.questions.some(q => (q.action_index === index || q.action_index === -1) &&
         (q.field === 'contact' || q.field === 'company'))))
     // Conflicting organizations are not a confirmed identity pairing.

@@ -19,3 +19,11 @@ test('no-action visits do not manufacture a calendar button',()=>{
   const html=render({...extraction,actions:[]})
   assert.match(html,/No follow-up agreed/);assert.doesNotMatch(html,/Add to calendar/)
 })
+test('v3 keeps the distinguishing purpose visible and ambiguous time blank without extra controls',()=>{
+  const v:VisitExtraction={...extraction,contractVersion:3,questions:[{action_index:0,field:'time',question:'¿Nueve o diez?'}],actions:[{...extraction.actions[0],subject:'garantía Z9',daypart:'ambiguous'}]}
+  const html=render(v)
+  assert.match(html,/Llamar a Pedro sobre garantía Z9/)
+  assert.match(html,/value=""/);assert.doesNotMatch(html,/value="09:00"|suggested/)
+  assert.equal((html.match(/Add to calendar/g)||[]).length,1)
+  assert.doesNotMatch(html,/THIS FULL CRM/)
+})

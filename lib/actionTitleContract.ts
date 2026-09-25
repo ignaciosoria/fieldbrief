@@ -3,6 +3,7 @@
  * not from free-form nextStep / label prose.
  */
 
+import type {VisitDaypart} from './visitTiming'
 const EM = '\u2014'
 
 export type ActionStructuredFields = {
@@ -20,9 +21,15 @@ export type ActionStructuredFields = {
   company: string
   date: string
   time: string
+  daypart?: VisitDaypart
+  origin?: 'commitment' | 'recommendation'
+  rationale?: string
+  timingReason?: string
+  /** Short source-grounded topic; absent on saved pre-v3 notes. */
+  subject?: string
   /** Brief action-specific instruction, grounded in the visit; not the entire CRM note. */
   description?: string
-  /** Exact source quote for this action only, used for suggested calendar timing. */
+  /** Exact source quote; timing fallback only for legacy notes without daypart. */
   evidence?: string
 }
 

@@ -11,8 +11,17 @@ export function suggestCalendarSchedule(
 ):SuggestedDraft {
   const current=DateTime.fromISO(now,{zone:draft.timezone})
   const reference=referenceAt ? DateTime.fromISO(referenceAt,{zone:draft.timezone}) : current
-  const time=draft.time || '09:00'
-  const base={...draft,time,timeSuggested:draft.timeSuggested || !draft.time,dateSuggested:false,suggestionReason:''}
+  const time=draft.needsTimeClarification ? '' : draft.time || '09:00'
+  const base={...draft,time,timeSuggested:!draft.needsTimeClarification && (draft.timeSuggested || !draft.time),dateSuggested:draft.dateSuggested || false,suggestionReason:draft.suggestionReason || ''}
+  // A proposed date is not an agreed 09:00 appointment. Avoid an elapsed default
+  // on today's recommendation, without changing explicit times or old dates.
+  if(draft.dateSuggested && base.timeSuggested && current.isValid && draft.date===current.toISODate()){
+    const slot=DateTime.fromISO(`${draft.date}T${time}`,{zone:draft.timezone})
+    if(slot<=current){
+      const next=current.startOf('hour').plus({minutes:current.minute<30?30:60})
+      return {...base,date:next.toISODate()!,time:next.toFormat('HH:mm')}
+    }
+  }
   // Explicit dates (even past dates) and invalid inputs are not silently replaced.
   if(draft.date || !current.isValid || !reference.isValid)return base
   const text=normalize(evidence)

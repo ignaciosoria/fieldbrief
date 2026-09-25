@@ -1,21 +1,12 @@
 import { DateTime } from 'luxon'
 import { buildPrimaryBaseTitle, normalizePrimarySendObjectField, type ActionStructuredFields } from './actionTitleContract'
+import {resolveVisitTime} from './visitTiming'
 
-export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean }
+export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean; dateSuggested?:boolean; suggestionReason?:string; needsTimeClarification?:boolean }
 
 /** Suggestions are UI defaults, never written back as explicitly agreed times. */
 export function suggestedCalendarTime(action: ActionStructuredFields): string {
-  if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(action.time)) return action.time
-  // The adapter retains each action's evidence. Never inspect the whole transcript.
-  const text=(action.evidence || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  const afternoon=/\b(?:por la tarde|en la tarde|a la tarde|esta tarde|afternoon)\b/.test(text)
-  const night=/\b(?:por la noche|en la noche|a la noche|esta noche|evening|tonight|at night)\b/.test(text)
-  const morning=/\b(?:por la manana|en la manana|a la manana|esta manana|morning)\b/.test(text)
-  // Conflicting windows are left as a reviewable morning default, not guessed.
-  if (Number(afternoon)+Number(night)+Number(morning)>1) return '09:00'
-  if(night) return '19:00'
-  if(afternoon) return '15:00'
-  return '09:00'
+  return resolveVisitTime(action).time
 }
 
 export const CALENDAR_TITLE_LIMIT = 44
@@ -33,6 +24,31 @@ function fitPhrase(value:string,limit:number):string {
 }
 
 export function shortCalendarTitle(action: ActionStructuredFields, es: boolean): string {
+  let subject=cleanPhrase(action.subject || '')
+  // Preserve the actual instruction when an internal task's topic is only a noun.
+  if(subject && action.type==='other'){
+    const instructionVerb=cleanPhrase(action.description || '').match(/^(consultar|comprobar|revisar|investigar|confirmar|verificar|buscar|preparar|check|consult|review|investigate|confirm|verify|find|prepare)\b/i)?.[1]
+    if(instructionVerb && !subject.toLowerCase().startsWith(instructionVerb.toLowerCase()+' '))subject=instructionVerb+' '+subject
+  }
+  if(subject){
+    const person=cleanPhrase(action.contact),company=cleanPhrase(action.company)
+    const verb=action.type==='send'?(es?'Enviar':'Send'):action.type==='call'?(es?'Llamar':'Call'):
+      action.type==='meeting'?(es?'Reunión':'Meeting'):action.type==='follow_up'?(es?'Seguimiento':'Follow up'):''
+    const about=es?' sobre ':' about '
+    const core=action.type==='send'?`${verb} ${subject}`:verb?`${verb}${about}${subject}`:subject
+    const withPerson=!person?core:action.type==='send'?`${core}${es?' a ':' to '}${person}`:
+      action.type==='call'?`${verb}${es?' a ':' '}${person}${about}${subject}`:
+      action.type==='meeting'||action.type==='follow_up'?`${verb}${es?' con ':' with '}${person}${about}${subject}`:`${subject} — ${person}`
+    // Prefer meaningful topic and intact recipient. Move full identity to details if needed.
+    // Never clip a product identifier or person's name just to fit the title.
+    const compactPerson=person?`${verb} ${person} — ${subject}`:''
+    const personFirst=person && verb ? `${verb}${action.type==='send'?(es?' a ':' to '):action.type==='call'?(es?' a ':' '):(es?' con ':' with ')}${person}`:''
+    const candidates=[withPerson+(company?' — '+company:''),withPerson,compactPerson,core+(person?' — '+person:''),personFirst,core].filter(Boolean)
+    const chosen=candidates.find(value=>characters(value)<=CALENDAR_TITLE_LIMIT)
+    if(chosen)return chosen
+    const generic=[verb+(person?' — '+person:''),verb].find(value=>value && characters(value)<=CALENDAR_TITLE_LIMIT)
+    return generic || (es?'Tarea':'Task')
+  }
   const object=normalizePrimarySendObjectField(action.object || '',action.contact,action.verb,es?'Spanish':'English')
   const sendObject=/\btank[ -]?mix\b/i.test(object)?'tank mix':
     /ficha|technical sheet|data\s?sheet/i.test(object)?(es?'ficha':'datasheet'):
@@ -57,6 +73,10 @@ export function shortCalendarTitle(action: ActionStructuredFields, es: boolean):
   if(characters(complete)<=CALENDAR_TITLE_LIMIT)return complete
   // First remove the secondary identity, not the action or its recipient.
   if(contact && characters(phrase)<=CALENDAR_TITLE_LIMIT)return phrase
+  if(action.subject!==undefined){
+    // New notes must not truncate identities even when the model supplied no topic.
+    return [verb+(company?' — '+company:''),verb].find(value=>characters(value)<=CALENDAR_TITLE_LIMIT) || (es?'Tarea':'Task')
+  }
   const recipient=contact || company
   if(!recipient)return fitPhrase(verb,CALENDAR_TITLE_LIMIT)
   // Reserve space for both the action's subject and a recognizable recipient.
@@ -74,15 +94,16 @@ export function calendarDraftFromAction(
   const es = language === 'Spanish'
   const title = shortCalendarTitle(action,es)
   const date = DateTime.fromFormat(action.date.trim(), 'MM/dd/yyyy', { zone: timezone })
-  const timeSuggested = !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(action.time)
+  const timeSuggested = resolveVisitTime(action).suggested
   const time = suggestedCalendarTime(action)
   const instruction = buildPrimaryBaseTitle({...action,contact:'',company:''},language)
   const description = action.description?.trim() || `${instruction.replace(/[.!?]+$/, '')}.`
   const identities=[cleanPhrase(action.contact),cleanPhrase(action.company)].filter(Boolean)
   // Calendar must remain self-contained when its compact title omits an identity.
   const identityContext=identities.some(identity=>!title.includes(identity)) ? identities.join(' — ') : ''
-  const details = [identityContext,description].filter(Boolean).join('\n\n')
-  return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English' }
+  const recommended=action.origin==='recommendation'
+  const details = [identityContext,description,recommended?(es?'Sugerencia de Folup; no es un compromiso acordado.':'Suggested by Folup; not an agreed commitment.'):''].filter(Boolean).join('\n\n')
+  return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English',...(resolveVisitTime(action).needsClarification?{needsTimeClarification:true}:{}),...(recommended?{dateSuggested:true,suggestionReason:action.timingReason || 'Suggested follow-up date'}:{}) }
 }
 
 /** Validate the exact draft reviewed; every follow-up needs a clock time. */

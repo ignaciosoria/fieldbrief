@@ -26,7 +26,9 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
       {actions.map(({action,index})=>{
         const initial=calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
         return <article key={index} className="rounded-2xl border border-zinc-200 bg-white p-4">
+          {action.origin==='recommendation' && <p className="mb-1 text-xs font-medium text-indigo-700">Suggested by Folup</p>}
           <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold text-gray-900">{initial.title}</p>
+          {action.origin==='recommendation' && action.rationale && <p lang={extraction.language==='Spanish'?'es':'en'} className="mt-1 text-xs text-gray-500">{action.rationale}</p>}
           <CalendarFollowUp initial={initial} actionNumber={index+1} disabled={recording}
             noteId={noteId} actionIndex={index} ownerEmail={ownerEmail}
             evidence={action.evidence} referenceAt={referenceAt}
