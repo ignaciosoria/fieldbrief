@@ -10,14 +10,15 @@ export async function GET() {
     }
 
     const supabase = serverDb()
-    const { data, error } = await supabase.rpc('has_unlimited_ai_access', {
+    const { data, error } = await supabase.rpc('get_trial_status', {
       p_user_id: session.user.email.trim(),
     })
 
-    if (error || typeof data !== 'boolean') throw error || new Error('Invalid access response')
+    if (error || !data || typeof data.active !== 'boolean' || typeof data.ended !== 'boolean') throw error || new Error('Invalid access response')
 
     return NextResponse.json({
-      active: data,
+      active: data.active,
+      trial: {startedAt:data.startedAt,endsAt:data.endsAt,ended:data.ended},
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ error: 'Unable to verify your subscription. Please try again.' }, { status: 503 })

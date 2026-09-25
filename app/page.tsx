@@ -13,6 +13,7 @@ import VisitSummary from './components/VisitSummary'
 import CompactVisitResult from './components/CompactVisitResult'
 import AudioRecovery from './components/AudioRecovery'
 import PublicLanding from './components/PublicLanding'
+import {trialMessage,type TrialStatus} from '../lib/trialPresentation'
 import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
@@ -142,6 +143,7 @@ type NormalizedAction = {
 }
 
 type StructureResult = {
+  trialNoteKey?: string
   schemaVersion?: 2
   noteTimezone?: string
   extraction?: VisitExtraction
@@ -492,7 +494,7 @@ function normalizeCommercialContext(raw: unknown): CommercialContextFields | und
 }
 
 function normalizeStructureResult(m: StructureResult): StructureResult {
-  if (m.schemaVersion === 2 && m.extraction) return {...emptyResult,...visitExtractionResult(m.extraction,m.capturedAt || new Date().toISOString(),m.noteTimezone)}
+  if (m.schemaVersion === 2 && m.extraction) return {...emptyResult,...visitExtractionResult(m.extraction,m.capturedAt || new Date().toISOString(),m.noteTimezone),trialNoteKey:m.trialNoteKey}
   const { dealer: _legacyDealer, ...mRest } = m as StructureResult & {
     dealer?: string
     commercial_context?: unknown
@@ -2049,6 +2051,7 @@ export default function Home() {
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
   const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string; hasAnswers?:boolean} | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
+  const [trialStatus,setTrialStatus]=useState<TrialStatus|null>(null)
   const [subscriptionError, setSubscriptionError] = useState(false)
   const [subscriptionCheck, setSubscriptionCheck] = useState(0)
   const [checkoutBusy, setCheckoutBusy] = useState(false)
@@ -2056,6 +2059,7 @@ export default function Home() {
 
   useEffect(() => {
     setHasActiveSubscription(null)
+    setTrialStatus(null)
     setSubscriptionError(false)
     if (status !== 'authenticated') return
     let cancelled = false
@@ -2067,13 +2071,21 @@ export default function Home() {
         return data
       })
       .then((data) => {
-        if (!cancelled) setHasActiveSubscription(data.active)
+        if (!cancelled) {setHasActiveSubscription(data.active);setTrialStatus(data.trial || null)}
       })
       .catch(() => {
         if (!cancelled) setSubscriptionError(true)
       })
     return () => { cancelled = true }
   }, [status, session?.user?.email, subscriptionCheck])
+
+  useEffect(()=>{
+    if(status!=='authenticated') return
+    const refresh=()=>setSubscriptionCheck(n=>n+1)
+    window.addEventListener('focus',refresh)
+    const timer=window.setInterval(refresh,60_000)
+    return ()=>{window.removeEventListener('focus',refresh);window.clearInterval(timer)}
+  },[status])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -2544,6 +2556,7 @@ export default function Home() {
   }
 
   const acceptVisit = async (res:StructureResult, tx:string, noteId?:string, leaveUnresolved=false) => {
+    setSubscriptionCheck(n=>n+1)
     const next = normalizeStructureResult(res)
     if (!leaveUnresolved && next.extraction?.questions.length) { setPendingVisit({result:next,transcript:tx,noteId}); return }
     if (noteId) {
@@ -2565,10 +2578,10 @@ export default function Home() {
 
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
 
-  const refreshClarifiedVisit = async (r:StructureResult, tx:string):Promise<StructureResult> => {
+  const refreshClarifiedVisit = async (r:StructureResult, tx:string,noteId?:string):Promise<StructureResult> => {
     const owner=audioOwnerRef.current
     const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      note:tx,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
+      note:tx,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),trialNoteKey:r.trialNoteKey,existingNoteId:noteId,
     })})
     const updated = await response.json()
     if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
@@ -2581,7 +2594,7 @@ export default function Home() {
     if (pendingCorrection || correctionBusyRef.current || correctionStartRef.current || isCorrectingRecording) throw Error('Finish or discard the voice correction first.')
     const combined = appendVisitCorrection(tx,correction,getClientNowIso(),getClientTimezone())
     const response = await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),
+      note:combined,clientNow:r.capturedAt,timezone:r.noteTimezone || getClientTimezone(),existingNoteId:noteId,trialNoteKey:r.trialNoteKey,
     })})
     const updated = await response.json()
     if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
@@ -2622,7 +2635,7 @@ export default function Home() {
           return data.transcript || data.text || ''
         },
         structure:async (note,now,timezone)=>{
-          const response=await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,clientNow:now,timezone})})
+          const response=await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,clientNow:now,timezone,existingNoteId:draft.noteId})})
           const data=await response.json().catch(()=>({error:'Correction could not be processed. Please retry.'}))
           if(draft.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
           if(!response.ok) {handleAiAccessResponse(response.status,data);throw Error(data.error || 'Correction failed.')}
@@ -2813,6 +2826,7 @@ export default function Home() {
   const handleAiAccessResponse = (statusCode: number, data: { code?: string }): boolean => {
     if (statusCode === 401) { setShowLoginPrompt(true); return true }
     if (statusCode === 403 && data.code === 'QUOTA_EXCEEDED') {
+      setSubscriptionCheck(n=>n+1)
       setShowPaywall('limit')
       return true
     }
@@ -3367,6 +3381,7 @@ export default function Home() {
           )}
         </div>
       </header>
+      {hasActiveSubscription===false && trialMessage(trialStatus) && <p role="status" className="mx-auto max-w-xl px-5 py-2 text-center text-xs text-gray-600">{trialMessage(trialStatus)}</p>}
 
       {/* Full-screen processing — single calm state */}
       {processingBusy && (
@@ -3966,7 +3981,7 @@ export default function Home() {
           // Collected answers must reach the prose even when another question is skipped.
           // Skipping without answering anything needs no extra model call.
           const updated = pendingVisit.hasAnswers
-            ? await refreshClarifiedVisit(pendingVisit.result,pendingVisit.transcript)
+            ? await refreshClarifiedVisit(pendingVisit.result,pendingVisit.transcript,pendingVisit.noteId)
             : pendingVisit.result
           await acceptVisit(updated,pendingVisit.transcript,pendingVisit.noteId,true)
         }}
@@ -3981,7 +3996,7 @@ export default function Home() {
           }
           // Regenerate the prose once all answers are collected: never save a stale
           // CRM summary saying "Marta or María" after the user confirmed María.
-          const updated = await refreshClarifiedVisit(pendingVisit.result,tx)
+          const updated = await refreshClarifiedVisit(pendingVisit.result,tx,pendingVisit.noteId)
           await acceptVisit(updated,tx,pendingVisit.noteId)
         }} />}
       {/* Shown only after Google confirms the exact event payload. */}
@@ -4828,7 +4843,7 @@ export default function Home() {
                     : 'bg-zinc-200 text-zinc-800'
                 }`}
               >
-                {hasActiveSubscription === true ? 'Pro plan' : hasActiveSubscription === false ? 'Free plan' : subscriptionError ? 'Plan unavailable' : 'Checking plan…'}
+                {hasActiveSubscription === true ? 'Pro plan' : hasActiveSubscription === false ? trialStatus?.ended ? 'Trial ended' : '14-day free trial' : subscriptionError ? 'Plan unavailable' : 'Checking plan…'}
               </span>
               {subscriptionError && <p role="alert" className="mt-3 text-sm text-red-700">Unable to verify your plan. <button type="button" className="underline" onClick={() => setSubscriptionCheck(n => n + 1)}>Retry</button></p>}
               {hasActiveSubscription === false && (
@@ -5042,12 +5057,12 @@ export default function Home() {
             <h2 className="mb-2 text-center text-[20px] font-bold text-[#111111]">
               {showPaywall === 'upgrade'
                 ? 'Upgrade to Folup Pro'
-                : "You've reached your free limit"}
+                : 'Your free trial has ended'}
             </h2>
             <p className="mb-6 text-center text-[14px] text-[#6b7280]">
               {showPaywall === 'upgrade'
                 ? 'Unlimited notes, never miss a follow-up. $19/month, cancel anytime.'
-                : 'Upgrade to Folup Pro for unlimited notes and follow-ups.'}
+                : 'Upgrade to Pro to process new notes. Your saved notes and exports are still available.'}
             </p>
             <button
               type="button"

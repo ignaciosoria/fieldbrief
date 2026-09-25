@@ -23,6 +23,13 @@ export async function PUT(request: Request) {
   try { row = parseNoteInput(await request.json()) } catch { /* malformed JSON */ }
   if (!row) return Response.json({ error: 'Invalid note.' }, { status: 400 })
   try {
+    const trialKey=(row.structured_output as {trialNoteKey?:unknown}).trialNoteKey
+    if(trialKey!==undefined){
+      if(typeof trialKey!=='string' || !/^[a-f0-9]{64}$/.test(trialKey)) return Response.json({error:'Invalid trial note.'},{status:400})
+      const {data,error}=await serverDb().rpc('bind_trial_note',{p_user_id:email,p_note_key:trialKey,p_note_id:row.id})
+      if(error) throw error
+      if(data!==true) return Response.json({error:'This processing result is already linked to another note.'},{status:409})
+    }
     // Composite primary key prevents an id belonging to another account from being overwritten.
     const { error } = await serverDb().from('folup_notes').upsert({ ...row, user_id: email }, { onConflict: 'user_id,id' })
     if (error) throw error

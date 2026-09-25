@@ -62,8 +62,9 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
             </p>
             <div className="mt-8 flex flex-col items-start gap-3 sm:mt-9">
               <button type="button" onClick={onSignIn} className={`inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-[#4f46e5] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_3px_8px_#4f46e51a] transition-colors hover:bg-[#4338ca] sm:w-auto ${focus}`}>
-                <GoogleIcon /> Continue with Google
+                <GoogleIcon /> Start your 14-day free trial
               </button>
+              <p className="text-xs text-[#72737b]">No credit card needed. Starts with your first processed note.</p>
               <a href="/try" className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-1 text-[13px] font-medium text-[#52515f] hover:text-[#4f46e5] sm:w-auto ${focus}`}>
                 See it in action <Arrow />
               </a>

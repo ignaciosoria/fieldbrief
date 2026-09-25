@@ -5,11 +5,13 @@ import { readStructureInput } from './structureInput'
 import { prepareStructure } from './structureAccess'
 
 export async function prepareStructureRequest(request: Request) {
-  return prepareStructure(request, {
-    getEmail: async () => (await auth())?.user?.email?.trim() || null,
+  const email=(await auth())?.user?.email?.trim() || null
+  const body=await prepareStructure(request, {
+    getEmail: async () => email,
     reserve: reserveAiUsage,
     readInput: readStructureInput,
   })
+  return body instanceof Response ? body : {...body,serverEmail:email!}
 }
 
 /** Only pass the server-authenticated identity, never a request body field. */
