@@ -16,6 +16,7 @@ import PublicLanding from './components/PublicLanding'
 import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
+import {persistThenPublishCorrection} from '../lib/visitCorrection'
 import { notesRequest } from '../lib/notesClient'
 import { recoverHistoryRow, type HistoryRow } from '../lib/historyRecovery'
 import { resolveContactCompany } from '../lib/contactAffiliation'
@@ -2545,13 +2546,21 @@ export default function Home() {
   const acceptVisit = async (res:StructureResult, tx:string, noteId?:string, leaveUnresolved=false) => {
     const next = normalizeStructureResult(res)
     if (!leaveUnresolved && next.extraction?.questions.length) { setPendingVisit({result:next,transcript:tx,noteId}); return }
+    if (noteId) {
+      await persistThenPublishCorrection(()=>updateNote(noteId,next,tx),()=>{
+        setPendingVisit(null)
+        setResult(next)
+        setTranscript(tx)
+        setLoading(false)
+        setCurrentNoteId(noteId)
+      })
+      return
+    }
     setPendingVisit(null)
     setResult(next)
     setTranscript(tx)
     setLoading(false)
-    if (noteId) setCurrentNoteId(noteId)
-    if (noteId) await updateNote(noteId,next,tx)
-    else await saveNote(next,tx)
+    await saveNote(next,tx)
   }
 
   const buildShareText = (r: StructureResult) => formatProfessionalCrmNote(r)
@@ -2577,7 +2586,6 @@ export default function Home() {
     const updated = await response.json()
     if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
     if (!response.ok) {handleAiAccessResponse(response.status,updated);throw Error('Correction failed')}
-    setTranscript(combined)
     await acceptVisit(updated,combined,noteId)
   }
 
