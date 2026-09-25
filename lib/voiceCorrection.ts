@@ -5,6 +5,7 @@ export type VoiceCorrectionDraft<Result> = {
   blob:Blob; owner:string; noteId:string; originalTranscript:string;
   referenceNow:string; noteTimezone:string; capturedAt:string; correctionTimezone:string;
   correction?:string; combined?:string; result?:Result;
+  expectedVersion?:number;
 }
 
 export class CorrectionOwnerChanged extends Error {

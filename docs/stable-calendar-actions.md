@@ -1,6 +1,17 @@
 # Stable calendar action identity
 
-Status: implemented and verified locally; not deployed or migrated to production.
+Status: deployed and migrated to production on 2026-09-25.
+
+## Production verification
+
+- Commit: `1be4f13400e73999073a63f6abb9d051bb8dc9ab`.
+- Vercel deployment `DBZdMhcuvtP8rXy6azj8Et6TyHnc`: Ready, Production, www.folup.app (30s build).
+- Applied SQL through Supabase editor to project `iownaoghocmubpxwrnlk`, with 5s lock and 30s statement timeouts.
+- All 18 notes unchanged: before/after full-row aggregate fingerprint `19386e9d12959fe8b90969b538e19529`. Backfilled 29 actions, matching the extracted action count; zero initial links.
+- RLS enabled. anon/client reads and anon RPC execution denied; direct service-role link updates denied; service reservation RPC allowed.
+- Rolled-back service-role transaction verified action creation, stable identity on date correction, pending reservation, identical retry, owner isolation, confirmation and changed-snapshot rejection. No synthetic rows retained and no external Google writes.
+- Authenticated production browser: record screen, 18-note history and existing follow-up cards loaded. Unauthenticated calendar metadata request returned HTTP 401.
+- Real Google creation/reopen was not repeated in this release. Added restoration and mismatch UI were verified locally using isolated fixtures, not a newly created production event.
 
 ## Behavior
 

@@ -19,6 +19,7 @@ import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
 import {persistThenPublishCorrection} from '../lib/visitCorrection'
 import { notesRequest } from '../lib/notesClient'
+import { NoteWrites } from '../lib/noteWrites'
 import { recoverHistoryRow, type HistoryRow } from '../lib/historyRecovery'
 import { resolveContactCompany } from '../lib/contactAffiliation'
 import { dedupeConsecutiveRepeatedWords, mergeActionTargetAvoidOverlap } from '../lib/stringDedupe'
@@ -1548,6 +1549,7 @@ function KeyInsightsList({
 type Tab = 'record' | 'history' | 'settings'
 
 type SavedNote = {
+  version?: number
   recoveryRequired?: boolean
   id: string
   date: string
@@ -2011,6 +2013,7 @@ export default function Home() {
   /** Internal save pipeline state (reserved for future UI; not shown yet). */
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [currentNoteId,setCurrentNoteId] = useState<string | null>(null)
+  const noteWritesRef=useRef(new NoteWrites<StructureResult>())
   /** Cleared when a new save starts; callback checks gen so stale timeouts cannot reset status after a later save. */
   const savingIdleResetTimerRef = useRef<number | null>(null)
   const savingIdleResetGenerationRef = useRef(0)
@@ -2049,7 +2052,7 @@ export default function Home() {
   const [nextStepClarifyInput, setNextStepClarifyInput] = useState('')
   const [resultInsightsExpanded, setResultInsightsExpanded] = useState(false)
   const [historyInsightsExpanded, setHistoryInsightsExpanded] = useState(false)
-  const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string; hasAnswers?:boolean} | null>(null)
+  const [pendingVisit, setPendingVisit] = useState<{result:StructureResult; transcript:string; noteId?:string; hasAnswers?:boolean; expectedVersion?:number} | null>(null)
   const [hasActiveSubscription, setHasActiveSubscription] = useState<boolean | null>(null)
   const [trialStatus,setTrialStatus]=useState<TrialStatus|null>(null)
   const [subscriptionError, setSubscriptionError] = useState(false)
@@ -2300,9 +2303,11 @@ export default function Home() {
     setCurrentNoteId(note.id)
     setSavingStatus('saving')
     try {
-      await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify(note) })
+      const saved=await noteWritesRef.current.save(owner,note.id,res,tx,0)
+      note.version=saved.version
       if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       setSavedNotes(prev => [note, ...prev])
+      setError('')
       setSavingStatus('saved')
       setNoteSaved(true)
       setTimeout(() => {if(owner===audioOwnerRef.current) setNoteSaved(false)}, 2300)
@@ -2535,17 +2540,19 @@ export default function Home() {
     } catch (err) { if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Unable to load notes.') }
   }
 
-  const updateNote = async (id: string, res: StructureResult, tx: string) => {
+  const updateNote = async (id: string, res: StructureResult, tx: string, expectedVersion=savedNotes.find(n=>n.id===id)?.version) => {
     const owner=audioOwnerRef.current
     setSavingStatus('saving')
     try {
-      await notesRequest('/api/notes', { method: 'PUT', body: JSON.stringify({ id, result: res, transcript: tx }) })
+      if(!owner)throw new CorrectionOwnerChanged()
+      const saved=await noteWritesRef.current.save(owner,id,res,tx,expectedVersion ?? -1)
       if(owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       setSavedNotes(prev => prev.some(n=>n.id===id)
-        ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx, recoveryRequired: false } : n)
-        : [{id,date:res.capturedAt || new Date().toISOString(),result:res,transcript:tx},...prev])
-      if (selectedNote?.id === id) setSelectedNote({ ...selectedNote, result: res, transcript: tx, recoveryRequired: false })
+        ? prev.map(n => n.id === id ? { ...n, result: res, transcript: tx, version:saved.version,recoveryRequired: false } : n)
+        : [{id,date:res.capturedAt || new Date().toISOString(),result:res,transcript:tx,version:saved.version},...prev])
+      setSelectedNote(prev=>prev?.id===id?{...prev,result:res,transcript:tx,version:saved.version,recoveryRequired:false}:prev)
       if (result) setResult(res)
+      setError('')
       setSavingStatus('saved')
     } catch (err) {
       if(owner!==audioOwnerRef.current) throw err
@@ -2555,12 +2562,18 @@ export default function Home() {
     }
   }
 
-  const acceptVisit = async (res:StructureResult, tx:string, noteId?:string, leaveUnresolved=false) => {
+  const retryNoteWrite = async (id:string,res:StructureResult,tx:string) => {
+    const pending=sessionEmail?noteWritesRef.current.get(sessionEmail,id):undefined
+    await updateNote(id,pending?.result ?? res,pending?.transcript ?? tx,pending?.expectedVersion)
+    if(id===currentNoteId)setTranscript(pending?.transcript ?? tx)
+  }
+
+  const acceptVisit = async (res:StructureResult, tx:string, noteId?:string, leaveUnresolved=false, expectedVersion=savedNotes.find(n=>n.id===noteId)?.version) => {
     setSubscriptionCheck(n=>n+1)
     const next = normalizeStructureResult(res)
-    if (!leaveUnresolved && next.extraction?.questions.length) { setPendingVisit({result:next,transcript:tx,noteId}); return }
+    if (!leaveUnresolved && next.extraction?.questions.length) { setPendingVisit({result:next,transcript:tx,noteId,expectedVersion}); return }
     if (noteId) {
-      await persistThenPublishCorrection(()=>updateNote(noteId,next,tx),()=>{
+      await persistThenPublishCorrection(()=>updateNote(noteId,next,tx,expectedVersion),()=>{
         setPendingVisit(null)
         setResult(next)
         setTranscript(tx)
@@ -2642,9 +2655,9 @@ export default function Home() {
           return normalizeStructureResult({...emptyResult,...data})
         },
         accept:async (next,combined,noteId)=>{
-          if(next.extraction?.questions.length) {await acceptVisit(next,combined,noteId);return}
+          if(next.extraction?.questions.length) {await acceptVisit(next,combined,noteId,false,draft.expectedVersion);return}
           // Do not replace the visible original until its update is durably saved.
-          await updateNote(noteId,next,combined)
+          await updateNote(noteId,next,combined,draft.expectedVersion)
           setResult(next)
           setTranscript(combined)
           setCurrentNoteId(noteId)
@@ -2703,6 +2716,7 @@ export default function Home() {
         if(owner!==audioOwnerRef.current) return
         if(blob.size===0) {setError('No audio was captured. Please check your microphone and try again.');return}
         await processCorrectionAudio({blob,owner,noteId,originalTranscript,capturedAt,correctionTimezone,
+          expectedVersion:originalNote.version,
           referenceNow:originalNote.result.capturedAt || originalNote.date,
           noteTimezone:originalNote.result.noteTimezone || correctionTimezone})
       }
@@ -3117,9 +3131,9 @@ export default function Home() {
     onCalendarOpened={()=>setShowCalendarToast(true)}
     onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
     onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
-    onClarify={index=>setPendingVisit({result:{...r,extraction:prioritizeVisitQuestions(r.extraction!,index)},transcript:tx,noteId:id})}
+    onClarify={index=>setPendingVisit({result:{...r,extraction:prioritizeVisitQuestions(r.extraction!,index)},transcript:tx,noteId:id,expectedVersion:savedNotes.find(n=>n.id===id)?.version})}
     recording={isCorrectingRecording} voiceDisabled={!id || savingStatus==='saving' || !!pendingCorrection}
-    saving={savingStatus} onRetrySave={()=>{if(id)void updateNote(id,r,tx).catch(()=>{})}}
+    saving={savingStatus} onRetrySave={()=>{if(id)void retryNoteWrite(id,r,tx).catch(()=>{})}}
     onNew={history?undefined:handleReset}
   />
   const recordHasResult = !!recordDisplayResult
@@ -3964,28 +3978,44 @@ export default function Home() {
           <AudioRecovery blob={pendingCorrection.blob} busy={processingBusy}
             retryLabel={pendingCorrection.result?'Retry saving correction':pendingCorrection.combined?'Retry processing correction':'Retry correction'}
             onRetry={()=>{void processCorrectionAudio(pendingCorrection)}}
-            onDiscard={()=>{setPendingCorrection(null);setError('')}} />
+            onDiscard={()=>{noteWritesRef.current.discard(pendingCorrection.owner,pendingCorrection.noteId);setPendingCorrection(null);setError('')}} />
         </div>
       </div>}
 
       {error && !pendingCorrection && !processingBusy && (activeTab==='history' || recordHasResult) && <div
         role="alert" className="fixed bottom-24 left-1/2 z-[85] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-lg">
         {error}
+        {savingStatus==='error' && <button type="button" className="mt-2 block underline" onClick={async()=>{
+          const id=selectedNote?.id || currentNoteId
+          const pending=id && sessionEmail?noteWritesRef.current.get(sessionEmail,id):undefined
+          if(pending)try{await navigator.clipboard.writeText(pending.transcript);setError('Pending correction copied. You can now reload the latest note.')}catch{setError('Could not copy. Keep this page open and retry.')}
+        }}>Copy pending correction</button>}
       </div>}
 
       {pendingVisit?.result.extraction?.questions[0] && <VisitClarification
         key={JSON.stringify(pendingVisit.result.extraction.questions[0])}
         extraction={pendingVisit.result.extraction}
         question={pendingVisit.result.extraction.questions[0]}
+        savePending={!!(pendingVisit.noteId && sessionEmail && noteWritesRef.current.get(sessionEmail,pendingVisit.noteId))}
+        onCopyPending={async()=>{
+          const pending=pendingVisit.noteId && sessionEmail?noteWritesRef.current.get(sessionEmail,pendingVisit.noteId):undefined
+          await navigator.clipboard.writeText(pending?.transcript || pendingVisit.transcript)
+        }}
         onSkip={async () => {
+          if(pendingVisit.noteId && sessionEmail && noteWritesRef.current.get(sessionEmail,pendingVisit.noteId)){
+            await retryNoteWrite(pendingVisit.noteId,pendingVisit.result,pendingVisit.transcript);setPendingVisit(null);return
+          }
           // Collected answers must reach the prose even when another question is skipped.
           // Skipping without answering anything needs no extra model call.
           const updated = pendingVisit.hasAnswers
             ? await refreshClarifiedVisit(pendingVisit.result,pendingVisit.transcript,pendingVisit.noteId)
             : pendingVisit.result
-          await acceptVisit(updated,pendingVisit.transcript,pendingVisit.noteId,true)
+          await acceptVisit(updated,pendingVisit.transcript,pendingVisit.noteId,true,pendingVisit.expectedVersion)
         }}
         onConfirm={async answer => {
+          if(pendingVisit.noteId && sessionEmail && noteWritesRef.current.get(sessionEmail,pendingVisit.noteId)){
+            await retryNoteWrite(pendingVisit.noteId,pendingVisit.result,pendingVisit.transcript);setPendingVisit(null);return
+          }
           const question = pendingVisit.result.extraction!.questions[0]
           const extraction = confirmVisitField(pendingVisit.result.extraction!,question,answer)
           const clarification = `Answer to clarification question ${JSON.stringify(question.question)}: ${JSON.stringify(answer.trim())}. This replaces the earlier uncertainty.`
@@ -3997,7 +4027,7 @@ export default function Home() {
           // Regenerate the prose once all answers are collected: never save a stale
           // CRM summary saying "Marta or María" after the user confirmed María.
           const updated = await refreshClarifiedVisit(pendingVisit.result,tx,pendingVisit.noteId)
-          await acceptVisit(updated,tx,pendingVisit.noteId)
+          await acceptVisit(updated,tx,pendingVisit.noteId,false,pendingVisit.expectedVersion)
         }} />}
       {/* Shown only after Google confirms the exact event payload. */}
       {showCalendarToast && (
@@ -4342,14 +4372,14 @@ export default function Home() {
                 <div className="mt-4 flex flex-col gap-6">
                   {savingStatus === 'error' && currentNoteId && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
                     This note has not been saved. Keep this page open.
-                    <button type="button" className="ml-2 font-semibold underline" onClick={()=>{void updateNote(currentNoteId,recordDisplayResult,transcript).catch(()=>{})}}>Retry saving</button>
+                    <button type="button" className="ml-2 font-semibold underline" onClick={()=>{void retryNoteWrite(currentNoteId,recordDisplayResult,transcript).catch(()=>{})}}>Retry saving</button>
                   </div>}
                   {recordDisplayResult.schemaVersion === 2 && <VisitSummary
                     voiceDisabled={!currentNoteId || savingStatus==='saving'} voiceRecording={isCorrectingRecording}
                     onVoiceCorrect={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}const note=savedNotes.find(n=>n.id===currentNoteId);if(note) void startCorrectionRecording(note.id,note.transcript);else setError('Save this note before correcting by voice.')}}
                     text={formatProfessionalCrmNote(recordDisplayResult)} language={recordDisplayResult.noteLanguage || 'English'}
                     hasQuestions={!!recordDisplayResult.extraction?.questions.length}
-                    onClarify={()=>setPendingVisit({result:recordDisplayResult,transcript,noteId:currentNoteId || undefined})}
+                    onClarify={()=>setPendingVisit({result:recordDisplayResult,transcript,noteId:currentNoteId || undefined,expectedVersion:savedNotes.find(n=>n.id===currentNoteId)?.version})}
                     onCorrect={correction=>correctVisitText(recordDisplayResult,transcript,correction,currentNoteId || undefined)} />}
                   {tryWtPrimaryComplete &&
                     (recordDisplayResult.contact ||
@@ -4539,7 +4569,7 @@ export default function Home() {
                     onVoiceCorrect={()=>{if(isCorrectingRecording)stopCorrectionRecording();else void startCorrectionRecording(selectedNote.id,selectedNote.transcript)}}
                     text={formatProfessionalCrmNote(selectedNote.result)} language={selectedNote.result.noteLanguage || 'English'}
                     hasQuestions={!!selectedNote.result.extraction?.questions.length}
-                    onClarify={()=>setPendingVisit({result:selectedNote.result,transcript:selectedNote.transcript,noteId:selectedNote.id})}
+                    onClarify={()=>setPendingVisit({result:selectedNote.result,transcript:selectedNote.transcript,noteId:selectedNote.id,expectedVersion:selectedNote.version})}
                     onCorrect={correction=>correctVisitText(selectedNote.result,selectedNote.transcript,correction,selectedNote.id)} />}
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">{formatDate(selectedNote.date)}</p>
 

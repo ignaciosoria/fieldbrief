@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   if (!Number.isSafeInteger(offset) || offset < 0) return Response.json({ error: 'Invalid page.' }, { status: 400 })
   try {
     const { data, error } = await serverDb().from('folup_notes')
-      .select('id,created_at,raw_text,structured_output').eq('user_id', email)
+      .select('id,created_at,raw_text,structured_output,version').eq('user_id', email)
       .order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 49)
     if (error) throw error
     return Response.json({ notes: data, hasMore: data.length === 50 }, { headers: { 'Cache-Control': 'no-store' } })
@@ -19,21 +19,26 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const email = (await auth())?.user?.email?.trim()
   if (!email) return Response.json({ error: 'Sign in to save notes.' }, { status: 401 })
-  let row
-  try { row = parseNoteInput(await request.json()) } catch { /* malformed JSON */ }
+  let row, body
+  try { body = await request.json(); row = parseNoteInput(body) } catch { /* malformed JSON */ }
   if (!row) return Response.json({ error: 'Invalid note.' }, { status: 400 })
+  if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion<0 || body.expectedVersion>2147483646 ||
+    typeof body.requestId!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId))
+    return Response.json({error:'Refresh Folup before saving. Keep a copy of your unsaved correction.',code:'WRITE_VERSION_REQUIRED'},{status:428})
   try {
     const trialKey=(row.structured_output as {trialNoteKey?:unknown}).trialNoteKey
     if(trialKey!==undefined){
       if(typeof trialKey!=='string' || !/^[a-f0-9]{64}$/.test(trialKey)) return Response.json({error:'Invalid trial note.'},{status:400})
-      const {data,error}=await serverDb().rpc('bind_trial_note',{p_user_id:email,p_note_key:trialKey,p_note_id:row.id})
-      if(error) throw error
-      if(data!==true) return Response.json({error:'This processing result is already linked to another note.'},{status:409})
     }
-    // Composite primary key prevents an id belonging to another account from being overwritten.
-    const { error } = await serverDb().from('folup_notes').upsert({ ...row, user_id: email }, { onConflict: 'user_id,id' })
+    const { data,error } = await serverDb().rpc('save_folup_note',{
+      p_user_id:email,p_note_id:row.id,p_request_id:body.requestId,p_expected_version:body.expectedVersion,
+      p_raw_text:row.raw_text,p_output:row.structured_output,
+    })
     if (error) throw error
-    return Response.json({ saved: true })
+    if(data?.error) return Response.json({code:'NOTE_CONFLICT',error:data.error==='trial_bound'
+      ?'This processing result is already linked to another note.'
+      :'This note has changed. Your correction has not overwritten it. Copy your pending correction before reloading the latest note.'},{status:409})
+    return Response.json(data)
   } catch { return Response.json({ error: 'Note was not saved. Please retry.' }, { status: 503 }) }
 }
 

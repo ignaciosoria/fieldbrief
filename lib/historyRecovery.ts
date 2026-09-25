@@ -1,13 +1,13 @@
 import { parseVisitExtraction } from './visitExtraction'
 
-export type HistoryRow = {id:string;created_at:string;raw_text:string;structured_output:unknown}
+export type HistoryRow = {id:string;created_at:string;raw_text:string;structured_output:unknown;version?:number}
 
 /** Recover one row in memory only; never overwrite or delete the stored payload. */
 export function recoverHistoryRow<T extends {crmText:string;crmFull:string[]}>(
   row:HistoryRow, empty:T, normalize:(input:T)=>T,
 ) {
   const transcript=typeof row.raw_text==='string'?row.raw_text:''
-  const base={id:row.id,date:row.created_at,transcript}
+  const base={id:row.id,date:row.created_at,transcript,version:row.version}
   try {
     const raw=row.structured_output
     if (!raw || typeof raw!=='object' || Array.isArray(raw)) throw Error('Invalid saved output')
