@@ -1,6 +1,24 @@
 # Versioned note saves
 
-Status: local implementation only. Migration and deployment pending.
+Status: migrated and deployed to production on 2026-09-25.
+
+## Production release verification
+
+- Commit `6afe2e1d560d8b695bd10226e9456d694f118f0b`; Vercel deployment
+  `9tMgM1vf3EXPScjPxuSZXgPqa8w9` Ready / Production / www.folup.app (34s build).
+- Migration applied through Supabase SQL editor to `iownaoghocmubpxwrnlk` with
+  5s lock and 30s statement timeouts.
+- All 18 existing notes unchanged apart from version=1. Before/after fingerprint
+  excluding the new version column: `19386e9d12959fe8b90969b538e19529`.
+- Rolled-back service-role transaction passed create, identical retry, correction,
+  stale-version rejection, delayed original retry rejection, owner isolation and
+  exactly two semantic revisions. Zero write receipts remained after rollback.
+- Direct service-role note UPDATE denied; service save RPC allowed; anon save RPC
+  denied. Unauthenticated GET /api/notes returned 401.
+- Published authenticated browser loaded the Record screen and all 18 history
+  entries. No real AI processing or Calendar writes were performed for this release.
+- The browser failure/retry scenarios were tested with local fixtures; no real
+  customer note was edited to test the published HTTP write route.
 
 ## Contract
 
