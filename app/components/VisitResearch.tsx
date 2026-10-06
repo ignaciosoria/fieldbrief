@@ -1,0 +1,48 @@
+'use client'
+import {useEffect,useState} from 'react'
+import {mayRequestResearch,researchCrmText,researchSegments,type ResearchResult} from '../../lib/visitResearch'
+
+export function useVisitResearch(noteId:string|undefined,version:number|undefined,owner:string|undefined,raw:string,auto:boolean){
+  const eligible=!!noteId&&!!version&&!!owner&&mayRequestResearch(raw)
+  const key=`${owner}:${noteId}:${version}`
+  const [value,setValue]=useState<{key:string;state:string;result:ResearchResult|null}>({key:'',state:'idle',result:null})
+  const [retry,setRetry]=useState(0)
+  useEffect(()=>{
+    if(!eligible)return
+    let active=true,timer:ReturnType<typeof setTimeout>|undefined
+    const controller=new AbortController()
+    const url=`/api/research?noteId=${encodeURIComponent(noteId!)}&version=${version}`
+    setValue({key,state:'running',result:null})
+    const load=async(run:boolean)=>{
+      try{
+        const response=await fetch(url,{method:run?'POST':'GET',signal:controller.signal})
+        const data=await response.json()
+        if(!active)return
+        if(!response.ok)throw Error('Research unavailable')
+        setValue({key,state:data.state,result:data.result||null})
+        if(data.state==='running'){
+          const expired=Date.now()-Date.parse(data.started_at)>125000
+          if(expired){setValue({key,state:'failed',result:null});return}
+          timer=setTimeout(()=>void load(false),2500)
+        }
+      }catch{if(active)setValue({key,state:'failed',result:null})}
+    }
+    void load(auto||retry>0)
+    return ()=>{active=false;controller.abort();if(timer)clearTimeout(timer)}
+  },[eligible,key,noteId,version,auto,retry])
+  return {eligible,state:value.key===key?value.state:'idle',result:value.key===key?value.result:null,retry:()=>setRetry(x=>x+1)}
+}
+
+export default function VisitResearch({research}:{research:ReturnType<typeof useVisitResearch>}){
+  if(!research.eligible||research.result?.status==='none')return null
+  if(research.state==='running')return <p role="status" className="text-sm text-gray-500">Researching… Your visit is saved.</p>
+  if(!research.result)return <p className="text-sm text-gray-500">{research.state==='failed'?'Research unavailable. Your visit is saved.':'Research requested.'} <button className="text-indigo-700 underline" onClick={research.retry}>{research.state==='failed'?'Retry research':'Research now'}</button></p>
+  const result=research.result
+  return <details className="rounded-xl border border-zinc-200 p-3 text-sm" open={result.status==='clarify'}>
+    <summary className="cursor-pointer font-medium text-indigo-700">{result.status==='clarify'?'Research needs clarification':'Research · included in CRM'}</summary>
+    <p className="mt-2 text-xs text-gray-500">External information, separate from the visit. {result.completedAt.slice(0,10)}</p>
+    <p className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-700">{researchSegments(result).map((s,i)=>s.url?<a key={i} href={s.url} title={s.title} target="_blank" rel="noopener noreferrer" className="text-indigo-700 underline">{s.text}</a>:<span key={i}>{s.text}</span>)}</p>
+    {result.status==='clarify'&&<p className="mt-2 text-gray-500">Use “Correct by voice” to clarify and request research again.</p>}
+  </details>
+}
+export {researchCrmText}

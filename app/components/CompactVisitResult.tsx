@@ -6,15 +6,18 @@ import CalendarFollowUp from './CalendarFollowUp'
 import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
 import {insightPresentation} from '../../lib/insightPresentation'
 import {visitHeader} from '../../lib/visitHeader'
+import VisitResearch,{useVisitResearch,researchCrmText} from './VisitResearch'
 
-export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
-  extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:()=>Promise<void>;
+export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,noteVersion,rawText='',autoResearch=false,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
+  extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:(research?:string)=>Promise<void>;
   onVoice:()=>void;onClarify:(actionIndex?:number)=>void;recording:boolean;voiceDisabled:boolean;saving?:string;onRetrySave?:()=>void;onNew?:()=>void
   referenceAt?:string
   noteId?:string;ownerEmail?:string
+  noteVersion?:number;rawText?:string;autoResearch?:boolean
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
+  const research=useVisitResearch(saving==='saving'?undefined:noteId,noteVersion,ownerEmail,rawText,autoResearch)
   const actions=extraction.actions.map((action,index)=>({action,index})).sort((a,b)=>(a.action.date||'9999').localeCompare(b.action.date||'9999')||a.index-b.index)
   return <section className="space-y-5" aria-label="Visit result" lang="en">
     <header className="flex items-start justify-between gap-3">
@@ -37,8 +40,9 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
     </div>
     {extraction.insights.length>0 && <ul aria-label="Key insights" className="space-y-2 text-sm leading-relaxed text-gray-700">{extraction.insights.slice(0,4).map((line,i)=>{const insight=insightPresentation(line);return <li lang={extraction.language==='Spanish'?'es':'en'} key={i}><span aria-hidden="true">{insight.icon}</span> {insight.text}</li>})}</ul>}
     {extraction.questions.length>0 && <button type="button" onClick={()=>onClarify()} className="text-sm text-amber-800 underline">Review unclear details</button>}
+    <VisitResearch research={research}/>
     <footer className="grid grid-cols-2 gap-2 border-t border-zinc-100 pt-4">
-      <button type="button" onClick={async()=>{try{await onCopy();setCopied(true);setError('')}catch{setError('Could not copy. Please retry.')}}} className="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold text-white">{copied?'Copied':'Copy to CRM'}</button>
+      <button type="button" disabled={research.eligible&&research.state==='running'} onClick={async()=>{try{await onCopy(researchCrmText(research.result,extraction.language==='Spanish'));setCopied(true);setError('')}catch{setError('Could not copy. Please retry.')}}} className="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50">{copied?'Copied':'Copy to CRM'}</button>
       <button type="button" disabled={voiceDisabled} onClick={onVoice} className={`rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-50 ${recording?'border-red-300 bg-red-50 text-red-700':'border-zinc-200 text-gray-700'}`}>{recording?'Finish correction':'Correct by voice'}</button>
     </footer>
     {saving==='saving' && <p role="status" className="text-sm text-gray-500">Saving…</p>}

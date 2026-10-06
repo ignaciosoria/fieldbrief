@@ -3130,8 +3130,9 @@ export default function Home() {
     key={JSON.stringify(r.extraction)} extraction={r.extraction!} timezone={r.noteTimezone || getClientTimezone()}
     referenceAt={r.capturedAt}
     noteId={id} ownerEmail={sessionEmail || undefined}
+    noteVersion={savingStatus==='error'?undefined:savedNotes.find(n=>n.id===id&&n.transcript===tx)?.version} rawText={tx} autoResearch={!history&&!isDemo}
     onCalendarOpened={()=>setShowCalendarToast(true)}
-    onCopy={async()=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r))}}
+    onCopy={async(research='')=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(r)+research)}}
     onVoice={()=>{if(isCorrectingRecording){stopCorrectionRecording();return}if(id)void startCorrectionRecording(id,tx)}}
     onClarify={index=>setPendingVisit({result:{...r,extraction:prioritizeVisitQuestions(r.extraction!,index)},transcript:tx,noteId:id,expectedVersion:savedNotes.find(n=>n.id===id)?.version})}
     recording={isCorrectingRecording} voiceDisabled={!id || savingStatus==='saving' || !!pendingCorrection}

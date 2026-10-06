@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {configuredVisitModel,VISIT_MODEL,VISIT_CANDIDATE_MODEL,visitModelParameters} from '../lib/visitModelConfig'
+import {configuredVisitModel,VISIT_MODEL,VISIT_CANDIDATE_MODEL,VISIT_NEXT_MODEL,visitModelParameters} from '../lib/visitModelConfig'
 import {buildVisitRequest} from '../lib/extractVisitServer'
 import {SALES_PROMPT,SALES_SCHEMA} from '../lib/salesDecision'
 
@@ -9,11 +9,12 @@ test('migration is opt-in with a pinned baseline and restricted server configura
   assert.equal(configuredVisitModel('  '),VISIT_MODEL)
   assert.equal(configuredVisitModel(VISIT_MODEL),VISIT_MODEL)
   assert.equal(configuredVisitModel(' gpt-6-sol '),VISIT_CANDIDATE_MODEL)
+  assert.equal(configuredVisitModel(' gpt-6.1-sol '),VISIT_NEXT_MODEL)
   assert.throws(()=>configuredVisitModel('gpt-6-astra'),/Unsupported/)
   assert.throws(()=>configuredVisitModel('typo'),/Unsupported/)
 })
 test('both migration choices preserve low reasoning without sampling controls',()=>{
-  for(const model of [VISIT_MODEL,VISIT_CANDIDATE_MODEL]){
+  for(const model of [VISIT_MODEL,VISIT_CANDIDATE_MODEL,VISIT_NEXT_MODEL]){
     const request=buildVisitRequest('Send Jo the sheet tomorrow.','2026-09-24T18:30:00Z','America/Los_Angeles',model)
     assert.equal(request.model,model)
     assert.equal(request.reasoning_effort,'low')
