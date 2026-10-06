@@ -7,6 +7,7 @@ import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
 import {insightPresentation} from '../../lib/insightPresentation'
 import {visitHeader} from '../../lib/visitHeader'
 import VisitResearch,{useVisitResearch,researchCrmText} from './VisitResearch'
+import {FolupAppIcon} from '../../components/folup-branding'
 
 export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,noteVersion,rawText='',autoResearch=false,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
   extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:(research?:string,schedules?:Record<number,CalendarDraft>)=>Promise<void>;
@@ -29,10 +30,16 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
       {actions.length===0 && <p className="text-base text-gray-600">No follow-up agreed.</p>}
       {actions.map(({action,index})=>{
         const initial=calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
-        return <article key={index} className="rounded-2xl border border-zinc-200 bg-white p-4">
+        const isRecommendation=action.origin==='recommendation'
+        return <article key={index} className={`rounded-2xl border p-4 ${isRecommendation?'border-emerald-200 bg-emerald-50':'border-zinc-200 bg-white'}`}>
+          {isRecommendation && <div className="mb-2 flex items-center gap-2 text-emerald-800">
+            <FolupAppIcon className="h-5 w-5 shrink-0 object-contain" />
+            <span className="text-xs font-medium">Smart next step</span>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold tracking-wide">PRO</span>
+          </div>}
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold leading-snug text-gray-900">{initial.title}</p>
-            {action.origin==='recommendation' && <span className="text-xs text-gray-500">Proposed</span>}
+            {isRecommendation && <span className="text-xs text-emerald-800">Proposed</span>}
           </div>
           <CalendarFollowUp initial={initial} previewDescription={action.description} compact actionNumber={index+1} disabled={recording || saving==='saving'}
             noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail}

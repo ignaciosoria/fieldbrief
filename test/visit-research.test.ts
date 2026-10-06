@@ -2,7 +2,7 @@ import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import type OpenAI from 'openai'
 import {mayRequestResearch,researchCrmText,researchSegments,researchPresentationSegments,type ResearchResult} from '../lib/visitResearch'
-import {investigateVisit,configuredResearchModel} from '../lib/visitResearchServer'
+import {investigateVisit,configuredResearchModel,hasResearchRequestEvidence} from '../lib/visitResearchServer'
 import {PGlite} from '@electric-sql/pglite'
 import {readFile} from 'node:fs/promises'
 import {createElement} from 'react'
@@ -59,7 +59,7 @@ test('citation rendering ignores script URLs, invalid and overlapping ranges',()
 })
 function fakeClient(plan:unknown,search:unknown){
  const calls:unknown[]=[]
- const client={chat:{completions:{create:async()=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify(plan)}}]})}},responses:{create:async(args:unknown)=>{calls.push(args);return search}}} as unknown as OpenAI
+ const client={chat:{completions:{create:async(args:{messages:{content:string}[]})=>({choices:[{finish_reason:'stop',message:{content:JSON.stringify({requestQuote:JSON.parse(args.messages.at(-1)!.content),...(plan as object)})}}]})}},responses:{create:async(args:unknown)=>{calls.push(args);return search}}} as unknown as OpenAI
  return {client,calls}
 }
 test('research model selection is restricted and candidate uses reasoning with web search',async()=>{
@@ -89,6 +89,18 @@ test('none or ambiguity never invokes web search',async()=>{
   const output=await investigateVisit('Investiga reversion','Spanish',f.client)
   assert.equal(output.status,intent);assert.equal(f.calls.length,0)
  }
+})
+test('planner must ground both research and clarification in an actual command',async()=>{
+ for(const quote of ['buscaré alguien que sepa','consultaré a un técnico','I will research mites']){
+  assert.equal(hasResearchRequestEvidence(quote,quote),false)
+  for(const intent of ['research','clarify']){
+   const f=fakeClient({intent,requestQuote:quote,topic:'mites',question:'Which product?'},sourced)
+   assert.equal((await investigateVisit(quote,'English',f.client)).status,'none')
+   assert.equal(f.calls.length,0)
+  }
+ }
+ assert.equal(hasResearchRequestEvidence('No command here','Folup investiga ácaros'),false)
+ for(const quote of ['Folup investiga eso','Investígame la reversión','Please look up Brix','Busca información sobre cuajado'])assert.equal(hasResearchRequestEvidence(quote,quote),true)
 })
 test('search receives only public topic and must actually execute with citations',async()=>{
  const f=fakeClient({intent:'research',topic:'blackberry red drupelet reversion',question:''},sourced)

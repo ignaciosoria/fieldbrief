@@ -38,7 +38,12 @@ export function suggestCalendarSchedule(
       day=reference.startOf('day').plus({days:1});reason='Suggested for tomorrow'
     }else if(/\b(?:hoy|today|esta manana|esta tarde|esta noche|tonight|this morning|this afternoon|this evening)\b/.test(text)){
       day=reference.startOf('day');reason='Suggested for today'
-    }else if(/\b(?:la (?:proxima|siguiente) semana|semana (?:que viene|proxima|siguiente)|next week)\b/.test(text)){
+    }else if(/\b(?:la (?:proxima|siguiente) semana|semana (?:que viene|proxima|siguiente)|next week)\b/.test(text)
+      // Colloquial scheduling ellipsis: "visita para la próxima, sin día".
+      // Require a scheduling context and a phrase boundary: "próxima aplicación"
+      // or "próxima vez" is NOT evidence for next calendar week.
+      || (/\b(?:visita|reunion|llamada|programamos|agendamos)\b/.test(text)
+        && /\bpara la (?:proxima|siguiente)(?=\s*(?:[,.;]|$))/.test(text))){
       day=reference.startOf('week').plus({weeks:1});reason='Suggested for next week'
     }else if(/\b(?:esta semana|this week|antes del viernes|by friday)\b/.test(text)){
       day=workingDay(reference.startOf('day'))

@@ -77,12 +77,28 @@ test('UI shows one labelled suggestion and retains the explicit calendar save bu
     onCalendarOpened:()=>{opened++},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false,
   }))
   assert.match(html,/Proposed/)
+  assert.match(html,/border-emerald-200 bg-emerald-50/)
+  assert.match(html,/Smart next step/)
+  assert.match(html,/>PRO<\/span>/)
+  assert.match(html,/src="\/icon_32.png"/)
+  assert.doesNotMatch(html,/blur|Unlock|Upgrade|Subscribe/)
   assert.doesNotMatch(html,/Suggested by Folup/)
   assert.doesNotMatch(html,/Allow time for Mike|Check the stated approval prerequisite|not an agreed commitment/)
   assert.match(html,/value="2026-09-29"/)
   assert.equal((html.match(/Add to calendar/g)||[]).length,1)
   assert.equal(opened,0)
   assert.doesNotMatch(html,/Met Mike at Valley/)
+})
+
+test('committed actions retain their neutral card without Pro decoration',()=>{
+  const raw=fixture()
+  const html=renderToStaticMarkup(createElement(CompactVisitResult,{
+    extraction:parseSalesDecision({...raw,actions:[action],recommendations:[]},source,now,zone),timezone:zone,referenceAt:now,
+    onCalendarOpened:()=>{},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false,
+  }))
+  assert.match(html,/border-zinc-200 bg-white/)
+  assert.doesNotMatch(html,/Smart next step|>PRO<|bg-emerald-50/)
+  assert.match(html,/Add to calendar/)
 })
 
 test('same-day proposed date never uses an elapsed default clock time',()=>{
@@ -93,4 +109,14 @@ test('same-day proposed date never uses an elapsed default clock time',()=>{
   assert.equal(scheduled.date,'2026-09-24')
   assert.equal(scheduled.time,'11:30')
   assert.equal(scheduled.timeSuggested,true)
+})
+
+test('commercial policy distinguishes pauses, dependencies and already-covered work without expanding output',()=>{
+  assert.match(SALES_PROMPT,/Preserve outstanding explicit rep commitments first/)
+  assert.match(SALES_PROMPT,/nearest unresolved prerequisite/)
+  assert.match(SALES_PROMPT,/existing rep commitment already addresses/)
+  assert.match(SALES_PROMPT,/Distinguish permanent requests not to contact from temporary pauses/)
+  assert.match(SALES_PROMPT,/A return date is availability, not proof/)
+  assert.match(SALES_PROMPT,/A price objection does not authorize a discount/)
+  assert.equal(SALES_SCHEMA.properties.recommendations.maxItems,1)
 })
