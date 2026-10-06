@@ -6,6 +6,7 @@ import {NATURAL_CASES} from '../eval/natural-text-corpus'
 import {naturalView} from '../eval/natural-text-grade'
 import {parseVisitExtraction} from '../lib/visitExtraction'
 import {reviewedRendering} from './fixtures/natural-rendering-migration'
+import {migrateCrmClock} from './fixtures/crm-clock-migration'
 const rows=readFileSync(new URL('../eval/natural-text-final.jsonl',import.meta.url),'utf8').trim().split('\n').map(line=>JSON.parse(line)).filter(row=>row.id)
 test('every archived response has an individually reviewed presentation expectation',()=>{
  assert.deepEqual(rows.map(r=>r.id).sort(),Object.keys(reviewedRendering).sort())
@@ -21,6 +22,7 @@ for(const row of rows)test(`recorded ${row.id}: reviewed presentation migration 
  let steps=sections.find(s=>/^(Acuerdos y próximos pasos|Agreements and next steps):/.test(s))||''
  steps=steps.replace(/^Acuerdos y próximos pasos:/,'Próximos pasos:').replace(/^Agreements and next steps:/,'Next steps:')
  if(review.soleOwner)steps=steps.split(`- ${review.soleOwner}: `).join('- ')
+ steps=migrateCrmClock(steps,parsed)
  const clarification=sections.find(s=>/^(Pendiente de aclarar|To clarify):/.test(s))||''
  const expected=structuredClone(row.view)
  expected.crm=[review.header,review.narrative,steps,clarification].filter(Boolean).join('\n\n')

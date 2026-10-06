@@ -8,6 +8,7 @@ import {saveCalendarFromClient} from '../../lib/calendarSaveClient'
 import {GOOGLE_CALENDAR_SCOPE} from '../../lib/googleCalendarScope'
 import {sameActionSnapshot,type CalendarActionState} from '../../lib/calendarActionState'
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
+import {formatTime12,timeFrom12} from '../../lib/time12'
 
 type Props = {
   initial: CalendarDraft
@@ -25,6 +26,7 @@ type Props = {
   /** Presentation only: the complete initial draft is still sent to Calendar. */
   previewDescription?: string
   compact?: boolean
+  onDraftChange?:(draft:CalendarDraft)=>void
 }
 
 /** Reset local scheduling edits when a corrected action replaces this draft. */
@@ -32,7 +34,7 @@ export default function CalendarFollowUp(props: Props) {
   return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial,props.sourceAction])} {...props} />
 }
 
-function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false}: Props) {
+function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange}: Props) {
   const [expanded,setExpanded]=useState(false)
   const description=previewDescription ?? initial.details
   const longDescription=compact && description.length>160
@@ -94,7 +96,15 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
     return ()=>{alive.current=false}
   },[storageKey,initialJson])
   const dateInput = useRef<HTMLInputElement>(null)
-  const timeInput = useRef<HTMLInputElement>(null)
+  const timeInput = useRef<HTMLSelectElement>(null)
+  const draftListener=useRef(onDraftChange)
+  draftListener.current=onDraftChange
+  useEffect(()=>{draftListener.current?.({...initial,date,time,timeSuggested:!!suggestion.timeSuggested&&!timeEdited,dateSuggested:!!suggestion.dateSuggested&&!dateEdited})},[initial,date,time,timeEdited,dateEdited,suggestion])
+  const validClock=!!formatTime12(time)
+  const hour12=validClock?String(Number(time.slice(0,2))%12||12):''
+  const minute=validClock?time.slice(3):'00'
+  const period=time&&Number(time.slice(0,2))>=12?'PM':'AM'
+  const changeClock=(h:string,m:string,p:string)=>{setTime(timeFrom12(h,m,p));setTimeEdited(true);setAttempted(false)}
   const hintId = useId()
   const draft = {...initial, date, time}
   const url = onClarify ? null : googleCalendarUrl(draft)
@@ -140,9 +150,15 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
       <input ref={dateInput} aria-label={`Date for follow-up ${actionNumber}`} aria-describedby={!date ? hintId : undefined}
         type="date" required disabled={locked} value={date}
         onChange={event => {setDate(event.target.value); setDateEdited(true); setAttempted(false)}} className={fieldClass} />
-      <input ref={timeInput} aria-label={`Time for follow-up ${actionNumber}`}
-        type="time" required disabled={locked} value={time}
-        onChange={event => {setTime(event.target.value); setTimeEdited(true); setAttempted(false)}} className={fieldClass} />
+      <span role="group" aria-label={`Time for follow-up ${actionNumber}`} className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1.5">
+        <select ref={timeInput} aria-label={`Hour for follow-up ${actionNumber}`} required disabled={locked} value={hour12} onChange={e=>changeClock(e.target.value,minute,period)} className="bg-transparent disabled:opacity-50">
+          <option value="" disabled>--</option>{Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}
+        </select><span aria-hidden>:</span>
+        <select aria-label={`Minute for follow-up ${actionNumber}`} disabled={locked} value={minute} onChange={e=>changeClock(hour12||'9',e.target.value,period)} className="bg-transparent disabled:opacity-50">
+          {Array.from({length:60},(_,i)=>{const m=String(i).padStart(2,'0');return <option key={m} value={m}>{m}</option>})}
+        </select>
+        <select aria-label={`AM or PM for follow-up ${actionNumber}`} disabled={locked} value={period} onChange={e=>changeClock(hour12||'9',minute,e.target.value)} className="bg-transparent disabled:opacity-50"><option>AM</option><option>PM</option></select>
+      </span>
       {((suggestion.timeSuggested && !timeEdited) || (compact && suggestion.dateSuggested && !dateEdited)) && <span className="text-xs text-gray-500">suggested</span>}
     </div>
     {!compact && suggestion.dateSuggested && !dateEdited && <p className="mt-1 text-xs text-gray-500">{suggestion.suggestionReason} · edit if needed.</p>}

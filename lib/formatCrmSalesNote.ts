@@ -2,6 +2,9 @@ import { normalizeProductField, productFieldToList } from './productField'
 import type { VisitExtraction } from './visitExtraction'
 import {compactCrmNarrative} from './compactCrmNarrative'
 import {visitHeader} from './visitHeader'
+import {calendarDraftFromAction,type CalendarDraft} from './calendarDraft'
+import {visitActionFields} from './visitExtraction'
+import {formatTime12} from './time12'
 import {
   stripExecutionBlocksFromCrmNarrative,
 } from './crmNarrativeSanitize'
@@ -72,7 +75,7 @@ function filterInsightsForNote(lines: string[]): string[] {
  * Structured notes: identity, one compact narrative, then explicit next steps.
  * Legacy notes retain their existing context-only export.
  */
-export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
+export function formatProfessionalCrmNote(r: CrmSalesNoteInput,schedules?:Record<number,CalendarDraft>): string {
   if (r.schemaVersion === 2 && r.extraction) {
     const v = r.extraction
     const es = v.language === 'Spanish'
@@ -82,7 +85,10 @@ export function formatProfessionalCrmNote(r: CrmSalesNoteInput): string {
     const soleOwner = v.contacts.length===1 && v.companies.length<=1 && v.actions.every(a=>a.contact===v.contacts[0] && a.company===(v.companies[0]||''))
     const describe = (a:VisitExtraction['actions'][number]) => {
       const owner=soleOwner ? '' : [a.contact,a.company].filter(Boolean).join(' — ')
-      return `${owner ? `${owner}: ` : ''}${a.description}${a.date ? ` (${a.date}${a.time ? ` ${a.time}` : ''})` : ''}`
+      const draft=schedules?.[v.actions.indexOf(a)] ?? calendarDraftFromAction(visitActionFields(a,v.language),v.language,'America/Los_Angeles')
+      const clock=formatTime12(draft.time)
+      const proposed=draft.timeSuggested||draft.dateSuggested
+      return `${owner ? `${owner}: ` : ''}${a.description}${draft.date ? ` (${draft.date}${clock ? ` ${clock}` : ''}${proposed ? es?' · horario propuesto':' · proposed schedule':''})` : ''}`
     }
     const commitments = v.actions.filter(a=>a.origin!=='recommendation').map(describe)
     const recommendations = v.actions.filter(a=>a.origin==='recommendation').map(describe)

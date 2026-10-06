@@ -12,7 +12,7 @@ function render(value:VisitExtraction){return renderToStaticMarkup(createElement
 test('compact result shows action, time and insight without the CRM narrative or duplicate controls',()=>{
   const html=render(extraction)
   assert.doesNotMatch(html,/THIS FULL CRM|Correct in writing|Share/)
-  assert.match(html,/15:00/);assert.match(html,/Todavía no hay pedido/)
+  assert.match(html,/<option value="3" selected="">3<\/option>/);assert.match(html,/<option selected="">PM<\/option>/);assert.match(html,/Todavía no hay pedido/)
   assert.equal((html.match(/Copy to CRM/g)||[]).length,1)
   assert.equal((html.match(/Correct by voice/g)||[]).length,1)
   assert.equal((html.match(/Add to calendar/g)||[]).length,1)

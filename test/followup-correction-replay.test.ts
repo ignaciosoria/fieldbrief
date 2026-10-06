@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {visitExtractionResult,visitActionFields} from '../lib/visitExtraction'
 import {calendarDraftFromAction} from '../lib/calendarDraft'
 import {formatProfessionalCrmNote} from '../lib/formatCrmSalesNote'
+import {migrateCrmClock} from './fixtures/crm-clock-migration'
 
 // Recorded paid outputs, not new inference. This guards adapters against regressions;
 // ten observations do not establish the model's general accuracy or audio quality.
@@ -17,7 +18,7 @@ for(const row of rows)test(`live correction replay ${row.id}`,()=>{
   assert.equal(row.error,undefined)
   assert.deepEqual(row.checks,[])
   const result=visitExtractionResult(row.output,meta.now,meta.zone)
-  assert.equal(formatProfessionalCrmNote(result),row.crm)
+  assert.equal(formatProfessionalCrmNote(result),migrateCrmClock(row.crm,result.extraction))
   const drafts=result.extraction.actions.map(action=>calendarDraftFromAction(visitActionFields(action,result.extraction.language),result.extraction.language,meta.zone))
   assert.deepEqual(drafts,row.calendar)
   const baseline=rows.find(r=>r.id===row.id.slice(0,2)+'-baseline')!
