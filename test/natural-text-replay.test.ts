@@ -25,7 +25,7 @@ for(const row of rows)test(`recorded ${row.id}: reviewed presentation migration 
  steps=migrateCrmClock(steps,parsed)
  const clarification=sections.find(s=>/^(Pendiente de aclarar|To clarify):/.test(s))||''
  const expected=structuredClone(row.view)
- expected.crm=[review.header,review.narrative,steps,clarification].filter(Boolean).join('\n\n')
+ expected.crm=[review.header.split(' / ').join('\n'),review.narrative,steps,clarification].filter(Boolean).join('\n\n')
  if(review.fatherTitle){
    const draft=expected.drafts[2]
    assert.equal(draft.title,'Reunión sobre pedido grande')

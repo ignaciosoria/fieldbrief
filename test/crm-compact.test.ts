@@ -89,5 +89,5 @@ test('empty summary falls back to insights; empty note adds no invented context 
   assert.equal(compactCrmNarrative('',['Crédito pendiente.','Crédito pendiente.'],'Spanish',[],[]),'Crédito pendiente.')
   assert.equal(compactCrmNarrative('',[],'English',[],[]),'')
   const v=mike();v.summary='';v.insights=[];v.actions=[]
-  assert.equal(formatProfessionalCrmNote(visitExtractionResult(v,'2026-09-24T20:45:00Z')),'Mike / Valley Growers')
+  assert.equal(formatProfessionalCrmNote(visitExtractionResult(v,'2026-09-24T20:45:00Z')),'Mike\nValley Growers')
 })

@@ -20,7 +20,7 @@ test('suggestion provenance survives persistence, CRM and Calendar without alter
   const restored=JSON.parse(JSON.stringify(parsed))
   assert.equal(restored.actions[0].origin,'recommendation')
   assert.equal(restored.summary,'Met Mike at Valley.')
-  assert.equal(visitHeader(restored),'Mike / Valley') // advice cannot establish identity pairing
+  assert.equal(visitHeader(restored),'Mike\nValley') // advice cannot establish identity pairing
   const result=visitExtractionResult(restored,now,zone)
   const crm=formatProfessionalCrmNote(result)
   assert.match(crm,/Proposed follow-up:/)
