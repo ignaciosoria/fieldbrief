@@ -102,7 +102,7 @@ export function calendarDraftFromAction(
   // Calendar must remain self-contained when its compact title omits an identity.
   const identityContext=identities.some(identity=>!title.includes(identity)) ? identities.join(' — ') : ''
   const recommended=action.origin==='recommendation'
-  const details = [identityContext,description,recommended?(es?'Sugerencia de Folup; no es un compromiso acordado.':'Suggested by Folup; not an agreed commitment.'):''].filter(Boolean).join('\n\n')
+  const details = [identityContext,description,recommended?(es?'Seguimiento propuesto; no acordado con el cliente.':'Proposed follow-up; not an agreed commitment.'):''].filter(Boolean).join('\n\n')
   return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English',...(resolveVisitTime(action).needsClarification?{needsTimeClarification:true}:{}),...(recommended?{dateSuggested:true,suggestionReason:action.timingReason || 'Suggested follow-up date'}:{}) }
 }
 

@@ -1,22 +1,56 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import type OpenAI from 'openai'
-import {mayRequestResearch,researchCrmText,researchSegments,type ResearchResult} from '../lib/visitResearch'
+import {mayRequestResearch,researchCrmText,researchSegments,researchPresentationSegments,type ResearchResult} from '../lib/visitResearch'
 import {investigateVisit,configuredResearchModel} from '../lib/visitResearchServer'
 import {PGlite} from '@electric-sql/pglite'
 import {readFile} from 'node:fs/promises'
+import {createElement} from 'react'
+import {renderToStaticMarkup} from 'react-dom/server'
+import VisitResearch from '../app/components/VisitResearch'
 
 test('English and Spanish research requests pass prefilter; ordinary notes do not',()=>{
  for(const note of ['Investiga sobre eso.','Please research reversion in blackberries','Look up the technical label','Busca información sobre cuajado','Investígame la reversión de color','Averigua por qué','Consulta fuentes sobre eso','Search for university sources'])assert.ok(mayRequestResearch(note))
  for(const note of ['Send the label to Mike','Llamar a Roberto mañana','Blackberry trial was not approved'])assert.equal(mayRequestResearch(note),false)
 })
 const result:ResearchResult={status:'ready',text:'A finding [1].',citations:[{start:10,end:13,url:'https://extension.example.edu/fruit',title:'Fruit research'}],completedAt:'2026-10-06T00:00:00Z'}
-test('CRM research is explicitly separate, dated and includes inline source links',()=>{
- assert.match(researchCrmText(result,true),/no forma parte de lo declarado/)
- assert.match(researchCrmText(result,false),/2026-10-06/)
- assert.match(researchCrmText(result,false),/\[1\] \(https:\/\/extension/)
+test('presentation removes provider Markdown and duplicate URLs without changing findings',()=>{
+ const url='https://extension.example.edu/fruit'
+ const marker=`([extension.example.edu](${url}))`
+ const source:ResearchResult={...result,text:`A finding ${marker}.`,citations:[{start:10,end:10+marker.length,url,title:'Fruit research'}]}
+ assert.equal(researchPresentationSegments(source).map(s=>s.text).join(''),'A finding extension.example.edu.')
+ assert.equal(researchCrmText(source,false).split(url).length-1,0)
+ assert.equal(source.text,`A finding ${marker}.`)
+ assert.equal(researchCrmText(source,false),'\n\nAdditional information\nA finding.')
+})
+test('CRM research is separate and clean, with evidence preserved internally',()=>{
+ assert.equal(researchCrmText(result,true),'\n\nInformación adicional\nA finding.')
+ assert.equal(researchCrmText(result,false),'\n\nAdditional information\nA finding.')
+ assert.equal(result.citations.length,1)
  assert.equal(researchCrmText(null,false),'')
  assert.equal(researchCrmText({...result,status:'none'},false),'')
+})
+test('research card uses compact citations and clarification does not pretend to answer',()=>{
+ const html=renderToStaticMarkup(createElement(VisitResearch,{research:{eligible:true,state:'ready',result,retry:()=>{}}}))
+ assert.match(html,/Additional information/)
+ assert.match(html,/href="https:\/\/extension.example.edu\/fruit"/)
+ assert.match(html,/>\[1\]<\/a>/)
+ assert.doesNotMatch(html,/Research &amp; sources|External research|2026-10-06/)
+ assert.equal(researchCrmText({...result,status:'clarify',text:'Which product?',citations:[]},false),'\n\nResearch clarification\nWhich product?')
+})
+test('citation removal preserves linked factual prose and never mutates stored evidence',()=>{
+ const source={...result,text:'Keep this important qualification.',citations:[{...result.citations[0],start:0,end:32}]}
+ const before=structuredClone(source)
+ assert.match(researchCrmText(source,false),/Keep this important qualification/)
+ assert.deepEqual(source,before)
+})
+test('CRM hides source domain labels even when the citation URL uses a different host',()=>{
+ const label='uaex.uada.edu'
+ const source={...result,text:`A finding ${label}.`,citations:[{...result.citations[0],start:10,end:10+label.length,url:'https://www.uaex.uada.edu/publications/fruit.pdf'}]}
+ assert.equal(researchCrmText(source,false),'\n\nAdditional information\nA finding.')
+})
+test('home screen installation banner is absent',async()=>{
+ assert.doesNotMatch(await readFile('app/page.tsx','utf8'),/Add to home screen:|homeScreenBannerVisible|homeBannerOfferDoneRef/)
 })
 test('citation rendering ignores script URLs, invalid and overlapping ranges',()=>{
  const segments=researchSegments({...result,citations:[{...result.citations[0],url:'javascript:alert(1)'},{...result.citations[0],start:-1},result.citations[0],result.citations[0]]})

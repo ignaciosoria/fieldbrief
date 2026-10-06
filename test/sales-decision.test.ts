@@ -76,7 +76,8 @@ test('UI shows one labelled suggestion and retains the explicit calendar save bu
     extraction:parseSalesDecision(fixture(),source,now,zone),timezone:zone,referenceAt:now,
     onCalendarOpened:()=>{opened++},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false,
   }))
-  assert.match(html,/Suggested by Folup/)
+  assert.match(html,/Proposed/)
+  assert.doesNotMatch(html,/Suggested by Folup/)
   assert.doesNotMatch(html,/Allow time for Mike|Check the stated approval prerequisite|not an agreed commitment/)
   assert.match(html,/value="2026-09-29"/)
   assert.equal((html.match(/Add to calendar/g)||[]).length,1)

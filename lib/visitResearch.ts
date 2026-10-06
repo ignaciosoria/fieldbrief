@@ -21,7 +21,26 @@ export function researchSegments(result:ResearchResult):{text:string;url?:string
 }
 export function researchCrmText(result:ResearchResult|null,spanish:boolean){
   if(!result||result.status==='none')return ''
-  const heading=spanish?'Investigación externa — no forma parte de lo declarado en la visita':'External research — not statements from the visit'
-  const body=researchSegments(result).map(s=>s.url?`${s.text} (${s.url})`:s.text).join('')
-  return `\n\n${heading}\n${result.completedAt.slice(0,10)}\n${body}`
+  const heading=result.status==='clarify'?(spanish?'Consulta pendiente':'Research clarification'):(spanish?'Información adicional':'Additional information')
+  return `\n\n${heading}\n${researchAnswerText(result)}`
+}
+
+/** Remove citation markers, not factual prose. Stored evidence stays untouched. */
+export function researchAnswerText(result:ResearchResult){
+  return researchPresentationSegments(result).map(researchSegmentProse).join('').replace(/[ \t]+([.,;:!?])/g,'$1').replace(/[ \t]{2,}/g,' ').trim()
+}
+export function researchSegmentProse(s:{text:string;url?:string}){
+  if(!s.url)return s.text
+  const label=s.text.trim()
+  if(/^\[?\d+\]?$/.test(label)||/^\(?[\w-]+(?:\.[\w-]+)+(?:\/[^\s]*)?\)?$/.test(label)||label===new URL(s.url).hostname||label===s.url)return ''
+  return s.text
+}
+
+/** Clean provider Markdown only inside verified citation ranges; never rewrite findings. */
+export function researchPresentationSegments(result:ResearchResult){
+  return researchSegments(result).map(s=>{
+    if(!s.url)return s
+    const markdown=s.text.trim().match(/^\(?\[([^\]]+)\]\((https:\/\/[^\s)]+)\)\)?$/)
+    return markdown&&safeResearchUrl(markdown[2])===s.url?{...s,text:markdown[1]}:s
+  })
 }

@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useState} from 'react'
-import {mayRequestResearch,researchCrmText,researchSegments,type ResearchResult} from '../../lib/visitResearch'
+import {mayRequestResearch,researchCrmText,researchPresentationSegments,researchSegmentProse,type ResearchResult} from '../../lib/visitResearch'
 
 export function useVisitResearch(noteId:string|undefined,version:number|undefined,owner:string|undefined,raw:string,auto:boolean){
   const eligible=!!noteId&&!!version&&!!owner&&mayRequestResearch(raw)
@@ -39,9 +39,8 @@ export default function VisitResearch({research}:{research:ReturnType<typeof use
   if(!research.result)return <p className="text-sm text-gray-500">{research.state==='failed'?'Research unavailable. Your visit is saved.':'Research requested.'} <button className="text-indigo-700 underline" onClick={research.retry}>{research.state==='failed'?'Retry research':'Research now'}</button></p>
   const result=research.result
   return <details className="rounded-xl border border-zinc-200 p-3 text-sm" open={result.status==='clarify'}>
-    <summary className="cursor-pointer font-medium text-indigo-700">{result.status==='clarify'?'Research needs clarification':'Research · included in CRM'}</summary>
-    <p className="mt-2 text-xs text-gray-500">External information, separate from the visit. {result.completedAt.slice(0,10)}</p>
-    <p className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-700">{researchSegments(result).map((s,i)=>s.url?<a key={i} href={s.url} title={s.title} target="_blank" rel="noopener noreferrer" className="text-indigo-700 underline">{s.text}</a>:<span key={i}>{s.text}</span>)}</p>
+    <summary className="cursor-pointer font-medium text-gray-700">{result.status==='clarify'?'Clarify research':'Additional information'}</summary>
+    <p className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-700">{researchPresentationSegments(result).map((s,i)=>s.url?<span key={i}>{researchSegmentProse(s)}<a href={s.url} title={s.title} aria-label={`Source: ${s.title}`} target="_blank" rel="noopener noreferrer" className="text-indigo-700 underline underline-offset-2">[{Math.ceil(i/2)}]</a></span>:<span key={i}>{s.text}</span>)}</p>
     {result.status==='clarify'&&<p className="mt-2 text-gray-500">Use “Correct by voice” to clarify and request research again.</p>}
   </details>
 }
