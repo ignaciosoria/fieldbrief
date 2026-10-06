@@ -14,7 +14,7 @@ import CompactVisitResult from './components/CompactVisitResult'
 import AudioRecovery from './components/AudioRecovery'
 import PublicLanding from './components/PublicLanding'
 import {trialMessage,type TrialStatus} from '../lib/trialPresentation'
-import {MAX_AUDIO_BYTES,AUDIO_TOO_LARGE} from '../lib/audioUpload'
+import {transcribeRecording} from '../lib/recordingUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
 import {resumeVoiceCorrection,CorrectionOwnerChanged,type VoiceCorrectionDraft} from '../lib/voiceCorrection'
 import {persistThenPublishCorrection} from '../lib/visitCorrection'
@@ -2636,17 +2636,17 @@ export default function Home() {
       await resumeVoiceCorrection(draft,{
         currentOwner:()=>audioOwnerRef.current,
         checkpoint:setPendingCorrection,
-        transcribe:async blob=>{
-          if(blob.size>MAX_AUDIO_BYTES) throw Error(AUDIO_TOO_LARGE)
-          const ext=blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm'
+        transcribe:async recording=>transcribeRecording(recording,async blob=>{
+          const ext=blob.type.includes('wav')?'wav':blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm'
           const fd=new FormData()
           fd.append('file',new File([blob],`correction.${ext}`,{type:blob.type}))
           const response=await fetchWithTimeout('/api/transcribe',{method:'POST',body:fd})
-          const data=await response.json().catch(()=>({error:response.status===413?AUDIO_TOO_LARGE:'Audio upload failed. Please retry.'}))
+          const data=await response.json().catch(()=>({error:'Audio upload failed. Please retry.'}))
           if(draft.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
+          if(response.status===422 && data.code==='NO_SPEECH')return ''
           if(!response.ok) {handleAiAccessResponse(response.status,data);throw Error(data.error || 'Failed to transcribe correction.')}
           return data.transcript || data.text || ''
-        },
+        },()=>draft.owner===audioOwnerRef.current),
         structure:async (note,now,timezone)=>{
           const response=await fetchWithTimeout('/api/structure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,clientNow:now,timezone,existingNoteId:draft.noteId})})
           const data=await response.json().catch(()=>({error:'Correction could not be processed. Please retry.'}))
@@ -2862,19 +2862,21 @@ export default function Home() {
     setPendingCompanyPick(null)
     setPendingNextStepClarifyPick(null)
     try {
-      if(blob.size>MAX_AUDIO_BYTES) throw Error(AUDIO_TOO_LARGE)
-      const extension = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm'
-      const file = new File([blob], `voice-note.${extension}`, { type: blob.type || 'audio/webm' })
+      const tx = await transcribeRecording(blob,async part=>{
+      const extension = part.type.includes('wav') ? 'wav' : part.type.includes('mp4') ? 'm4a' : part.type.includes('ogg') ? 'ogg' : 'webm'
+      const file = new File([part], `voice-note.${extension}`, { type: part.type || 'audio/webm' })
       const formData = new FormData()
       formData.append('file', file)
 
       const transcribeRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData })
       const transcribeData = await transcribeRes.json().catch(()=>({error:transcribeRes.status===413?'The recording is too large to upload. Download a copy before discarding it.':'Audio upload failed. Your recording is still here; please retry.'}))
-      if (audio.owner!==audioOwnerRef.current) return
-      if (handleAiAccessResponse(transcribeRes.status, transcribeData)) return
+      if (audio.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
+      if(transcribeRes.status===422 && transcribeData.code==='NO_SPEECH')return ''
+      handleAiAccessResponse(transcribeRes.status, transcribeData)
       if (!transcribeRes.ok) throw new Error(transcribeData.error || 'Failed to transcribe.')
 
-      const tx = transcribeData.transcript || transcribeData.text || ''
+      return transcribeData.transcript || transcribeData.text || ''
+      },()=>audio.owner===audioOwnerRef.current)
       if (typeof tx!=='string' || !tx.trim()) throw Error('No speech was detected. You can download your audio or retry.')
       setTranscript(tx)
       setInput(tx)
