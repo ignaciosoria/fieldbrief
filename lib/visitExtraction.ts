@@ -1,10 +1,11 @@
 import { DateTime } from 'luxon'
 import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitleContract'
 import {VISIT_DAYPARTS,type VisitDaypart} from './visitTiming'
+import type {ResearchResult} from './visitResearch'
 
 export type VisitAction = {type:'call'|'send'|'meeting'|'follow_up'|'other'; contact:string; company:string; object:string; description:string; date:string; time:string; evidence:string;daypart?:VisitDaypart;subject?:string;origin?:'commitment'|'recommendation';rationale?:string;timingReason?:string}
 export type VisitQuestion = {action_index:number; field:'contact'|'company'|'date'|'time'|'object'|'description'; question:string}
-export type VisitExtraction = {crmNarrativeVersion?:1;contractVersion?:3;language:'Spanish'|'English'; contacts:string[]; companies:string[]; location:string; summary:string; insights:string[]; actions:VisitAction[]; questions:VisitQuestion[]}
+export type VisitExtraction = {research?:{source:string;result:ResearchResult|null};crmNarrativeVersion?:1;contractVersion?:3;language:'Spanish'|'English'; contacts:string[]; companies:string[]; location:string; summary:string; insights:string[]; actions:VisitAction[]; questions:VisitQuestion[]}
 
 const text = {type:'string'}
 const object = <T extends Record<string,unknown>>(properties: T) => ({type:'object',properties,required:Object.keys(properties),additionalProperties:false})

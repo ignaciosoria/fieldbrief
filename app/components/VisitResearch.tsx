@@ -2,13 +2,14 @@
 import {useEffect,useState} from 'react'
 import {mayRequestResearch,researchCrmText,researchPresentationSegments,researchSegmentProse,type ResearchResult} from '../../lib/visitResearch'
 
-export function useVisitResearch(noteId:string|undefined,version:number|undefined,owner:string|undefined,raw:string,auto:boolean){
+export function useVisitResearch(noteId:string|undefined,version:number|undefined,owner:string|undefined,raw:string,auto:boolean,prepared?:{source:string;result:ResearchResult|null}){
+  const preparedHere=prepared?.source===raw?prepared:undefined
   const eligible=!!noteId&&!!version&&!!owner&&mayRequestResearch(raw)
   const key=`${owner}:${noteId}:${version}`
   const [value,setValue]=useState<{key:string;state:string;result:ResearchResult|null}>({key:'',state:'idle',result:null})
   const [retry,setRetry]=useState(0)
   useEffect(()=>{
-    if(!eligible)return
+    if(!eligible||preparedHere?.result)return
     let active=true,timer:ReturnType<typeof setTimeout>|undefined
     const controller=new AbortController()
     const url=`/api/research?noteId=${encodeURIComponent(noteId!)}&version=${version}`
@@ -27,10 +28,12 @@ export function useVisitResearch(noteId:string|undefined,version:number|undefine
         }
       }catch{if(active)setValue({key,state:'failed',result:null})}
     }
-    void load(auto||retry>0)
+    void load((auto&&!preparedHere)||retry>0)
     return ()=>{active=false;controller.abort();if(timer)clearTimeout(timer)}
-  },[eligible,key,noteId,version,auto,retry])
-  return {eligible,state:value.key===key?value.state:'idle',result:value.key===key?value.result:null,retry:()=>setRetry(x=>x+1)}
+  },[eligible,key,noteId,version,auto,retry,preparedHere])
+  if(preparedHere?.result)return {eligible:true,state:'done',result:preparedHere.result,retry:()=>{}}
+  const state=value.key===key?value.state:'idle'
+  return {eligible,state:preparedHere&&state==='idle'?'failed':state,result:value.key===key?value.result:null,retry:()=>setRetry(x=>x+1)}
 }
 
 export default function VisitResearch({research}:{research:ReturnType<typeof useVisitResearch>}){

@@ -63,7 +63,7 @@ function fakeClient(plan:unknown,search:unknown){
  return {client,calls}
 }
 test('research model selection is restricted and candidate uses reasoning with web search',async()=>{
- assert.equal(configuredResearchModel(''), 'gpt-6.1-sol')
+ assert.equal(configuredResearchModel(''), 'gpt-5.4-mini')
  assert.equal(configuredResearchModel('gpt-4.1-mini'), 'gpt-4.1-mini')
  assert.equal(configuredResearchModel('gpt-6.1-sol'), 'gpt-6.1-sol')
  assert.throws(()=>configuredResearchModel('unknown'),/Unsupported/)
@@ -73,6 +73,14 @@ test('research model selection is restricted and candidate uses reasoning with w
  assert.equal(args.model,'gpt-6.1-sol');assert.equal(args.reasoning.effort,'medium')
  assert.equal(args.temperature,undefined);assert.equal(args.max_output_tokens,4000)
  assert.equal(args.max_tool_calls,2)
+})
+test('instant research uses no reasoning and resolves the visit language before search',async()=>{
+ const f=fakeClient({intent:'research',topic:'blackberry red drupelet reversion',question:''},sourced)
+ await investigateVisit('research that',Promise.resolve('Spanish'),f.client,Promise.resolve([]),'gpt-5.4-mini')
+ const args=f.calls[0] as {reasoning:{effort:string};instructions:string}
+ assert.equal(args.reasoning.effort,'none')
+ assert.match(args.instructions,/Respond in Spanish/)
+ assert.doesNotMatch(args.instructions,/\[object Promise\]/)
 })
 const sourced={status:'completed',output:[{type:'web_search_call',status:'completed'},{type:'message',content:[{type:'output_text',text:result.text,annotations:[{type:'url_citation',start_index:10,end_index:13,url:result.citations[0].url,title:'Fruit research'}]}]}]}
 test('none or ambiguity never invokes web search',async()=>{

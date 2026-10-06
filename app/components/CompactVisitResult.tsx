@@ -17,7 +17,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
-  const research=useVisitResearch(saving==='saving'?undefined:noteId,noteVersion,ownerEmail,rawText,autoResearch)
+  const research=useVisitResearch(saving==='saving'?undefined:noteId,noteVersion,ownerEmail,rawText,autoResearch,extraction.research)
   const actions=extraction.actions.map((action,index)=>({action,index})).sort((a,b)=>(a.action.date||'9999').localeCompare(b.action.date||'9999')||a.index-b.index)
   return <section className="space-y-5" aria-label="Visit result" lang="en">
     <header className="flex items-start justify-between gap-3">

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
 import { DateTime } from "luxon"
 import { prepareStructureRequest } from "../../../lib/aiAccessServer"
-import { extractVisit } from "../../../lib/extractVisitServer"
+import {extractVisitWithResearch} from '../../../lib/parallelVisit'
+import {checkAiAccess} from '../../../lib/aiAccess'
+import {reserveAiUsage} from '../../../lib/aiAccessServer'
 import {withTrialNote} from '../../../lib/trialServer'
+export const maxDuration=90
 
 export async function POST(request: Request) {
   const body = await prepareStructureRequest(request)
@@ -12,7 +15,8 @@ export async function POST(request: Request) {
   const now = supplied?.isValid ? supplied.toUTC().toISO()! : new Date().toISOString()
   const started = Date.now()
   try {
-    const processed=await withTrialNote(body.serverEmail,body.note,body.clientNow,()=>extractVisit(body.note,now,timezone),body.existingNoteId,body.trialNoteKey)
+    const processed=await withTrialNote(body.serverEmail,body.note,body.clientNow,()=>extractVisitWithResearch(body.note,now,timezone,
+      async()=>!(await checkAiAccess('structure',{getEmail:async()=>body.serverEmail,reserve:reserveAiUsage}))),body.existingNoteId,body.trialNoteKey)
     if(processed instanceof Response) return processed
     const {result,usage} = processed
     // Operational counts only: do not log the transcript, names or extracted prose.
