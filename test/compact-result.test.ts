@@ -6,6 +6,7 @@ import CompactVisitResult from '../app/components/CompactVisitResult'
 import type {VisitExtraction} from '../lib/visitExtraction'
 import {visitActionFields} from '../lib/visitExtraction'
 import {calendarDraftFromAction} from '../lib/calendarDraft'
+import {formatProfessionalCrmNote,type CrmSalesNoteInput} from '../lib/formatCrmSalesNote'
 
 const extraction:VisitExtraction={language:'Spanish',contacts:['Pedro'],companies:['Acme'],summary:'THIS FULL CRM SUMMARY MUST NOT BE VISIBLE',location:'',insights:['Todavía no hay pedido.'],questions:[],actions:[{type:'call',contact:'Pedro',company:'Acme',description:'Confirmar recepción de muestras.',object:'',date:'2026-09-16',time:'',evidence:'Llamar a Pedro mañana por la tarde'}]}
 function render(value:VisitExtraction){return renderToStaticMarkup(createElement(CompactVisitResult,{extraction:value,timezone:'America/Los_Angeles',onCalendarOpened:()=>{},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false}))}
@@ -27,7 +28,7 @@ test('suggestion card hides duplicate explanations, preserves full calendar data
   const before=structuredClone(value)
   const draft=()=>calendarDraftFromAction(visitActionFields(value.actions[0],value.language),value.language,'America/Los_Angeles')
   const full=draft(),html=render(value)
-  assert.equal((html.match(/Proposed/g)||[]).length,1)
+  assert.doesNotMatch(html,/Proposed|suggested/)
   assert.doesNotMatch(html,/Suggested by Folup/)
   assert.doesNotMatch(html,/LONG RATIONALE|LONG TIMING REASON|no acordado con el cliente|edit if needed/)
   assert.match(html,/aria-expanded="false"/)
@@ -37,6 +38,10 @@ test('suggestion card hides duplicate explanations, preserves full calendar data
   assert.doesNotMatch(full.details,/Sugerencia de Folup/)
   assert.deepEqual(draft(),full)
   assert.deepEqual(value,before)
+  const crm=formatProfessionalCrmNote({schemaVersion:2,extraction:value} as CrmSalesNoteInput)
+  assert.ok(crm.includes(description),'CRM must retain the entire instruction, not the UI preview')
+  assert.match(html,/line-clamp-2/)
+  assert.doesNotMatch(html,/no dar por aprobada la prueba ni insistir/)
 })
 test('v3 keeps the distinguishing purpose visible and ambiguous time blank without extra controls',()=>{
   const v:VisitExtraction={...extraction,contractVersion:3,questions:[{action_index:0,field:'time',question:'¿Nueve o diez?'}],actions:[{...extraction.actions[0],subject:'garantía Z9',daypart:'ambiguous'}]}

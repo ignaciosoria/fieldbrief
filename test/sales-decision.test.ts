@@ -76,7 +76,7 @@ test('UI shows one labelled suggestion and retains the explicit calendar save bu
     extraction:parseSalesDecision(fixture(),source,now,zone),timezone:zone,referenceAt:now,
     onCalendarOpened:()=>{opened++},onCopy:async()=>{},onVoice:()=>{},onClarify:()=>{},recording:false,voiceDisabled:false,
   }))
-  assert.match(html,/Proposed/)
+  assert.doesNotMatch(html,/Proposed|>suggested</)
   assert.match(html,/border-emerald-200 bg-emerald-50/)
   assert.match(html,/Smart next step/)
   assert.match(html,/>PRO<\/span>/)

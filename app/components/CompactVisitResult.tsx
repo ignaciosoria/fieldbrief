@@ -41,8 +41,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold tracking-wide">PRO</span>
           </div>}
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <p lang={extraction.language==='Spanish'?'es':'en'} className="text-base font-semibold leading-snug text-gray-900">{initial.title}</p>
-            {isRecommendation && <span className="text-xs text-emerald-800">Proposed</span>}
+            <p lang={extraction.language==='Spanish'?'es':'en'} title={initial.title} className="line-clamp-2 text-base font-semibold leading-snug text-gray-900">{initial.title}</p>
           </div>
           <CalendarFollowUp initial={initial} previewDescription={action.description} compact actionNumber={index+1} disabled={recording || saving==='saving'}
             noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail} actionOrigin={action.origin||'unknown'}

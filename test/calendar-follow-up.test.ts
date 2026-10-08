@@ -40,12 +40,12 @@ test('invalid date/time remain blocked rather than silently replaced',()=>{
   }
 })
 
-test('missing date/time get an editable labeled suggestion, without changing source fields',()=>{
+test('missing date/time get an editable schedule without extra labels or changing source fields',()=>{
   const html=render({date:'',time:''},{now:'2026-09-24T18:27:00Z'})
   assert.match(html,/value="2026-09-25"/)
   assert.match(html,/<option value="9" selected="">9<\/option>/)
   assert.match(html,/<option selected="">AM<\/option>/)
-  assert.match(html,/Next working day suggested/)
+  assert.doesNotMatch(html,/suggested|Proposed|edit if needed/)
   assert.equal(hrefs(html).length,0)
   assert.match(html,/>Add to calendar</)
   assert.doesNotMatch(html,/Date needed/)

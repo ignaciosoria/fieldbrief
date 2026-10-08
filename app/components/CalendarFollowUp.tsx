@@ -40,8 +40,8 @@ export default function CalendarFollowUp(props: Props) {
 function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange,onRequestAccess,actionOrigin='unknown'}: Props) {
   const [expanded,setExpanded]=useState(false)
   const description=previewDescription ?? initial.details
-  const longDescription=compact && description.length>160
-  const preview=longDescription ? description.slice(0,160).replace(/\s+\S*$/,'')+'…' : description
+  const longDescription=compact && description.length>110
+  const preview=longDescription ? description.slice(0,110).replace(/\s+\S*$/,'')+'…' : description
   const [suggestion] = useState(()=>suggestCalendarSchedule(initial,evidence,referenceAt,now))
   const [date, setDate] = useState(suggestion.date)
   const [time, setTime] = useState(suggestion.time)
@@ -165,9 +165,7 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
         </select>
         <select aria-label={`AM or PM for follow-up ${actionNumber}`} disabled={locked} value={period} onChange={e=>changeClock(hour12||'9',minute,e.target.value)} className="bg-transparent disabled:opacity-50"><option>AM</option><option>PM</option></select>
       </span>
-      {((suggestion.timeSuggested && !timeEdited) || (compact && suggestion.dateSuggested && !dateEdited)) && <span className="text-xs text-gray-500">suggested</span>}
     </div>
-    {!compact && suggestion.dateSuggested && !dateEdited && <p className="mt-1 text-xs text-gray-500">{suggestion.suggestionReason} · edit if needed.</p>}
     {!date && <p id={hintId} className="mt-1 text-xs text-gray-500">Date needed — choose it above.</p>}
     <button type="button" disabled={disabled || busy || !!savedUrl} className={buttonClass} onClick={()=>void save()}>
       {savedUrl?'Added ✓':busy?(connectionNeeded?'Connecting…':'Saving…'):connectionNeeded?'Connect Google Calendar':'Add to calendar'}
