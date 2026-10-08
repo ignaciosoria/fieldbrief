@@ -10,12 +10,14 @@ import {visitHeader} from '../../lib/visitHeader'
 import VisitResearch,{useVisitResearch,researchCrmText} from './VisitResearch'
 import {FolupAppIcon} from '../../components/folup-branding'
 
-export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,noteVersion,rawText='',autoResearch=false,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew}: {
+export default function CompactVisitResult({extraction,timezone,referenceAt,noteId,noteVersion,rawText='',autoResearch=false,ownerEmail,onCalendarOpened,onCopy,onVoice,onClarify,recording,voiceDisabled,saving,onRetrySave,onNew,onCalendarGate,initialDrafts}: {
   extraction:VisitExtraction;timezone:string;onCalendarOpened:()=>void;onCopy:(research?:string,schedules?:Record<number,CalendarDraft>)=>Promise<void>;
   onVoice:()=>void;onClarify:(actionIndex?:number)=>void;recording:boolean;voiceDisabled:boolean;saving?:string;onRetrySave?:()=>void;onNew?:()=>void
   referenceAt?:string
   noteId?:string;ownerEmail?:string
   noteVersion?:number;rawText?:string;autoResearch?:boolean
+  onCalendarGate?:(index:number,draft:CalendarDraft)=>void
+  initialDrafts?:Record<number,CalendarDraft>
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
@@ -30,7 +32,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
     <div className="space-y-3">
       {actions.length===0 && <p className="text-base text-gray-600">No follow-up agreed.</p>}
       {actions.map(({action,index})=>{
-        const initial=calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
+        const initial=initialDrafts?.[index] || calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
         const isRecommendation=action.origin==='recommendation'
         return <article key={index} className={`rounded-2xl border p-4 ${isRecommendation?'border-emerald-200 bg-emerald-50':'border-zinc-200 bg-white'}`}>
           {isRecommendation && <div className="mb-2 flex items-center gap-2 text-emerald-800">
@@ -46,6 +48,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
             noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail} actionOrigin={action.origin||'unknown'}
             evidence={action.evidence} referenceAt={referenceAt}
             onDraftChange={draft=>{schedules.current[index]=draft}}
+            onRequestAccess={onCalendarGate?draft=>onCalendarGate(index,draft):undefined}
             onOpen={onCalendarOpened} onClarify={extraction.questions.some(q=>q.action_index===index && q.field!=='date' && q.field!=='time')?()=>onClarify(index):undefined} />
         </article>
       })}

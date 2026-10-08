@@ -29,6 +29,7 @@ type Props = {
   previewDescription?: string
   compact?: boolean
   onDraftChange?:(draft:CalendarDraft)=>void
+  onRequestAccess?:(draft:CalendarDraft)=>void
 }
 
 /** Reset local scheduling edits when a corrected action replaces this draft. */
@@ -36,7 +37,7 @@ export default function CalendarFollowUp(props: Props) {
   return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial,props.sourceAction])} {...props} />
 }
 
-function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange,actionOrigin='unknown'}: Props) {
+function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange,onRequestAccess,actionOrigin='unknown'}: Props) {
   const [expanded,setExpanded]=useState(false)
   const description=previewDescription ?? initial.details
   const longDescription=compact && description.length>160
@@ -119,6 +120,7 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
 
   const save=async()=>{
     if(busyRef.current||savedUrl||disabled)return
+    if(onRequestAccess){onRequestAccess(draft);return}
     if(onClarify){onClarify();return}
     if(!url){setAttempted(true);const field=!date?dateInput.current:timeInput.current;field?.focus();field?.reportValidity();return}
     if(!noteId||!ownerEmail){setSaveError('Save this note before adding its follow-up.');return}

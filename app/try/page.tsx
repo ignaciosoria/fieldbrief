@@ -1,4 +1,5 @@
-export { default } from "../page";
+export { default } from "../components/LiveTry";
+import '../components/public-marketing.css'
 
 export const metadata = {
   title: "Folup — Try it free",
