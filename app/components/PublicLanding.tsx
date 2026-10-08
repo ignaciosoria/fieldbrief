@@ -62,13 +62,14 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
               Leave a voice note after your visit. Get the follow-ups you promised, a CRM note ready to copy, and a Smart Next Step to help move the sale forward.
             </p>
             <div className="mt-8 flex flex-col items-start gap-3 sm:mt-9">
-              <button type="button" onClick={onSignIn} className={`inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-[#4f46e5] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_3px_8px_#4f46e51a] transition-colors hover:bg-[#4338ca] sm:w-auto ${focus}`}>
-                <GoogleIcon /> Start your 14-day free trial
-              </button>
-              <p className="text-xs text-[#72737b]">No credit card needed. Starts with your first processed note.</p>
-              <a href="/try" className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-1 text-[13px] font-medium text-[#52515f] hover:text-[#4f46e5] sm:w-auto ${focus}`}>
-                See it in action <Arrow />
+              <a href="/try" className={`inline-flex min-h-[52px] w-full items-center justify-center gap-3 rounded-xl bg-[#4f46e5] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_3px_8px_#4f46e51a] transition-colors hover:bg-[#4338ca] sm:w-auto ${focus}`}>
+                See Folup in action <Arrow />
               </a>
+              <p className="text-xs text-[#72737b]">Explore a sample visit. No account needed.</p>
+              <button type="button" onClick={onSignIn} className={`inline-flex min-h-11 items-center gap-2 rounded-lg text-[13px] font-medium text-[#52515f] hover:text-[#4f46e5] ${focus}`}>
+                <GoogleIcon /> Start free trial
+              </button>
+              <p className="text-xs text-[#72737b]">14 days free. No credit card.</p>
             </div>
             <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#72737b]">
               <span>Speak English or Spanish</span>

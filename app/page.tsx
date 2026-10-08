@@ -14,6 +14,10 @@ import VisitSummary from './components/VisitSummary'
 import CompactVisitResult from './components/CompactVisitResult'
 import AudioRecovery from './components/AudioRecovery'
 import PublicLanding from './components/PublicLanding'
+import PublicDemo from './components/PublicDemo'
+
+const trackDemoStart = () => track('demo_started')
+const trackDemoComplete = () => track('demo_completed')
 import {trialMessage,type TrialStatus} from '../lib/trialPresentation'
 import {transcribeRecording} from '../lib/recordingUpload'
 import {fetchWithTimeout} from '../lib/fetchWithTimeout'
@@ -3307,6 +3311,9 @@ export default function Home() {
 
   if (status === 'unauthenticated' && !isDemo) {
     return <PublicLanding onSignIn={signInWithGoogle} />
+  }
+  if (status === 'unauthenticated' && isDemo) {
+    return <PublicDemo onSignIn={signInWithGoogle} onStart={trackDemoStart} onComplete={trackDemoComplete} />
   }
 
   const userImage = session?.user?.image
