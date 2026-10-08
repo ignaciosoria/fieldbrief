@@ -1,0 +1,115 @@
+FOLUP — PROSPECTING BRIEF
+Prepared 7 October 2026. Product descriptions checked against the repository.
+Targeting below is an initial hypothesis to validate, not a proven ICP or market result.
+
+POSITIONING
+Folup helps field salespeople turn their own post-visit voice recap into clear
+follow-ups, a CRM-ready note, and a commercially useful Smart Next Step.
+Lead with the moment after a customer visit, not with AI models or transcription.
+Suggested positioning: “Leave the visit. Say what happened. Know what to do next.”
+
+WHAT THE PRODUCT DOES
+1. The rep records their own recap after a visit, in natural English or Spanish.
+   This is not a meeting bot joining calls or secretly recording customers.
+2. Speech is transcribed and interpreted into people, companies, key details,
+   commitments, relevant timing and commercial context.
+3. Explicit actions are extracted: send the spec sheet, provide pricing, call a
+   contact, check a trial, or follow up on an order.
+4. When useful, Smart Next Step proposes an additional action based on the note:
+   for example, check what technical approval is needed before a product trial.
+   Recommendations are not commitments made by the customer. They can be wrong.
+5. The rep reviews and can correct the output by voice.
+6. After connecting Google Calendar, the rep can add chosen actions directly,
+   with a short title, description, date and time. No contact invitations are sent.
+7. Copy to CRM produces a readable visit note for pasting into the existing CRM.
+   This is not automatic two-way CRM sync or automatic Salesforce data entry.
+8. Saved notes are available in history. Context explicitly requested for research
+   can appear in the CRM output; do not make this the campaign's main promise.
+
+SMART NEXT STEP EXAMPLE — ILLUSTRATIVE, NOT A CUSTOMER TESTIMONIAL
+Input: “Maya likes the product, but her engineer has to review it before a trial.
+Send her the spec sheet tomorrow, no prices. She will speak to him Thursday.”
+Explicit action: Send Maya the spec sheet tomorrow without pricing.
+Potential recommendation: Check with Maya after the technical discussion to
+understand what her engineer still needs before approving a trial.
+Not: assume the trial is approved, invent access to the engineer, or schedule a
+meeting that nobody agreed to.
+
+OFFER
+Current code describes a 14-day free trial, no card, starting at the first
+processed note, with up to 100 notes. Smart Next Step is included in the trial.
+The displayed Pro price is $19/month. Verify the deployed checkout before using
+the price in a campaign. Never promise unlimited inference or guaranteed accuracy.
+
+FIRST ICP TO TEST
+English-speaking US field sales reps in agricultural inputs and distribution:
+crop nutrition, fertilizers, biostimulants and related agricultural supplies.
+Prioritize people who visit growers, dealers or farms, discuss product trials,
+manage technical approval, quote products and personally own the next follow-up.
+Start with California and Florida as separate cohorts if enough qualified leads
+exist. Geography and company size are starting hypotheses, not requirements.
+
+APOLLO TITLE IDEAS
+Territory Sales Representative; Territory Manager; Outside Sales Representative;
+Field Sales Representative; Technical Sales Representative; Regional Sales
+Representative; Agricultural Sales Representative; independent sales agent.
+Do not assume a Territory Manager is a field seller from the title alone.
+
+ACCOUNT FILTER IDEAS
+Agricultural inputs, crop nutrition, fertilizer, biostimulants, agricultural
+distribution. Begin with roughly 10–200 employees as a discovery range, not a
+hard exclusion. Confirm each company's actual business from public information.
+Relevant words: grower relationships, farm visits, territory, field trials,
+dealer network, crop advisor, technical sales. Avoid keyword-only qualification.
+
+QUALIFICATION SIGNALS
+- Regular in-person customer visits and responsibility for follow-up.
+- Product sales involving trials, samples, quotes or technical stakeholders.
+- CRM or manual note administration that happens after visits.
+- A Google account and willingness to use Google Calendar.
+- Individual ability to trial a lightweight tool without a long procurement cycle.
+Public evidence of field visits is a stronger signal than a generic “sales” title.
+
+LOWER-FIT LEADS FOR THE FIRST CAMPAIGN
+Desk-only SDRs, recruiters, generic digital agencies, ecommerce sellers, advisors
+with no commercial sales responsibility, and people seeking a full CRM replacement.
+Independent advisors can fit if they sell products or own commercial follow-ups;
+an agronomist title alone is not sufficient. Outlook-only teams have more friction
+because the current direct calendar integration is Google Calendar.
+Avoid enterprises requiring SSO, SOC 2, team administration or deep CRM sync unless
+those capabilities have been separately verified. Do not claim them.
+
+HOW TO PERSONALIZE
+Use one verified professional fact about their territory, products or field role.
+Connect it to remembering promises after visits. Do not pretend to know that a
+specific person loses sales, forgets follow-ups, or has bad CRM discipline.
+Do not invent shared contacts, familiarity, customer logos, testimonials, revenue
+uplift, time saved, or accuracy percentages.
+
+CAMPAIGN ANGLE
+“After a grower visit, do you type up the notes later? Folup turns a quick voice
+recap into follow-ups, a CRM note, and a suggested next move for the sale.”
+Keep one call to action. Do not lead with every feature, research, model names,
+Decisions API, or a claim that Folup closes deals automatically.
+
+DESTINATION
+Recommended first-touch destination after landing deployment: https://www.folup.app/
+Use /try when explicitly inviting the prospect to explore a sample visit.
+The sample walkthrough needs no account; recording their own note needs sign-in.
+The sample is prewritten, not a live AI evaluation of the visitor's input.
+Suggested campaign URL after attribution is implemented:
+https://www.folup.app/?utm_source=apollo&utm_medium=email&utm_campaign=ag_field_pilot
+Current analytics strips UTMs: this URL does NOT currently produce campaign
+attribution in PostHog. Do not put a prospect's email or name in a URL.
+
+MEASUREMENT BEFORE SCALING
+Start with one coherent cohort of about 50 qualified contacts, not many tiny
+variants. Review responses and whether visitors create their first useful note.
+Current PostHog only receives anonymous pageviews; it cannot show named prospects
+or the full signup-to-note-to-calendar funnel. Add minimal, privacy-safe campaign
+and conversion measurement before treating traffic as campaign performance.
+Desired events: demo opened, signup completed, first note processed, CRM copied,
+calendar event successfully created, subscription activated. These are a proposed
+measurement plan, not events already implemented.
+Never transmit voice audio, transcripts, CRM text, contact names or calendar
+descriptions into product analytics.

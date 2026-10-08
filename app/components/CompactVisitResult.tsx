@@ -1,6 +1,7 @@
 'use client'
 
 import {useRef,useState} from 'react'
+import {track} from '../../lib/posthog'
 import {calendarDraftFromAction,type CalendarDraft} from '../../lib/calendarDraft'
 import CalendarFollowUp from './CalendarFollowUp'
 import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
@@ -42,7 +43,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
             {isRecommendation && <span className="text-xs text-emerald-800">Proposed</span>}
           </div>
           <CalendarFollowUp initial={initial} previewDescription={action.description} compact actionNumber={index+1} disabled={recording || saving==='saving'}
-            noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail}
+            noteId={noteId} actionIndex={index} sourceAction={action} ownerEmail={ownerEmail} actionOrigin={action.origin||'unknown'}
             evidence={action.evidence} referenceAt={referenceAt}
             onDraftChange={draft=>{schedules.current[index]=draft}}
             onOpen={onCalendarOpened} onClarify={extraction.questions.some(q=>q.action_index===index && q.field!=='date' && q.field!=='time')?()=>onClarify(index):undefined} />
@@ -53,7 +54,7 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
     {extraction.questions.length>0 && <button type="button" onClick={()=>onClarify()} className="text-sm text-amber-800 underline">Review unclear details</button>}
     <VisitResearch research={research}/>
     <footer className="grid grid-cols-2 gap-2 border-t border-zinc-100 pt-4">
-      <button type="button" disabled={research.eligible&&research.state==='running'} onClick={async()=>{try{await onCopy(researchCrmText(research.result,extraction.language==='Spanish'),schedules.current);setCopied(true);setError('')}catch{setError('Could not copy. Please retry.')}}} className="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50">{copied?'Copied':'Copy to CRM'}</button>
+      <button type="button" disabled={research.eligible&&research.state==='running'} onClick={async()=>{try{await onCopy(researchCrmText(research.result,extraction.language==='Spanish'),schedules.current);track('crm_copied');setCopied(true);setError('')}catch{setError('Could not copy. Please retry.')}}} className="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50">{copied?'Copied':'Copy to CRM'}</button>
       <button type="button" disabled={voiceDisabled} onClick={onVoice} className={`rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-50 ${recording?'border-red-300 bg-red-50 text-red-700':'border-zinc-200 text-gray-700'}`}>{recording?'Finish correction':'Correct by voice'}</button>
     </footer>
     {saving==='saving' && <p role="status" className="text-sm text-gray-500">Saving…</p>}

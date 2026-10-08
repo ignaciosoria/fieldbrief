@@ -1,4 +1,5 @@
 import { FolupLogo } from '../../components/folup-branding'
+import AnalyticsPreference from './AnalyticsPreference'
 
 function Arrow({ down = false }: { down?: boolean }) {
   return (
@@ -24,7 +25,7 @@ function GoogleIcon() {
 const steps = [
   { title: 'Say it while it’s fresh.', description: 'Just left a visit? Record what happened in your own words. No forms, no perfect script.' },
   { title: 'Make the next step clear.', description: 'Review the key details and follow-ups. If something needs changing, correct it by voice.' },
-  { title: 'Keep things moving.', description: 'Open a follow-up in Google Calendar, ready to save. Copy the visit note into your CRM.' },
+  { title: 'Keep things moving.', description: 'Connect Google Calendar and add the follow-ups you choose. Copy the visit note into your CRM.' },
 ]
 
 /** Public-only presentation. Auth stays owned by the existing page callback. */
@@ -51,14 +52,14 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
           <div>
             <p className="mb-5 flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.13em] text-[#625d83] uppercase sm:text-xs">
               <span className="h-1.5 w-1.5 rounded-full bg-[#6759dd]" aria-hidden="true" />
-              For the moments after a client visit
+              Built for salespeople out in the field
             </p>
             <h1 id="landing-title" className="max-w-[550px] text-[clamp(2.5rem,4.4vw,3.75rem)] leading-[1.08] font-semibold tracking-[-0.055em] text-balance">
               Every visit.<br />
-              <span className="text-[#4f46e5]">A clear next step.</span>
+              <span className="text-[#4f46e5]">Worth following up.</span>
             </h1>
             <p className="mt-6 max-w-[430px] text-[17px] leading-[1.75] text-[#62636d]">
-              You do the talking. Folup turns your voice note into clear follow-ups, calendar events, and a CRM note ready to copy.
+              Leave a voice note after your visit. Get the follow-ups you promised, a CRM note ready to copy, and a Smart Next Step to help move the sale forward.
             </p>
             <div className="mt-8 flex flex-col items-start gap-3 sm:mt-9">
               <button type="button" onClick={onSignIn} className={`inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-[#4f46e5] px-6 py-3 text-[14px] font-semibold text-white shadow-[0_3px_8px_#4f46e51a] transition-colors hover:bg-[#4338ca] sm:w-auto ${focus}`}>
@@ -89,7 +90,7 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
                 YOUR WORDS
               </div>
               <blockquote className="text-[14px] leading-[1.8] text-[#625d75]">
-                “Just saw Maya at Northstar. Um, she likes the A4, but needs the spec sheet first. Send it tomorrow — no prices. And call her Friday afternoon.”
+                “Just saw Maya at Northstar. Um, she likes the A4, but her engineer needs to review it before a trial. Send her the spec sheet tomorrow — no prices. She’ll talk to him Thursday.”
               </blockquote>
             </div>
             <div className="mb-4 flex justify-center text-[#9890b3]" aria-hidden="true"><Arrow down /></div>
@@ -109,14 +110,17 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
                     <CalendarIcon /> Tomorrow · 9:00 AM
                   </p>
                 </li>
-                <li className="rounded-xl border border-[#e9e7ee] p-3.5">
-                  <p className="text-[12px] font-semibold text-[#393148]">Call Maya — Northstar</p>
-                  <p className="mt-3 flex items-center gap-1.5 text-[10px] font-medium text-[#6355b3]">
+                <li className="rounded-xl border border-[#c9dfcf] bg-[#edf6ef] p-3.5">
+                  <p className="mb-2 text-[10px] font-semibold tracking-wide text-[#356346]">SMART NEXT STEP · RECOMMENDATION</p>
+                  <p className="text-[12px] font-semibold text-[#244630]">Check the technical review with Maya</p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-[#476553]">Find out what her engineer needs to approve a trial, after their Thursday conversation.</p>
+                  <p className="mt-3 flex items-center gap-1.5 text-[10px] font-medium text-[#356346]">
                     <CalendarIcon /> Friday · 3:00 PM
                   </p>
+                  <p className="mt-1 text-[10px] text-[#476553]">Suggested timing. Not an agreed meeting.</p>
                 </li>
               </ol>
-              <p className="mt-4 text-[11px] leading-relaxed text-[#7b7488]"><span aria-hidden="true">💡 </span>Needs the spec sheet before moving forward.</p>
+              <p className="mt-4 text-[11px] leading-relaxed text-[#7b7488]">Technical approval needed. No trial agreed yet.</p>
               <div className="mt-4 flex items-center gap-2 border-t border-[#eeecf2] pt-3 text-[11px] font-medium text-[#696175]">
                 <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="8" y="8" width="12" height="14" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /></svg>
                 CRM note ready to copy
@@ -124,6 +128,23 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
             </div>
             <p className="mt-3.5 text-center text-[10px] leading-relaxed text-[#6d657b]">Review the details. You choose what goes into your calendar.</p>
           </figure>
+        </section>
+
+        <section aria-labelledby="smart-title" className="bg-[#202824] text-[#f3f3ec]">
+          <div className="mx-auto grid max-w-[1160px] gap-10 px-6 py-16 sm:px-10 lg:grid-cols-[1.15fr_1fr] lg:gap-20 lg:py-20">
+            <div>
+              <p className="text-xs font-medium tracking-[0.12em] text-[#b7d3bd] uppercase">Smart Next Step</p>
+              <h2 id="smart-title" className="mt-5 max-w-lg text-3xl leading-[1.15] font-medium tracking-[-0.04em] sm:text-4xl">Not just what you said.<br />What could move the sale.</h2>
+              <p className="mt-6 max-w-md text-[15px] leading-7 text-[#c1cbc4]">An interested customer. A technical question. Someone else who needs to approve. Folup uses the context of your note to suggest a useful next move — without treating it as a promise from your customer.</p>
+            </div>
+            <div className="space-y-6 self-center">
+              {[
+                ['Your commitments, kept intact.', 'Send the quote. Call on Tuesday. Folup captures the actions you actually agreed.'],
+                ['A recommendation with a purpose.', 'When useful, get an additional next step aimed at the obstacle holding the sale back.'],
+                ['You stay in control.', 'Review or correct the result. Add only the actions you want to your calendar.'],
+              ].map(([title, body], i) => <div key={title} className="flex gap-5 border-t border-[#445047] pt-5"><span className="pt-0.5 font-mono text-xs text-[#9fb4a5]">0{i + 1}</span><div><h3 className="text-base font-medium">{title}</h3><p className="mt-2 text-sm leading-6 text-[#c1cbc4]">{body}</p></div></div>)}
+            </div>
+          </div>
         </section>
 
         <section id="how-it-works" aria-labelledby="how-title" className="border-y border-[#eae9e5] bg-[#f7f7f4]">
@@ -143,9 +164,29 @@ export default function PublicLanding({ onSignIn }: { onSignIn: () => void }) {
             </ol>
           </div>
         </section>
+
+        <section aria-labelledby="questions-title" className="mx-auto grid max-w-[1160px] gap-10 px-6 py-16 sm:px-10 lg:grid-cols-[1fr_1.3fr] lg:gap-20">
+          <div>
+            <p className="text-xs font-medium tracking-widest text-[#625d83] uppercase">Made for the next visit</p>
+            <h2 id="questions-title" className="mt-4 text-3xl font-semibold tracking-[-0.04em]">Less catching up.<br />More following through.</h2>
+            <p className="mt-5 max-w-sm text-sm leading-7 text-[#62636d]">For field reps, territory managers and independent salespeople who would rather talk to customers than type up the day.</p>
+            <a href="/try" className={`mt-6 inline-flex min-h-12 items-center gap-3 rounded-xl bg-[#202824] px-5 text-sm font-medium text-white hover:bg-[#344238] ${focus}`}>Explore the sample visit <Arrow /></a>
+            <p className="mt-3 text-xs text-[#72737b]">Sample demo: no account needed.</p>
+          </div>
+          <div className="divide-y divide-[#e6e5df] border-y border-[#e6e5df]">
+            {[
+              ['Does Folup replace my CRM?', 'No. It prepares a clear visit note you can copy into your existing CRM. It does not automatically sync with Salesforce or HubSpot.'],
+              ['Does it record my customer meetings?', 'You record your own recap after the visit. Speak naturally in English or Spanish; you can correct the result by voice.'],
+              ['How does Google Calendar work?', 'Connect your Google Calendar, review the date and time, then add an action directly. Folup does not send invitations to your contacts.'],
+              ['What is included in the trial?', '14 days free, with up to 100 notes and Smart Next Step included. No card needed. The trial starts with your first processed note. Pro is $19/month.'],
+              ['What if the AI gets something wrong?', 'Review the people, actions and timing before adding them to your calendar. Correct by voice when needed. Recommendations are not customer commitments.'],
+            ].map(([question, answer]) => <details key={question} className="group py-5"><summary className={`cursor-pointer text-sm font-semibold ${focus}`}>{question}</summary><p className="mt-3 pr-4 text-sm leading-7 text-[#62636d]">{answer}</p></details>)}
+          </div>
+        </section>
       </main>
 
       <footer className="mx-auto flex max-w-[1160px] flex-col items-start justify-between gap-4 px-6 py-7 text-xs text-[#777770] sm:flex-row sm:items-center sm:px-10">
+        <AnalyticsPreference />
         <p><span className="font-semibold text-[#47473f]">folup</span><span className="mx-3 text-[#c6c6bf]" aria-hidden="true">/</span>Less admin. More follow-through.</p>
         <a href="/try" className={`inline-flex min-h-11 items-center gap-2 rounded-lg hover:text-[#4f46e5] ${focus}`}>Explore the demo <Arrow /></a>
       </footer>

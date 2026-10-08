@@ -1,0 +1,90 @@
+FOLUP ANALYTICS V1 — 7 OCTOBER 2026
+
+Status: implemented locally, not deployed or verified in production ingestion.
+No database migration. Uses existing NEXT_PUBLIC_POSTHOG_KEY / HOST.
+The connected PostHog project is 377461. Confirm deployed token targets this
+project during rollout before interpreting campaign data.
+
+CAMPAIGN LINK
+https://www.folup.app/?utm_source=apollo&utm_medium=email&utm_campaign=ag_field_pilot&utm_content=a
+Other allowed campaign codes: field_sales_pilot, ag_field_followup.
+Other allowed content codes: b, followup_1, followup_2.
+Only these finite codes pass the privacy filter. Unknown UTMs and all URL text
+are discarded. Never use contact names, emails or note text as campaign tags.
+
+IDENTITY AND ATTRIBUTION
+Random pseudonymous browser UUID retained for 30 days in a dedicated localStorage
+entry. First campaign and most recent recognized campaign accompany events.
+Direct returns preserve attribution. OAuth in the same browser preserves it.
+No PostHog person profiles or identify calls. No account email, user name, audio,
+transcript, CRM text, calendar description, DOM, replay, full URL or referrer.
+No cross-device identity stitching. Clearing storage, expiry or signing out
+starts a new journey. This measures browsers, not exact people or Apollo contacts.
+Do Not Track, Global Privacy Control and explicit opt-out stop client collection.
+Privacy control is present on the public landing and in Settings.
+Production hostname only: local development and preview deployments are excluded.
+
+EVENT CONTRACT
+$pageview: page opened; only /, /try or /other.
+demo_started / demo_completed: sample walkthrough; NOT live note processing.
+signin_started / signin_completed: Google sign-in initiated and authenticated
+return observed. Includes existing users; NOT a new-account registration metric.
+note_processing_started: explicit voice or text processing attempt.
+note_processed: successful structure response received. May still need user
+clarification; this is NOT a guarantee that database persistence succeeded.
+has_smart_step records whether the result includes a recommendation, not its text.
+note_processing_failed: caught processing failure. Error messages are never sent.
+trial_limit_reached: explicit access/quota refusal.
+crm_copied: clipboard write succeeded; actual notes, not sample demo copy.
+calendar_save_started: actual calendar-save request.
+calendar_connection_required: Google permission connection required.
+calendar_saved: server response confirms saved event. Count browsers reaching
+this event for activation; raw confirmations are not unique calendar events.
+action_origin distinguishes commitment, recommendation and unknown legacy actions.
+calendar_save_failed: save error, including uncertain network outcomes.
+voice_correction_started: correction recording successfully starts.
+checkout_opened: valid Stripe checkout URL returned; NOT a payment.
+checkout_failed: checkout creation/navigation preparation failed.
+subscription_purchased: signed Stripe event for paid subscription checkout,
+after subscription sync succeeds. Stable event UUID per checkout for retry dedup.
+No client-side success=true conversion. Owner grants are not purchases.
+
+LIMITS
+Client events can be blocked by privacy settings, blockers or closed tabs.
+Sign-in starts/completions do not distinguish new and returning accounts.
+Use first occurrence of note_processed in a funnel, not raw note count, to
+measure initial activation. It is first within the measurement journey/window,
+not necessarily the first note ever for the account.
+Payment capture is best-effort, with a 1-second timeout and no durable outbox;
+delivery failure logs a content-free warning and never blocks billing. Stripe
+remains the source of truth for revenue. Only checkouts created after rollout
+with attribution metadata can be linked back to their browser journey.
+Opt-out after leaving for Stripe cannot retract metadata already attached to an
+in-flight checkout. No follow-on recurring billing tracking is performed.
+No automatic IP geolocation or session replay. Native replay/session reports
+are not supported by this intentionally minimal configuration.
+
+RECOMMENDED POSTHOG REPORTS AFTER DEPLOYMENT
+1. Acquisition: $pageview unique distinct IDs by first_utm_campaign and utm_content.
+2. Activation: ordered $pageview -> signin_completed -> note_processed,
+   conversion window 14 days. Label as browser-journey conversion, not signups.
+3. Value: note_processed -> crm_copied and note_processed -> calendar_saved,
+   separate funnels (neither action is required before the other).
+4. Purchase: $pageview -> subscription_purchased within 30 days; and
+   checkout_opened -> subscription_purchased within 1 day.
+5. Reliability: processing attempts/completions/failures, calendar connection
+   requirements and save failures. Quota refusals are a separate category.
+6. Speed: median and p95 duration_ms on note_processed by input_mode.
+Always filter environment=production; campaign reports additionally require the
+chosen first_utm_campaign. Avoid interpreting historic anonymous page counts as
+comparable unique visitors. Do not treat total events as distinct people.
+
+ROLLOUT CHECK
+Deploy scoped analytics changes; do not enable experimental model selectors.
+Use one tagged campaign test in a fresh browser. Verify its pageview, sign-in,
+note, successful copy and calendar events share an ID and safe campaign fields.
+Verify opt-out and DNT send nothing. Exclude/remove identified QA traffic from
+analysis through normal PostHog filtering, not by fabricating business conversions.
+Verify the first real paid checkout event against Stripe before reporting sales.
+Create saved funnels only after the new event names/properties are visible in
+the live project's schema; no unverified dashboard has been created yet.

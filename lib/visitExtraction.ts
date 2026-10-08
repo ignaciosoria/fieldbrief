@@ -3,7 +3,8 @@ import { buildPrimaryBaseTitle, type ActionStructuredFields } from './actionTitl
 import {VISIT_DAYPARTS,type VisitDaypart} from './visitTiming'
 import type {ResearchResult} from './visitResearch'
 
-export type VisitAction = {type:'call'|'send'|'meeting'|'follow_up'|'other'; contact:string; company:string; object:string; description:string; date:string; time:string; evidence:string;daypart?:VisitDaypart;subject?:string;origin?:'commitment'|'recommendation';rationale?:string;timingReason?:string}
+export type VisitScheduleAfter = {date:string; evidence:string}
+export type VisitAction = {type:'call'|'send'|'meeting'|'follow_up'|'other'; contact:string; company:string; object:string; description:string; date:string; time:string; evidence:string;daypart?:VisitDaypart;subject?:string;origin?:'commitment'|'recommendation';rationale?:string;timingReason?:string;scheduleAfter?:VisitScheduleAfter|null}
 export type VisitQuestion = {action_index:number; field:'contact'|'company'|'date'|'time'|'object'|'description'; question:string}
 export type VisitExtraction = {research?:{source:string;result:ResearchResult|null};crmNarrativeVersion?:1;contractVersion?:3;language:'Spanish'|'English'; contacts:string[]; companies:string[]; location:string; summary:string; insights:string[]; actions:VisitAction[]; questions:VisitQuestion[]}
 
@@ -13,11 +14,13 @@ export const VISIT_SCHEMA = object({
   contractVersion:{type:'integer',enum:[3]},
   language:{type:'string',enum:['Spanish','English']}, contacts:{type:'array',items:text},companies:{type:'array',items:text},
   location:text,summary:text,insights:{type:'array',items:text},
-  actions:{type:'array',items:object({type:{type:'string',enum:['call','send','meeting','follow_up','other']},contact:text,company:text,object:text,description:text,subject:{type:'string',maxLength:80},date:text,time:text,daypart:{type:'string',enum:VISIT_DAYPARTS},evidence:text})},
+  actions:{type:'array',items:object({type:{type:'string',enum:['call','send','meeting','follow_up','other']},contact:text,company:text,object:text,description:text,subject:{type:'string',maxLength:80},date:text,time:text,daypart:{type:'string',enum:VISIT_DAYPARTS},evidence:text,scheduleAfter:{anyOf:[object({date:text,evidence:text}),{type:'null'}]}})},
   questions:{type:'array',items:object({action_index:{type:'integer'},field:{type:'string',enum:['contact','company','date','time','object','description']},question:text})},
 })
 
 export const VISIT_PROMPT = `Turn a naturally spoken post-visit sales note into a faithful CRM note and actionable calendar follow-ups.
+DEPENDENCY-AWARE SCHEDULING
+scheduleAfter is null unless this action must wait for a dated prerequisite stated elsewhere in this SAME customer's context. When applicable, return {date: 'YYYY-MM-DD', evidence: an exact contiguous source quote establishing the prerequisite and its timing}. date here is the prerequisite's date, NOT the action's agreed date or proof of completion. Read the whole note, not just action.evidence. Example: 'Owen asks finance Friday October ninth. Need to learn if credit clears before proceeding.' => status-check action.date='', scheduleAfter.date='2026-10-09', evidence='Owen asks finance Friday October ninth.' The application will suggest a working day AFTER that date, without assuming approval. Retain the prerequisite in the action description. Do not attach a later order confirmation to an independent earlier document send. Do not borrow another customer's date or use a proposed coordination meeting as a prerequisite for contacting the customer beforehand. If the prerequisite date is unknown, use null and preserve the condition in the description; never invent completion timing. If the rep explicitly specifies an action time after the prerequisite on the same day, keep that explicit date/time. Conflicting explicit action/prerequisite dates require a date question, not silent rescheduling.
 Assistant research is NOT a salesperson task: an explicit request addressed to Folup/the assistant (including an imperative such as 'investiga qué es...', 'research that', 'look up why...') is handled by a separate research workflow. Never turn it into an action, recommendation, calendar reminder, customer commitment or CRM visit fact. Do not invent a send/call to deliver that answer. This exclusion applies even when research fails or needs clarification. Preserve independent real-world commitments: 'I promised to research this', 'tengo que consultar al laboratorio', 'ask David about the results', or a customer's request to the rep remain rep tasks. In mixed notes, keep those commitments and omit only the assistant request. Never classify by the word 'research/investigar' alone.
 An unambiguous relational recipient such as 'el padre de Diego' or 'Ana's father' is a usable identity: preserve the relationship with its named anchor. Do not ask for an unstated first name. Ask only when the intended person is genuinely unclear.
 subject is a concise calendar topic, ideally under 28 characters: keep the distinguishing product/document/issue identifier, e.g. 'garantía Z9', 'ficha Koral 18', 'autumn prices'. For call/meeting/follow_up use a NOUN PHRASE such as 'cantidad de sacos', not an instruction like 'Comprobar sacos'. Only for other tasks, use a short instruction such as 'Consultar ácaros' or 'Check warehouse stock'. No recipient/company/date, invented purpose, truncated name, ellipsis, or unrelated context. Use '' if no purpose/deliverable was stated. Full details and restrictions stay in description; subject does not replace them.
@@ -60,6 +63,11 @@ export function parseVisitExtraction(raw: unknown, source: string): VisitExtract
       a.evidence = matches[0][0]
     }
     if (a.date && (!/^\d{4}-\d{2}-\d{2}$/.test(a.date) || !DateTime.fromISO(a.date).isValid)) throw Error('Invalid date')
+    if(a.scheduleAfter!==undefined && a.scheduleAfter!==null){
+      const bound=a.scheduleAfter
+      if(typeof bound!=='object' || typeof bound.date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(bound.date) || !DateTime.fromISO(bound.date).isValid ||
+        typeof bound.evidence!=='string' || !bound.evidence.trim() || !source.includes(bound.evidence))throw Error('Invalid scheduling dependency')
+    }
     if (a.time && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(a.time)) throw Error('Invalid time')
     if((r.contractVersion===3 || a.daypart!==undefined) && !VISIT_DAYPARTS.includes(a.daypart!))throw Error('Invalid daypart')
     if((r.contractVersion===3 || a.subject!==undefined) && (typeof a.subject!=='string' || Array.from(a.subject).length>80))throw Error('Invalid action subject')

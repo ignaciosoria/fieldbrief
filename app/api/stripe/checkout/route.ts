@@ -4,8 +4,9 @@ import { auth } from "@/auth"
 import {stripeServer} from '../../../../lib/stripeServer'
 import {serverDb} from '../../../../lib/serverDb'
 import {grantsPaidAccess} from '../../../../lib/subscriptionPolicy'
+import {analyticsMetadata} from '../../../../lib/analyticsBilling'
 
-export async function POST() {
+export async function POST(request:Request) {
   try {
     const session = await auth()
     if (!session?.user?.email) {
@@ -13,6 +14,8 @@ export async function POST() {
     }
 
     const email=session.user.email.trim()
+    const body=await request.json().catch(()=>null)
+    const attribution=analyticsMetadata(body?.analytics)
     const stripe=stripeServer()
     const price=process.env.STRIPE_PRICE_ID
     if(!price) throw Error('Missing price')
@@ -36,9 +39,9 @@ export async function POST() {
       ...(existing?.stripe_customer_id ? {customer:existing.stripe_customer_id} : {customer_email:email}),
       success_url: new URL('/?success=true',origin).href,
       cancel_url: new URL('/?canceled=true',origin).href,
-      metadata: {user_email:email},
+      metadata: {user_email:email,...attribution},
       subscription_data:{metadata:{user_email:email}},
-    },{idempotencyKey:createHash('sha256').update(`folup-checkout:en:${email}:${price}:${Math.floor(Date.now()/900000)}`).digest('hex')})
+    },{idempotencyKey:createHash('sha256').update(`folup-checkout:en:${email}:${price}:${JSON.stringify(attribution)}:${Math.floor(Date.now()/900000)}`).digest('hex')})
 
     return NextResponse.json({ url: checkoutSession.url })
   } catch {

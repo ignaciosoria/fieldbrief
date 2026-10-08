@@ -9,6 +9,22 @@ const workingDay = (d:DateTime):DateTime => d.weekday===6 ? d.plus({days:2}) : d
 export function suggestCalendarSchedule(
   draft:CalendarDraft, evidence = '', referenceAt?:string, now = new Date().toISOString(),
 ):SuggestedDraft {
+  const suggested=suggestCalendarScheduleBase(draft,evidence,referenceAt,now)
+  // Clamp only generated schedules, never an explicitly chosen date.
+  if(draft.date && !draft.dateSuggested)return suggested
+  const after=draft.scheduleAfter?.date
+  if(!after || !/^\d{4}-\d{2}-\d{2}$/.test(after))return suggested
+  const prerequisite=DateTime.fromISO(after,{zone:draft.timezone})
+  const scheduled=DateTime.fromISO(suggested.date,{zone:draft.timezone})
+  if(!prerequisite.isValid || !scheduled.isValid)return suggested
+  const earliest=workingDay(prerequisite.startOf('day').plus({days:1}))
+  if(scheduled>=earliest)return suggested
+  return {...suggested,date:earliest.toISODate()!,dateSuggested:true,suggestionReason:`Suggested after the prerequisite on ${after}`}
+}
+
+function suggestCalendarScheduleBase(
+  draft:CalendarDraft, evidence = '', referenceAt?:string, now = new Date().toISOString(),
+):SuggestedDraft {
   const current=DateTime.fromISO(now,{zone:draft.timezone})
   const reference=referenceAt ? DateTime.fromISO(referenceAt,{zone:draft.timezone}) : current
   const time=draft.needsTimeClarification ? '' : draft.time || '09:00'

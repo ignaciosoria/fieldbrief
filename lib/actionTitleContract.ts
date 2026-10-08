@@ -25,6 +25,7 @@ export type ActionStructuredFields = {
   origin?: 'commitment' | 'recommendation'
   rationale?: string
   timingReason?: string
+  scheduleAfter?: {date:string; evidence:string}|null
   /** Short source-grounded topic; absent on saved pre-v3 notes. */
   subject?: string
   /** Brief action-specific instruction, grounded in the visit; not the entire CRM note. */

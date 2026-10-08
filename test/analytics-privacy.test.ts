@@ -23,7 +23,7 @@ test('unknown, replay, interaction, error and identity events fail closed',()=>{
   assert.equal(privatePageview(null,'random'),null)
 })
 
-test('analytics cannot collect DOM, recordings or remote-enabled features; no persisted identity',()=>{
+test('SDK cannot collect DOM, recordings or remote-enabled features; vendor persistence stays off',()=>{
   const config=privateAnalyticsConfig('random')
   for(const key of ['autocapture','capture_pageleave','capture_dead_clicks','rageclick','capture_heatmaps','capture_exceptions','capture_performance','ip'] as const) assert.equal(config[key],false,key)
   for(const key of ['disable_session_recording','disable_surveys','disable_external_dependency_loading','advanced_disable_flags','disable_persistence','mask_all_text','mask_all_element_attributes'] as const) assert.equal(config[key],true,key)

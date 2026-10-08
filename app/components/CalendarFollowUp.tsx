@@ -9,6 +9,7 @@ import {GOOGLE_CALENDAR_SCOPE} from '../../lib/googleCalendarScope'
 import {sameActionSnapshot,type CalendarActionState} from '../../lib/calendarActionState'
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
 import {formatTime12,timeFrom12} from '../../lib/time12'
+import {track} from '../../lib/posthog'
 
 type Props = {
   initial: CalendarDraft
@@ -22,6 +23,7 @@ type Props = {
   noteId?: string
   actionIndex?: number
   sourceAction?: unknown
+  actionOrigin?: 'commitment'|'recommendation'|'unknown'
   ownerEmail?: string
   /** Presentation only: the complete initial draft is still sent to Calendar. */
   previewDescription?: string
@@ -34,7 +36,7 @@ export default function CalendarFollowUp(props: Props) {
   return <CalendarFollowUpFields key={JSON.stringify([props.ownerEmail,props.noteId,props.actionIndex,props.initial,props.sourceAction])} {...props} />
 }
 
-function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange}: Props) {
+function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, onClarify, onOpen, evidence, referenceAt, now, noteId, actionIndex = 0, sourceAction, ownerEmail,previewDescription,compact=false,onDraftChange,actionOrigin='unknown'}: Props) {
   const [expanded,setExpanded]=useState(false)
   const description=previewDescription ?? initial.details
   const longDescription=compact && description.length>160
@@ -132,14 +134,16 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
       const state=sourceAction ? actionState || await readActionState() : undefined
       if(!alive.current)return
       if(state?.needsReview){setSaveError('This corrected action may already have a calendar event. Review it in Google Calendar; automatic creation is blocked to avoid duplicates.');return}
+      track('calendar_save_started',{action_origin:actionOrigin})
       const response=await saveCalendarFromClient({noteId,actionIndex,draft,...(state?{actionId:state.actionId,sourceAction}:{})})
       if(!alive.current)return
-      if(response.kind==='connect'){setConnectionNeeded(true);return}
-      if(response.kind==='error'){setSaveError(response.message);setReviewUrl(response.url || '');return}
+      if(response.kind==='connect'){track('calendar_connection_required');setConnectionNeeded(true);return}
+      if(response.kind==='error'){track('calendar_save_failed');setSaveError(response.message);setReviewUrl(response.url || '');return}
       setSavedUrl(response.url)
+      track('calendar_saved',{action_origin:actionOrigin})
       try{sessionStorage.removeItem(storageKey)}catch{}
       onOpen?.()
-    }catch{if(alive.current)setSaveError('Could not confirm the event. Retry safely; Folup will not create a duplicate.')}
+    }catch{track('calendar_save_failed');if(alive.current)setSaveError('Could not confirm the event. Retry safely; Folup will not create a duplicate.')}
     finally{busyRef.current=false;if(alive.current)setBusy(false)}
   }
   return <div>

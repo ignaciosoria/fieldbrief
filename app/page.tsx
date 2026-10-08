@@ -1,6 +1,7 @@
 'use client'
 
-import { initPosthog } from '../lib/posthog'
+import { initPosthog, track, trackSigninStart, trackSigninComplete, analyticsCheckout, clearAnalyticsJourney } from '../lib/posthog'
+import AnalyticsPreference from './components/AnalyticsPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { calendarExportDate, calendarTimedRange } from '../lib/calendarExportDate'
@@ -97,14 +98,14 @@ const TRY_WALKTHROUGH_PRIMARY_DISPLAY =
   "Send clinical data to Dr. Reynolds — St. Mary's Hospital (Tuesday · 9:00 AM)"
 
 const TRY_WALKTHROUGH_INSIGHT_LINES = [
-  'Budget resets in October — strong buying window',
-  'Needs clinical trial data before committing',
-  'Interested in full ward rollout if pilot succeeds',
+  'Budget resets in October',
+  'Clinical data to be sent next Tuesday',
+  'Interested in the new catheter line; no purchase confirmed',
 ] as const
 
 /** Pre-written CRM line for Copy CRM on the unauthenticated /try walkthrough. */
 const TRY_WALKTHROUGH_COPY_CRM_TEXT =
-  "Contact: Dr. Reynolds — St. Mary's Hospital | Next step: Send clinical data (Tuesday 9AM) | Follow up: Call purchasing dept (Thursday 2PM) | Notes: Budget resets October. Needs clinical trial data. Interested in full ward rollout if pilot succeeds."
+  "Dr. Reynolds — St. Mary's Hospital\n\nDr. Reynolds is interested in the new catheter line. The budget resets in October; no purchase was confirmed.\n\nNext steps:\n- Send clinical data next Tuesday at 9:00 AM (suggested time).\n- Call purchasing Thursday at 3:00 PM (suggested time)."
 
 import { FolupHeaderBrand } from '../components/folup-branding'
 
@@ -610,7 +611,7 @@ function buildTryWalkthroughStructureResult(): StructureResult {
         contact: 'Purchasing dept',
         company: "St. Mary's Hospital",
         resolvedDate: nextThursdayMmddFrom(),
-        timeHint: '14:00',
+        timeHint: '15:00',
         supportingType: 'call',
       },
     ],
@@ -1946,10 +1947,12 @@ function supportingCalendarStepId(index: number): string {
 export default function Home() {
   const { data: session, status } = useSession()
   const signInWithGoogle = useCallback(() => {
+    trackSigninStart()
     void signIn('google', { callbackUrl: '/' })
   }, [])
   /** /try demo: sign in then return with ?paywallUpgrade=1 to open upgrade modal post-login */
   const signInFromDemoHeader = useCallback(() => {
+    trackSigninStart()
     if (typeof window === 'undefined') {
       void signIn('google', { callbackUrl: '/try?paywallUpgrade=1' })
       return
@@ -2159,6 +2162,8 @@ export default function Home() {
   useEffect(() => {
     initPosthog()
   }, [])
+
+  useEffect(()=>{if(status==='authenticated')trackSigninComplete()},[status])
 
   useEffect(() => {
     let cancelled = false
@@ -2710,6 +2715,7 @@ export default function Home() {
       setCorrectingSeconds(0)
       correctTimerRef.current = setInterval(() => setCorrectingSeconds((s) => s + 1), 1000)
       setIsCorrectingRecording(true)
+      track('voice_correction_started')
     } catch (err: unknown) {
       recordingStream?.getTracks().forEach(t=>t.stop())
       correctRecorderRef.current=null
@@ -2826,6 +2832,7 @@ export default function Home() {
   const handleAiAccessResponse = (statusCode: number, data: { code?: string }): boolean => {
     if (statusCode === 401) { setShowLoginPrompt(true); return true }
     if (statusCode === 403 && data.code === 'QUOTA_EXCEEDED') {
+      track('trial_limit_reached')
       setSubscriptionCheck(n=>n+1)
       setShowPaywall('limit')
       return true
@@ -2836,6 +2843,8 @@ export default function Home() {
   const processRecordedAudio = async (audio:NonNullable<typeof pendingAudio>) => {
     if (audioProcessingRef.current || audio.owner!==audioOwnerRef.current) return
     audioProcessingRef.current=true
+    const analyticsStarted=Date.now()
+    track('note_processing_started',{input_mode:'voice'})
     setPendingAudio(audio)
     const {blob}=audio
     setLoading(true)
@@ -2888,6 +2897,7 @@ export default function Home() {
       }
 
       let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
+      track('note_processed',{input_mode:'voice',duration_ms:Date.now()-analyticsStarted,has_smart_step:final.extraction?.actions.some(a=>a.origin==='recommendation')||false})
       if (final.schemaVersion === 2) { await acceptVisit(final,tx); return }
 
       if (
@@ -2941,6 +2951,7 @@ export default function Home() {
         })
       }
     } catch (err: any) {
+      track('note_processing_failed',{input_mode:'voice',duration_ms:Date.now()-analyticsStarted})
       setError(err?.message || 'Something went wrong.')
     } finally {
       audioProcessingRef.current=false
@@ -2953,6 +2964,8 @@ export default function Home() {
     if (pendingAudio || audioProcessingRef.current || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
+    const analyticsStarted=Date.now()
+    track('note_processing_started',{input_mode:'text'})
     setLoading(true)
     clearTryWalkthrough()
     setError('')
@@ -2977,6 +2990,7 @@ export default function Home() {
       if(owner!==audioOwnerRef.current) return
       if (handleAiAccessResponse(res.status, data)) return
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
+      track('note_processed',{input_mode:'text',duration_ms:Date.now()-analyticsStarted,has_smart_step:data.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})
       if (data.schemaVersion === 2) { await acceptVisit(data,input); return }
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
@@ -3010,6 +3024,7 @@ export default function Home() {
         })
       }
     } catch (err: unknown) {
+      track('note_processing_failed',{input_mode:'text',duration_ms:Date.now()-analyticsStarted})
       if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
       if(owner===audioOwnerRef.current) setLoading(false)
@@ -3036,6 +3051,7 @@ export default function Home() {
     if (!copyText) return
     try {
       await navigator.clipboard.writeText(copyText)
+      track('crm_copied')
       setCopied(true)
     } catch {
       setError('Could not copy to clipboard.')
@@ -3099,8 +3115,10 @@ export default function Home() {
       tryWalkthroughTimerRef.current = null
     }
     setTryWalkthroughPhase('loading')
+    track('demo_started')
     tryWalkthroughTimerRef.current = window.setTimeout(() => {
       setTryWalkthroughPhase('done')
+      track('demo_completed')
       tryWalkthroughTimerRef.current = null
     }, 2500)
   }, [isDemo, status])
@@ -4076,8 +4094,7 @@ export default function Home() {
                       Turn your sales visits into action
                     </h2>
                     <p className="mt-2.5 text-pretty text-[0.875rem] font-medium leading-relaxed text-[#6b7280] sm:text-[0.9375rem]">
-                      Record a voice memo after each visit. Get your next step, calendar event, and CRM summary
-                      in seconds.
+                      Explore a sample visit without an account. Sign in when you’re ready to record your own.
                     </p>
                   </>
                 ) : (
@@ -4905,12 +4922,13 @@ export default function Home() {
               </div>
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: '/' })}
+                onClick={() => {clearAnalyticsJourney();void signOut({ callbackUrl: '/' })}}
                 className="mt-4 w-full rounded-xl border border-[#e5e7eb] bg-white py-3 text-[13px] font-medium text-[#111111] transition-colors hover:bg-zinc-100"
               >
                 Sign out
               </button>
             </div>
+            <AnalyticsPreference />
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">Data</p>
             <button
               onClick={async () => {
@@ -5091,14 +5109,16 @@ export default function Home() {
                 setCheckoutBusy(true)
                 setCheckoutError('')
                 try {
-                  const res = await fetch('/api/stripe/checkout', { method: 'POST' })
+                  const res = await fetch('/api/stripe/checkout', { method: 'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analytics:analyticsCheckout()}) })
                   const data = await res.json()
                   if (!res.ok) throw Error(data.error || 'Unable to open checkout. Please try again.')
                   if (typeof data.url !== 'string') throw Error('Checkout unavailable. Please try again.')
                   const url = new URL(data.url)
                   if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw Error('Invalid checkout destination.')
+                  track('checkout_opened')
                   window.location.href = url.href
                 } catch (err) {
+                  track('checkout_failed')
                   setCheckoutError(err instanceof Error ? err.message : 'Unable to open checkout. Please try again.')
                 } finally { setCheckoutBusy(false) }
               }}
@@ -5128,7 +5148,7 @@ export default function Home() {
             </p>
             <button
               type="button"
-              onClick={() => signIn('google')}
+              onClick={() => {trackSigninStart();void signIn('google')}}
               className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[15px] font-bold text-white"
               style={{ backgroundColor: '#4F46E5' }}
             >

@@ -1,6 +1,7 @@
 import {stripeServer} from "../../../../lib/stripeServer"
 import {syncSubscription} from "../../../../lib/subscriptionSyncServer"
 import {subscriptionEventTarget} from "../../../../lib/subscriptionEvent"
+import {capturePaidAnalytics} from '../../../../lib/analyticsBillingServer'
 
 export async function POST(request:Request) {
   const secret=process.env.STRIPE_WEBHOOK_SECRET
@@ -17,6 +18,7 @@ export async function POST(request:Request) {
   try {
     const target=subscriptionEventTarget(event)
     if(target) await syncSubscription(stripe,target.id,target.email)
+    await capturePaidAnalytics(event)
     return Response.json({received:true})
   } catch {
     return Response.json({error:"Subscription sync failed; retry required"},{status:503})

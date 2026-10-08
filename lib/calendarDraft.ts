@@ -2,7 +2,7 @@ import { DateTime } from 'luxon'
 import { buildPrimaryBaseTitle, normalizePrimarySendObjectField, type ActionStructuredFields } from './actionTitleContract'
 import {resolveVisitTime} from './visitTiming'
 
-export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean; dateSuggested?:boolean; suggestionReason?:string; needsTimeClarification?:boolean }
+export type CalendarDraft = { title: string; details: string; date: string; time: string; timezone: string; language: string; timeSuggested?: boolean; dateSuggested?:boolean; suggestionReason?:string; needsTimeClarification?:boolean; scheduleAfter?:{date:string; evidence:string}|null }
 
 /** Suggestions are UI defaults, never written back as explicitly agreed times. */
 export function suggestedCalendarTime(action: ActionStructuredFields): string {
@@ -103,7 +103,7 @@ export function calendarDraftFromAction(
   const identityContext=identities.some(identity=>!title.includes(identity)) ? identities.join(' — ') : ''
   const recommended=action.origin==='recommendation'
   const details = [identityContext,description,recommended?(es?'Seguimiento propuesto; no acordado con el cliente.':'Proposed follow-up; not an agreed commitment.'):''].filter(Boolean).join('\n\n')
-  return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English',...(resolveVisitTime(action).needsClarification?{needsTimeClarification:true}:{}),...(recommended?{dateSuggested:true,suggestionReason:action.timingReason || 'Suggested follow-up date'}:{}) }
+  return { title, details, date: date.isValid ? date.toISODate()! : '', time, timeSuggested, timezone, language: es ? 'Spanish' : 'English',...(action.scheduleAfter?{scheduleAfter:action.scheduleAfter}:{}),...(resolveVisitTime(action).needsClarification?{needsTimeClarification:true}:{}),...(recommended?{dateSuggested:true,suggestionReason:action.timingReason || 'Suggested follow-up date'}:{}) }
 }
 
 /** Validate the exact draft reviewed; every follow-up needs a clock time. */
