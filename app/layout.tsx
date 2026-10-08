@@ -1,7 +1,8 @@
-import type { Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { ConnectivityNotice } from "./components/ConnectivityNotice";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,7 +14,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
+export const metadata: Metadata = {
+  applicationName: "Folup",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Folup",
+    statusBarStyle: "default",
+  },
   title: "Folup — Turn sales visits into clear next steps",
   description: "Turn your field visit recap into clear follow-ups, a CRM note and a Smart Next Step. Try Folup without an account.",
   openGraph: {
@@ -46,7 +54,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Providers><ConnectivityNotice />{children}</Providers>
       </body>
     </html>
   );
