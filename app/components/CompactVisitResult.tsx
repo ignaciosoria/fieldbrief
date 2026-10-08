@@ -1,10 +1,11 @@
 'use client'
 
-import {useRef,useState} from 'react'
+import {useMemo,useRef,useState} from 'react'
+import {visitSchedules} from '../../lib/visitSchedules'
 import {track} from '../../lib/posthog'
-import {calendarDraftFromAction,type CalendarDraft} from '../../lib/calendarDraft'
+import {type CalendarDraft} from '../../lib/calendarDraft'
 import CalendarFollowUp from './CalendarFollowUp'
-import {visitActionFields,type VisitExtraction} from '../../lib/visitExtraction'
+import {type VisitExtraction} from '../../lib/visitExtraction'
 import {insightPresentation} from '../../lib/insightPresentation'
 import {visitHeader} from '../../lib/visitHeader'
 import VisitResearch,{useVisitResearch,researchCrmText} from './VisitResearch'
@@ -21,18 +22,20 @@ export default function CompactVisitResult({extraction,timezone,referenceAt,note
 }) {
   const [copied,setCopied]=useState(false)
   const [error,setError]=useState('')
+  const [scheduleNow]=useState(()=>new Date().toISOString())
+  const planned=useMemo(()=>visitSchedules(extraction,timezone,referenceAt,scheduleNow,initialDrafts),[extraction,timezone,referenceAt,scheduleNow,initialDrafts])
   const schedules=useRef<Record<number,CalendarDraft>>({})
   const research=useVisitResearch(saving==='saving'?undefined:noteId,noteVersion,ownerEmail,rawText,autoResearch,extraction.research)
   const actions=extraction.actions.map((action,index)=>({action,index})).sort((a,b)=>(a.action.date||'9999').localeCompare(b.action.date||'9999')||a.index-b.index)
   return <section className="space-y-5" aria-label="Visit result" lang="en">
     <header className="flex items-start justify-between gap-3">
-      <p className="min-w-0 whitespace-pre-line break-words text-sm text-gray-600">{visitHeader(extraction)}</p>
+      <div className="min-w-0"><p className="mb-1 text-xs text-gray-500">Contacts &amp; follow-ups</p><p className="whitespace-pre-line break-words text-sm text-gray-600">{visitHeader(extraction)}</p></div>
       {onNew && <button type="button" disabled={saving==='saving' || recording} onClick={onNew} className="shrink-0 text-sm text-indigo-700 disabled:opacity-50">New note</button>}
     </header>
     <div className="space-y-3">
       {actions.length===0 && <p className="text-base text-gray-600">No follow-up agreed.</p>}
       {actions.map(({action,index})=>{
-        const initial=initialDrafts?.[index] || calendarDraftFromAction(visitActionFields(action,extraction.language),extraction.language,timezone)
+        const initial=planned[index]
         const isRecommendation=action.origin==='recommendation'
         return <article key={index} className={`rounded-2xl border p-4 ${isRecommendation?'border-emerald-200 bg-emerald-50':'border-zinc-200 bg-white'}`}>
           {isRecommendation && <div className="mb-2 flex items-center gap-2 text-emerald-800">

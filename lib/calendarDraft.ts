@@ -43,14 +43,17 @@ export function shortCalendarTitle(action: ActionStructuredFields, es: boolean):
     // Never clip a product identifier or person's name just to fit the title.
     const compactPerson=person?`${verb} ${person} — ${subject}`:''
     const personFirst=person && verb ? `${verb}${action.type==='send'?(es?' a ':' to '):action.type==='call'?(es?' a ':' '):(es?' con ':' with ')}${person}`:''
-    const candidates=[withPerson+(company?' — '+company:''),withPerson,compactPerson,core+(person?' — '+person:''),personFirst,core].filter(Boolean)
+    const deliverableFallback=action.type==='send' && action.object.trim()
+      ? shortCalendarTitle({...action,subject:undefined},es) : ''
+    const candidates=[withPerson+(company?' — '+company:''),withPerson,compactPerson,core+(person?' — '+person:''),deliverableFallback,personFirst,core].filter(Boolean)
     const chosen=candidates.find(value=>characters(value)<=CALENDAR_TITLE_LIMIT)
     if(chosen)return chosen
     const generic=[verb+(person?' — '+person:''),verb].find(value=>value && characters(value)<=CALENDAR_TITLE_LIMIT)
     return generic || (es?'Tarea':'Task')
   }
   const object=normalizePrimarySendObjectField(action.object || '',action.contact,action.verb,es?'Spanish':'English')
-  const sendObject=/\btank[ -]?mix\b/i.test(object)?'tank mix':
+  const sheetAndPrice=/(?:ficha|technical sheet|data\s?sheet)/i.test(object) && /(?:\by\s+(?:el\s+)?precio|\band\s+(?:the\s+)?pric)/i.test(object)
+  const sendObject=sheetAndPrice?(es?'ficha y precio':'sheet and pricing'):/\btank[ -]?mix\b/i.test(object)?'tank mix':
     /ficha|technical sheet|data\s?sheet/i.test(object)?(es?'ficha':'datasheet'):
     /presupuesto|cotizaci[oó]n|quote|quotation/i.test(object)?(es?'presupuesto':'quote'):
     /cat[aá]logo|catalog/i.test(object)?(es?'catálogo':'catalog'):
