@@ -1,6 +1,6 @@
 import type { CaptureResult, PostHogConfig } from 'posthog-js'
 
-export const analyticsEvents = ['$pageview','demo_started','demo_completed','signin_started','signin_completed','note_processing_started','note_processed','note_processing_failed','crm_copied','calendar_save_started','calendar_saved','calendar_save_failed','calendar_connection_required','checkout_opened','checkout_failed','trial_limit_reached','voice_correction_started'] as const
+export const analyticsEvents = ['$pageview','try_cta_clicked','example_viewed','example_selected','try_recording_started','try_recording_failed','try_processing_started','try_processing_completed','try_processing_failed','try_calendar_clicked','try_claim_completed','try_claim_failed','demo_started','demo_completed','signin_started','signin_completed','note_processing_started','note_processed','note_processing_failed','crm_copied','calendar_save_started','calendar_saved','calendar_save_failed','calendar_connection_required','checkout_opened','checkout_failed','trial_limit_reached','voice_correction_started'] as const
 export type AnalyticsEvent = typeof analyticsEvents[number]
 export type Campaign = {utm_source?:'apollo';utm_medium?:'email';utm_campaign?:string;utm_content?:string}
 export const campaignNames = ['ag_field_pilot','field_sales_pilot','ag_field_followup'] as const
@@ -8,7 +8,7 @@ export const campaignNames = ['ag_field_pilot','field_sales_pilot','ag_field_fol
 export function campaignFromParams(params:URLSearchParams):Campaign {
   if(params.get('utm_source')!=='apollo' || params.get('utm_medium')!=='email' || !campaignNames.includes(params.get('utm_campaign') as typeof campaignNames[number]))return {}
   const content=params.get('utm_content')
-  return {utm_source:'apollo',utm_medium:'email',utm_campaign:params.get('utm_campaign')!,...(['a','b','followup_1','followup_2'].includes(content||'')?{utm_content:content!}:{})}
+  return {utm_source:'apollo',utm_medium:'email',utm_campaign:params.get('utm_campaign')!,...(['a','b','c','followup_1','followup_2'].includes(content||'')?{utm_content:content!}:{})}
 }
 export function safeCampaign(value:unknown):Campaign {
   const params=new URLSearchParams()

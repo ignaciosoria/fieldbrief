@@ -7,7 +7,7 @@ import { demoSamples, sampleCrm } from '../../lib/publicDemoSamples'
 export const DEMO_CRM = sampleCrm(demoSamples[0])
 
 export default function PublicDemo({ onSignIn, onStart, onComplete }: {
-  onSignIn: () => void; onStart: () => void; onComplete: () => void
+  onSignIn: () => void; onStart: () => void; onComplete?: () => void
 }) {
   const [index, setIndex] = useState(0)
   const [copied, setCopied] = useState(false)
@@ -20,7 +20,7 @@ export default function PublicDemo({ onSignIn, onStart, onComplete }: {
     if (viewedSample.current === sample.id) return
     viewedSample.current = sample.id
     onStart()
-    onComplete()
+    onComplete?.()
   }, [sample.id, onStart, onComplete])
   return <div className="marketing">
     <header className="mk-nav">

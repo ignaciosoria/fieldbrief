@@ -14,19 +14,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Folup",
-  description: "Never forget a follow-up after a client visit.",
+  title: "Folup — Turn sales visits into clear next steps",
+  description: "Turn your field visit recap into clear follow-ups, a CRM note and a Smart Next Step. Try Folup without an account.",
   openGraph: {
-    title: "Folup — Voice note → next steps + calendar in seconds",
-    description: "Never forget a follow-up after a client visit.",
+    title: "Folup — Clear follow-ups from your voice notes",
+    description: "Turn your field visit recap into clear follow-ups, a CRM note and a Smart Next Step. Try Folup without an account.",
     url: "https://folup.app",
     siteName: "Folup",
     images: [{ url: "https://folup.app/og_image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Folup — Voice note → next steps + calendar in seconds",
-    description: "Never forget a follow-up after a client visit.",
+    title: "Folup — Clear follow-ups from your voice notes",
+    description: "Turn your field visit recap into clear follow-ups, a CRM note and a Smart Next Step. Try Folup without an account.",
     images: ["https://folup.app/og_image.png"],
   },
 };

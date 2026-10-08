@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {useRouter} from 'next/navigation'
 import {FolupHeaderBrand} from '../../components/folup-branding'
 import VisitMicrophone from './VisitMicrophone'
+import AnalyticsPreference from './AnalyticsPreference'
 import TrialSignInDialog from './TrialSignInDialog'
 import CompactVisitResult from './CompactVisitResult'
 import PublicDemo from './PublicDemo'
@@ -12,7 +13,7 @@ import type {visitExtractionResult} from '../../lib/visitExtraction'
 import type {CalendarDraft} from '../../lib/calendarDraft'
 import {formatProfessionalCrmNote} from '../../lib/formatCrmSalesNote'
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
-import {initPosthog,track,trackSigninStart} from '../../lib/posthog'
+import {initPosthog,track,trackSigninStart,trackSigninComplete} from '../../lib/posthog'
 
 type Preview={previewId:string;note:string;result:ReturnType<typeof visitExtractionResult>;noteId?:string}
 export default function LiveTry(){
@@ -27,6 +28,7 @@ export default function LiveTry(){
   const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null)
   const locked=useRef(false),alive=useRef(true)
   const signin=()=>{trackSigninStart();void signIn('google',{callbackUrl:'/try'})}
+  useEffect(()=>{if(status==='authenticated')trackSigninComplete()},[status])
   const load=async()=>{
     const response=await fetchWithTimeout('/api/try',{cache:'no-store'},15000)
     const data=await response.json();if(!response.ok)throw Error(data.error)
@@ -45,6 +47,8 @@ export default function LiveTry(){
   useEffect(()=>{if(!recording)return;setSeconds(0);const interval=setInterval(()=>setSeconds(n=>n+1),1000);return()=>clearInterval(interval)},[recording])
   const process=async(recorded?:Blob)=>{
     if(locked.current)return;locked.current=true;setBusy(true);setError('');setNotice('')
+    const started=Date.now();const inputMode=recorded||audio?'voice':'text'
+    track('try_processing_started',{input_mode:inputMode})
     try{
       const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone
       let body:BodyInit,headers:Record<string,string>|undefined
@@ -53,8 +57,8 @@ export default function LiveTry(){
       else{body=JSON.stringify({note:text,timezone});headers={'Content-Type':'application/json'}}
       const response=await fetchWithTimeout('/api/try',{method:'POST',headers,body},155000)
       const data=await response.json();if(!response.ok)throw Error(data.error)
-      if(alive.current){setPreview(data);setAudio(null);track('demo_completed')}
-    }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Could not process this visit.')}
+      if(alive.current){setPreview(data);setAudio(null);track('try_processing_completed',{input_mode:inputMode,duration_ms:Date.now()-started,has_smart_step:data.result?.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})}
+    }catch(e){track('try_processing_failed',{input_mode:inputMode,duration_ms:Date.now()-started});if(alive.current)setError(e instanceof Error?e.message:'Could not process this visit.')}
     finally{locked.current=false;if(alive.current)setBusy(false)}
   }
   const toggleRecording=async()=>{
@@ -66,10 +70,10 @@ export default function LiveTry(){
       const r=new MediaRecorder(media,{audioBitsPerSecond:64000});recorder.current=r;const chunks:Blob[]=[]
       r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}
       r.onstop=()=>{if(timer.current)clearTimeout(timer.current);media.getTracks().forEach(t=>t.stop());if(alive.current){const blob=new Blob(chunks,{type:r.mimeType});setAudio(blob);setRecording(false);void process(blob)}}
-      r.onerror=()=>{media.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('Recording interrupted. You can paste your recap instead.')}}
-      r.start(1000);setRecording(true);setAudio(null)
+      r.onerror=()=>{track('try_recording_failed');media.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('Recording interrupted. You can paste your recap instead.')}}
+      r.start(1000);track('try_recording_started');setRecording(true);setAudio(null)
       timer.current=setTimeout(()=>{if(r.state==='recording')r.stop()},180000)
-    }catch{setError('Microphone unavailable. Allow microphone access or paste your recap below.')}
+    }catch{track('try_recording_failed');setError('Microphone unavailable. Allow microphone access or paste your recap below.')}
     finally{locked.current=false}
   }
   const keep=async()=>{
@@ -80,11 +84,11 @@ export default function LiveTry(){
     try{
       const response=await fetchWithTimeout('/api/try/claim',{method:'POST'},20000);const data=await response.json()
       if(!response.ok)throw Error(data.error)
-      setPreview({...preview,noteId:data.noteId});setNotice('Visit saved. Tap Add to calendar again to connect your calendar or save the event.')
-    }catch(e){setError(e instanceof Error?e.message:'Could not save your visit.')}
+      track('try_claim_completed');setPreview({...preview,noteId:data.noteId});setNotice('Visit saved. Tap Add to calendar again to connect your calendar or save the event.')
+    }catch(e){track('try_claim_failed');setError(e instanceof Error?e.message:'Could not save your visit.')}
     finally{locked.current=false;setBusy(false)}
   }
-  if(examples)return <><button className="block w-full bg-white p-3 text-sm text-indigo-700" onClick={()=>setExamples(false)}>Back to your own visit</button><PublicDemo onSignIn={signin} onStart={()=>track('demo_started')} onComplete={()=>track('demo_completed')}/></>
+  if(examples)return <><button className="block w-full bg-white p-3 text-sm text-indigo-700" onClick={()=>setExamples(false)}>Back to your own visit</button><PublicDemo onSignIn={signin} onStart={()=>track('example_selected')}/></>
   return <main className="folup-shell flex min-h-screen flex-col bg-white text-[#111111] antialiased">
     <header className="folup-header relative flex items-center justify-between border-b border-[#e5e7eb] bg-white px-5 pb-2 pt-8">
       <Link href="/" aria-label="Folup home"><FolupHeaderBrand/></Link>
@@ -96,7 +100,7 @@ export default function LiveTry(){
           rawText={preview.note} noteId={preview.noteId} noteVersion={preview.noteId?1:undefined} ownerEmail={session?.user?.email||undefined}
           recording={false} voiceDisabled={busy} saving={busy?'saving':undefined} initialDrafts={drafts}
           onCalendarOpened={()=>setNotice('Added to Google Calendar.')} onVoice={()=>void keep()} onClarify={()=>void keep()}
-          onCalendarGate={!preview.noteId?(index,draft)=>{const next={...drafts,[index]:draft};setDrafts(next);try{sessionStorage.setItem('folup-try-drafts:'+preview.previewId,JSON.stringify(next))}catch{}void keep()}:undefined}
+          onCalendarGate={!preview.noteId?(index,draft)=>{track('try_calendar_clicked');const next={...drafts,[index]:draft};setDrafts(next);try{sessionStorage.setItem('folup-try-drafts:'+preview.previewId,JSON.stringify(next))}catch{}void keep()}:undefined}
           onCopy={async(research='',schedules)=>{await navigator.clipboard.writeText(formatProfessionalCrmNote(preview.result,schedules)+research)}}/>
 
       </div>:<div className="flex flex-col items-center justify-center px-4 py-5" style={{minHeight:'var(--folup-record-height, calc(100vh - 132px))'}}>
@@ -107,17 +111,19 @@ export default function LiveTry(){
           {recording&&<span className="text-[48px] font-semibold tabular-nums">{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span>}
           {busy&&<p role="status" className="text-sm text-gray-500">Preparing your next steps…</p>}
         </div>
+        {loading&&<p role="status" className="text-sm text-gray-500">Getting your visit ready…</p>}
         {!recording&&!busy&&!audio&&<div className="mt-1.5 w-full max-w-md px-1">
           <textarea aria-label="Visit note" className="mb-3 min-h-[68px] w-full resize-none rounded-2xl border border-[#e5e7eb] bg-[#f8f8f8] px-3.5 py-3 text-[13px] leading-relaxed text-[#111111] outline-none placeholder:text-[#6b7280]/40 shadow-inner shadow-zinc-200/50" placeholder="Or type a note…" maxLength={20000} value={text} onChange={e=>setText(e.target.value)}/>
-          {text.trim()&&<button onClick={()=>{if(!enabled){setNotice('Live preview is not enabled yet.');return}track('demo_started');void process()}} disabled={loading} className="w-full rounded-2xl bg-[#4F46E5] py-4 text-[15px] font-semibold text-white shadow-md">Process Note</button>}
+          {text.trim()&&<button onClick={()=>{if(!enabled){setNotice('Live preview is not enabled yet.');return}void process()}} disabled={loading} className="w-full rounded-2xl bg-[#4F46E5] py-4 text-[15px] font-semibold text-white shadow-md">Process Note</button>}
         </div>}
         {audio&&!busy&&<button onClick={()=>void process()} className="mt-4 text-sm text-indigo-700 underline">Retry recording</button>}
         <details className="mt-3 text-center text-xs text-gray-500"><summary className="cursor-pointer">About your recording</summary><p className="mt-2 max-w-xs leading-relaxed">Your recap is processed by our AI providers. The preview is available for 24 hours. Avoid sensitive information.</p></details>
       </div>}
+      <div className="mt-4"><AnalyticsPreference /></div>
       {notice&&<p role="status" className="mt-4 text-sm text-gray-600">{notice}</p>}
       {error&&<p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
       {(error||notice)&&!busy&&<button className="mt-3 text-sm text-indigo-700" onClick={()=>{setError('');void load().catch(()=>setError('Could not load the result. Please retry.'))}}>Check result</button>}
-      <button disabled={busy||recording} onClick={()=>setExamples(true)} className="mx-auto mt-4 block text-xs text-indigo-700">Explore an example</button>
+      <button disabled={busy||recording} onClick={()=>{track('example_viewed');setExamples(true)}} className="mx-auto mt-4 block text-xs text-indigo-700">Explore an example</button>
     </div>
     <nav className="folup-bottom-nav fixed bottom-0 left-0 right-0 flex items-center justify-around border-t border-[#e5e7eb] bg-white/95 px-2 pb-safe pt-2 backdrop-blur-md">
       {['Record','History','Settings'].map((label,i)=><button key={label} onClick={()=>{if(i===0)return;if(session)router.push('/');else setShowSignIn(true)}} className="relative flex flex-col items-center gap-1 px-5 py-2 transition-all" style={{color:i===0?'#4F46E5':'#6b7280'}}>

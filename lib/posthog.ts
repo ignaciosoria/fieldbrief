@@ -34,7 +34,7 @@ export function initPosthog() {
   }catch{/* Analytics must never prevent recording, authentication or checkout. */}
 }
 export function track(event:AnalyticsEvent,properties:Record<string,unknown>={}) {
-  try{initPosthog();if(initialized&&!analyticsDisabled())posthog.capture(event,properties)}catch{}
+  try{initPosthog();if(initialized&&!analyticsDisabled())posthog.capture(event,{...properties,$pathname:location.pathname})}catch{}
 }
 export function trackSigninStart(){track('signin_started');if(journey){journey.signinPending=true;persist()}}
 export function trackSigninComplete(){initPosthog();if(journey?.signinPending){journey.signinPending=false;persist();track('signin_completed')}}
