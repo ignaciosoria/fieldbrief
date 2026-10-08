@@ -22,6 +22,8 @@ export default function PublicDemo({ onSignIn, onStart, onComplete }: {
   useEffect(() => { if (shown) onComplete() }, [shown, onComplete])
   return <main className="min-h-screen bg-[#fdfdfb] px-5 pb-12 text-[#202124]">
     <header className="mx-auto flex max-w-3xl items-center justify-between py-6">
+      {/* Full navigation resets the shared page's pathname-derived demo state. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a href="/" aria-label="Folup home"><FolupLogo src="/folup_logo.png" width={3077} height={1200} imgClassName="h-9 w-auto" /></a>
       <button onClick={onSignIn} className="min-h-11 rounded-lg px-3 text-sm font-medium">Sign in</button>
     </header>
