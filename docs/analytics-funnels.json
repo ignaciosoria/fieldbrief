@@ -1,0 +1,44 @@
+{
+  "format": "Folup funnel specification; configure manually, not a PostHog API payload",
+  "timezone": "America/Los_Angeles",
+  "filters": {"environment": "production", "is_internal": false},
+  "count_unit": "unique anonymous browser ID, not people or email clicks",
+  "breakdowns": ["first_utm_campaign", "first_utm_content", "session_utm_campaign", "session_utm_content", "visitor_type", "flow", "input_mode"],
+  "funnels": [
+    {"name": "Acquisition: landing to access", "window_days": 7, "steps": [
+      {"event": "$pageview", "properties": {"$pathname": "/"}},
+      {"event": "signin_started"},
+      {"event": "signin_completed"}
+    ]},
+    {"name": "Activation: access to first saved voice note", "window_days": 7, "steps": [
+      {"event": "signin_completed"},
+      {"event": "record_clicked", "properties": {"flow": "app"}},
+      {"event": "recording_started", "properties": {"flow": "app"}},
+      {"event": "note_processed", "properties": {"input_mode": "voice"}},
+      {"event": "note_saved", "properties": {"flow": "app"}}
+    ]},
+    {"name": "Guest first: try to saved account note", "window_hours": 24, "steps": [
+      {"event": "$pageview", "properties": {"$pathname": "/try"}},
+      {"event": "try_processing_started"},
+      {"event": "try_processing_completed"},
+      {"event": "signin_completed"},
+      {"event": "try_claim_completed"}
+    ]},
+    {"name": "Text activation (no microphone required)", "window_days": 7, "steps": [
+      {"event": "signin_completed"},
+      {"event": "note_processing_started", "properties": {"input_mode": "text"}},
+      {"event": "note_processed", "properties": {"input_mode": "text"}},
+      {"event": "note_saved", "properties": {"flow": "app"}}
+    ]}
+  ],
+  "optional_outcomes": ["crm_copied", "calendar_saved"],
+  "diagnostics": ["signin_failed", "signin_result_unobserved", "microphone_denied", "recording_failed", "try_recording_failed", "recording_cancelled", "note_processing_failed", "try_processing_failed", "note_save_failed"],
+  "notes": [
+    "Use each browser's first completed activation in the selected cohort; do not count every note as a new activation.",
+    "The guest path intentionally processes before signing in. Do not judge it using the signed-in recording funnel.",
+    "Calendar is optional and must not be required for activation.",
+    "Deduplicate result-volume SQL by event UUID; PostHog ingestion can show retries before eventual deduplication.",
+    "Keep unknown internal status out of reports rather than treating it as external traffic.",
+    "Historical sessions, campaign attribution and internal flags cannot be reconstructed from missing data."
+  ]
+}

@@ -3,6 +3,7 @@ import { serverDb } from '../../../lib/serverDb'
 import { parseNoteInput } from '../../../lib/noteInput'
 import {after} from 'next/server'
 import {evaluateEntityShadow} from '../../../lib/entityShadow'
+import {scheduleAnalytics} from '../../../lib/analyticsServer'
 
 export async function GET(request: Request) {
   const email = (await auth())?.user?.email?.trim()
@@ -42,6 +43,7 @@ export async function PUT(request: Request) {
       :'This note has changed. Your correction has not overwritten it. Copy your pending correction before reloading the latest note.'},{status:409})
     // Matching is observational: run after the successful response, never block it.
     try {after(()=>evaluateEntityShadow(email,row.id))} catch {console.warn('[entity-shadow] scheduling unavailable')}
+    scheduleAnalytics(request,body.expectedVersion===0?'note_saved':'note_updated',{stage:'save'},email,`${email}:${body.requestId}`)
     return Response.json(data)
   } catch { return Response.json({ error: 'Note was not saved. Please retry.' }, { status: 503 }) }
 }

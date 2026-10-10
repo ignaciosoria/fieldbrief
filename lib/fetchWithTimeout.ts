@@ -7,11 +7,11 @@ export async function fetchWithTimeout(url:string,init:RequestInit,timeoutMs=75_
   let onAbort:(()=>void)|undefined
   const cancelled=new Promise<never>((_,reject)=>{
     timeout=setTimeout(()=>{
-      reject(Error('The request took too long. Please try again.'))
+      reject(new DOMException('The request took too long. Please try again.','TimeoutError'))
       controller.abort()
     },timeoutMs)
     onAbort=()=>{
-      reject(Error('The request was cancelled.'))
+      reject(new DOMException('The request was cancelled.','AbortError'))
       controller.abort()
     }
     if(init.signal?.aborted) onAbort()

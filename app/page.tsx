@@ -2,7 +2,8 @@
 
 import './components/public-marketing.css'
 
-import { initPosthog, track, trackSigninStart, trackSigninComplete, analyticsCheckout, clearAnalyticsJourney } from '../lib/posthog'
+import { initPosthog, track, trackSigninStart, trackSigninFailure, analyticsHeaders, analyticsCheckout, clearAnalyticsJourney } from '../lib/posthog'
+import {analyticsAttempt,recordingAnalytics} from '../lib/analyticsAttempt'
 import AnalyticsPreference from './components/AnalyticsPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
@@ -1954,19 +1955,19 @@ function supportingCalendarStepId(index: number): string {
 export default function Home() {
   const { data: session, status } = useSession()
   const signInWithGoogle = useCallback(() => {
-    trackSigninStart()
-    void signIn('google', { callbackUrl: '/' })
+    if(!trackSigninStart())return
+    void signIn('google', { callbackUrl: '/' }).catch(trackSigninFailure)
   }, [])
   /** /try demo: sign in then return with ?paywallUpgrade=1 to open upgrade modal post-login */
   const signInFromDemoHeader = useCallback(() => {
-    trackSigninStart()
+    if(!trackSigninStart())return
     if (typeof window === 'undefined') {
-      void signIn('google', { callbackUrl: '/try?paywallUpgrade=1' })
+      void signIn('google', { callbackUrl: '/try?paywallUpgrade=1' }).catch(trackSigninFailure)
       return
     }
     const u = new URL(window.location.href)
     u.searchParams.set('paywallUpgrade', '1')
-    void signIn('google', { callbackUrl: `${u.pathname}${u.search}` })
+    void signIn('google', { callbackUrl: `${u.pathname}${u.search}` }).catch(trackSigninFailure)
   }, [])
   /**
    * Authenticated user key for notes: Google account email (matches `notes.user_id` in Supabase).
@@ -2147,6 +2148,12 @@ export default function Home() {
   const correctTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingAnalyticsRef=useRef<ReturnType<typeof recordingAnalytics>|null>(null)
+  useEffect(()=>()=>{
+    recordingAnalyticsRef.current?.cancel()
+    const recorder=mediaRecorderRef.current
+    if(recorder?.state==='recording'){recorder.stop();recorder.stream.getTracks().forEach(t=>t.stop())}
+  },[])
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -2170,7 +2177,6 @@ export default function Home() {
     initPosthog()
   }, [])
 
-  useEffect(()=>{if(status==='authenticated')trackSigninComplete()},[status])
 
   useEffect(() => {
     let cancelled = false
@@ -2785,6 +2791,8 @@ export default function Home() {
     if (recordingStartRef.current || audioProcessingRef.current || pendingAudio || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!session?.user || !sessionEmail) { setShowLoginPrompt(true); return }
     recordingStartRef.current=true
+    const recordingAttempt=recordingAnalytics(track,'app')
+    recordingAnalyticsRef.current=recordingAttempt
     let recordingStream:MediaStream|undefined
     try {
       setError('')
@@ -2801,10 +2809,11 @@ export default function Home() {
       setTranscriptContext(null)
 
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Audio recording is not supported on this device/browser.')
+        throw new DOMException('Audio recording is not supported on this device/browser.','NotSupportedError')
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if(!recordingAttempt.granted()){stream.getTracks().forEach(t=>t.stop());return}
       recordingStream=stream
       const capturedAt=getClientNowIso()
       const timezone=getClientTimezone()
@@ -2816,6 +2825,11 @@ export default function Home() {
       mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      recorder.onerror=()=>{
+        recordingAttempt.fail(new DOMException('Recording interrupted','RecordingError'))
+        stream.getTracks().forEach(t=>t.stop());setIsRecording(false)
+        setError('Recording interrupted. Please retry or type your recap.')
+      }
 
       recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
@@ -2823,13 +2837,16 @@ export default function Home() {
         mediaRecorderRef.current=null
         setIsRecording(false)
         stream.getTracks().forEach((t) => t.stop())
+        if(!recordingAttempt.finish(blob.size>0)){if(!blob.size)setError('No audio was captured. Please check your microphone and try again.');return}
         if (blob.size > 0) await processRecordedAudio({blob,capturedAt,timezone,owner})
         else setError('No audio was captured. Please check your microphone and try again.')
       }
 
       recorder.start()
+      recordingAttempt.start()
       setIsRecording(true)
     } catch (err: unknown) {
+      recordingAttempt.fail(err)
       recordingStream?.getTracks().forEach(t=>t.stop())
       setError(err instanceof Error ? err.message : 'Could not start recording.')
       setIsRecording(false)
@@ -2850,8 +2867,9 @@ export default function Home() {
   const processRecordedAudio = async (audio:NonNullable<typeof pendingAudio>) => {
     if (audioProcessingRef.current || audio.owner!==audioOwnerRef.current) return
     audioProcessingRef.current=true
-    const analyticsStarted=Date.now()
-    track('note_processing_started',{input_mode:'voice'})
+    const attempt=analyticsAttempt(track,{start:'note_processing_started',complete:'note_result_received',fail:'note_processing_failed'},{input_mode:'voice',flow:'app',recording_attempt_id:recordingAnalyticsRef.current?.id})
+    let responseStatus:number|undefined
+    let processingStage='transcription'
     setPendingAudio(audio)
     const {blob}=audio
     setLoading(true)
@@ -2871,6 +2889,7 @@ export default function Home() {
       formData.append('file', file)
 
       const transcribeRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: formData })
+      responseStatus=transcribeRes.status
       const transcribeData = await transcribeRes.json().catch(()=>({error:transcribeRes.status===413?'The recording is too large to upload. Download a copy before discarding it.':'Audio upload failed. Your recording is still here; please retry.'}))
       if (audio.owner!==audioOwnerRef.current) throw new CorrectionOwnerChanged()
       if(transcribeRes.status===422 && transcribeData.code==='NO_SPEECH')return ''
@@ -2885,10 +2904,10 @@ export default function Home() {
       setTranscriptContext({capturedAt:audio.capturedAt,timezone:audio.timezone})
       // Once transcribed, recovery continues from editable text, not another paid ASR call.
       setPendingAudio(null)
-
+      processingStage='extraction'
       const structureRes = await fetchWithTimeout('/api/structure', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',...analyticsHeaders(attempt.id,attempt.properties) },
         body: JSON.stringify({
           note: tx,
           timezone: audio.timezone,
@@ -2897,14 +2916,15 @@ export default function Home() {
       })
       
       const structureData = await structureRes.json()
+      responseStatus=structureRes.status
       if (audio.owner!==audioOwnerRef.current) return
-      if (handleAiAccessResponse(structureRes.status, structureData)) return
+      if (handleAiAccessResponse(structureRes.status, structureData)) {attempt.fail(null,structureRes.status);return}
       if (!structureRes.ok) {
         throw new Error(structureData.error || 'Failed to structure.')
       }
 
       let final = normalizeStructureResult({ ...emptyResult, ...structureData } as StructureResult)
-      track('note_processed',{input_mode:'voice',duration_ms:Date.now()-analyticsStarted,has_smart_step:final.extraction?.actions.some(a=>a.origin==='recommendation')||false})
+      attempt.complete({confirmation:'server',has_smart_step:final.extraction?.actions.some(a=>a.origin==='recommendation')||false})
       if (final.schemaVersion === 2) { await acceptVisit(final,tx); return }
 
       if (
@@ -2958,7 +2978,7 @@ export default function Home() {
         })
       }
     } catch (err: any) {
-      track('note_processing_failed',{input_mode:'voice',duration_ms:Date.now()-analyticsStarted})
+      attempt.fail(err,responseStatus,{stage:processingStage})
       setError(err?.message || 'Something went wrong.')
     } finally {
       audioProcessingRef.current=false
@@ -2971,8 +2991,9 @@ export default function Home() {
     if (pendingAudio || audioProcessingRef.current || pendingCorrection || correctionStartRef.current || correctionBusyRef.current || isCorrectingRecording) return
     if (!input.trim()) return
     if (!session?.user) { setShowLoginPrompt(true); return }
-    const analyticsStarted=Date.now()
-    track('note_processing_started',{input_mode:'text'})
+    audioProcessingRef.current=true
+    const attempt=analyticsAttempt(track,{start:'note_processing_started',complete:'note_result_received',fail:'note_processing_failed'},{input_mode:'text',flow:'app',stage:'extraction'})
+    let responseStatus:number|undefined
     setLoading(true)
     clearTryWalkthrough()
     setError('')
@@ -2986,7 +3007,7 @@ export default function Home() {
     try {
       const res = await fetchWithTimeout('/api/structure', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',...analyticsHeaders(attempt.id,attempt.properties) },
         body: JSON.stringify({
           note: input,
           timezone: transcriptContext?.timezone || getClientTimezone(),
@@ -2994,10 +3015,11 @@ export default function Home() {
         }),
       })
       const data = await res.json()
+      responseStatus=res.status
       if(owner!==audioOwnerRef.current) return
-      if (handleAiAccessResponse(res.status, data)) return
+      if (handleAiAccessResponse(res.status, data)) {attempt.fail(null,res.status);return}
       if (!res.ok) throw new Error(data.error || 'Failed to process note.')
-      track('note_processed',{input_mode:'text',duration_ms:Date.now()-analyticsStarted,has_smart_step:data.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})
+      attempt.complete({confirmation:'server',has_smart_step:data.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})
       if (data.schemaVersion === 2) { await acceptVisit(data,input); return }
       let final = normalizeStructureResult({ ...emptyResult, ...data } as StructureResult)
       final = inferMissingContact(final)
@@ -3031,9 +3053,10 @@ export default function Home() {
         })
       }
     } catch (err: unknown) {
-      track('note_processing_failed',{input_mode:'text',duration_ms:Date.now()-analyticsStarted})
+      attempt.fail(err,responseStatus)
       if(owner===audioOwnerRef.current) setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
+      audioProcessingRef.current=false
       if(owner===audioOwnerRef.current) setLoading(false)
     }
   }
@@ -5121,7 +5144,7 @@ export default function Home() {
             </p>
             <button
               type="button"
-              onClick={() => {trackSigninStart();void signIn('google')}}
+              onClick={() => {if(trackSigninStart())void signIn('google').catch(trackSigninFailure)}}
               className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[15px] font-bold text-white"
               style={{ backgroundColor: '#4F46E5' }}
             >

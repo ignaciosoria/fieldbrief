@@ -10,6 +10,7 @@ import {sameActionSnapshot,type CalendarActionState} from '../../lib/calendarAct
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
 import {formatTime12,timeFrom12} from '../../lib/time12'
 import {track} from '../../lib/posthog'
+import {analyticsAttempt} from '../../lib/analyticsAttempt'
 
 type Props = {
   initial: CalendarDraft
@@ -125,6 +126,7 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
     if(!url){setAttempted(true);const field=!date?dateInput.current:timeInput.current;field?.focus();field?.reportValidity();return}
     if(!noteId||!ownerEmail){setSaveError('Save this note before adding its follow-up.');return}
     busyRef.current=true;setBusy(true);setSaveError('');setReviewUrl('')
+    let attempt:ReturnType<typeof analyticsAttempt>|undefined
     try{
       if(connectionNeeded){
         try{sessionStorage.setItem(storageKey,JSON.stringify({initial:initialJson,date,time,at:Date.now()}))}catch{}
@@ -136,16 +138,16 @@ function CalendarFollowUpFields({initial, actionNumber = 1, disabled = false, on
       const state=sourceAction ? actionState || await readActionState() : undefined
       if(!alive.current)return
       if(state?.needsReview){setSaveError('This corrected action may already have a calendar event. Review it in Google Calendar; automatic creation is blocked to avoid duplicates.');return}
-      track('calendar_save_started',{action_origin:actionOrigin})
+      attempt=analyticsAttempt(track,{start:'calendar_save_started',complete:'calendar_saved',fail:'calendar_save_failed'},{action_origin:actionOrigin})
       const response=await saveCalendarFromClient({noteId,actionIndex,draft,...(state?{actionId:state.actionId,sourceAction}:{})})
       if(!alive.current)return
-      if(response.kind==='connect'){track('calendar_connection_required');setConnectionNeeded(true);return}
-      if(response.kind==='error'){track('calendar_save_failed');setSaveError(response.message);setReviewUrl(response.url || '');return}
+      if(response.kind==='connect'){attempt.settle();track('calendar_connection_required',{attempt_id:attempt.id});setConnectionNeeded(true);return}
+      if(response.kind==='error'){attempt.fail(null);setSaveError(response.message);setReviewUrl(response.url || '');return}
       setSavedUrl(response.url)
-      track('calendar_saved',{action_origin:actionOrigin})
+      attempt.complete({confirmation:'server'})
       try{sessionStorage.removeItem(storageKey)}catch{}
       onOpen?.()
-    }catch{track('calendar_save_failed');if(alive.current)setSaveError('Could not confirm the event. Retry safely; Folup will not create a duplicate.')}
+    }catch(error){attempt?.fail(error);if(alive.current)setSaveError('Could not confirm the event. Retry safely; Folup will not create a duplicate.')}
     finally{busyRef.current=false;if(alive.current)setBusy(false)}
   }
   return <div>

@@ -13,7 +13,9 @@ import type {visitExtractionResult} from '../../lib/visitExtraction'
 import type {CalendarDraft} from '../../lib/calendarDraft'
 import {formatProfessionalCrmNote} from '../../lib/formatCrmSalesNote'
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
-import {initPosthog,track,trackSigninStart,trackSigninComplete} from '../../lib/posthog'
+import {initPosthog,track,trackSigninStart,trackSigninFailure,analyticsHeaders} from '../../lib/posthog'
+
+import {analyticsAttempt,recordingAnalytics} from '../../lib/analyticsAttempt'
 
 type Preview={previewId:string;note:string;result:ReturnType<typeof visitExtractionResult>;noteId?:string}
 export default function LiveTry(){
@@ -27,8 +29,8 @@ export default function LiveTry(){
   const [showSignIn,setShowSignIn]=useState(false),[seconds,setSeconds]=useState(0)
   const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null)
   const locked=useRef(false),alive=useRef(true)
-  const signin=()=>{trackSigninStart();void signIn('google',{callbackUrl:'/try'})}
-  useEffect(()=>{if(status==='authenticated')trackSigninComplete()},[status])
+  const recordingAttempt=useRef<ReturnType<typeof recordingAnalytics>|null>(null)
+  const signin=()=>{if(trackSigninStart())void signIn('google',{callbackUrl:'/try'}).catch(trackSigninFailure)}
   const load=async()=>{
     const response=await fetchWithTimeout('/api/try',{cache:'no-store'},15000)
     const data=await response.json();if(!response.ok)throw Error(data.error)
@@ -41,39 +43,43 @@ export default function LiveTry(){
   useEffect(()=>{
     alive.current=true;initPosthog()
     void load().catch(()=>{if(alive.current)setError('Could not load the preview. Please retry.')}).finally(()=>{if(alive.current)setLoading(false)})
-    return()=>{alive.current=false;if(timer.current)clearTimeout(timer.current);if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())}
+    return()=>{alive.current=false;recordingAttempt.current?.cancel();if(timer.current)clearTimeout(timer.current);if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())}
   // Reload on OAuth return, not on unrelated session renders.
   },[])
   useEffect(()=>{if(!recording)return;setSeconds(0);const interval=setInterval(()=>setSeconds(n=>n+1),1000);return()=>clearInterval(interval)},[recording])
   const process=async(recorded?:Blob)=>{
     if(locked.current)return;locked.current=true;setBusy(true);setError('');setNotice('')
-    const started=Date.now();const inputMode=recorded||audio?'voice':'text'
-    track('try_processing_started',{input_mode:inputMode})
+    const inputMode=recorded||audio?'voice':'text'
+    const attempt=analyticsAttempt(track,{start:'try_processing_started',complete:'note_result_received',fail:'try_processing_failed'},{input_mode:inputMode,flow:'guest',...(inputMode==='voice'?{recording_attempt_id:recordingAttempt.current?.id}:{})})
+    let responseStatus:number|undefined
     try{
       const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone
       let body:BodyInit,headers:Record<string,string>|undefined
       const recordingBlob=recorded||audio
       if(recordingBlob){const form=new FormData();form.set('file',recordingBlob,recordingBlob.type.includes('mp4')?'visit.mp4':'visit.webm');form.set('timezone',timezone);body=form}
       else{body=JSON.stringify({note:text,timezone});headers={'Content-Type':'application/json'}}
-      const response=await fetchWithTimeout('/api/try',{method:'POST',headers,body},155000)
+      const response=await fetchWithTimeout('/api/try',{method:'POST',headers:{...headers,...analyticsHeaders(attempt.id,attempt.properties)},body},155000)
+      responseStatus=response.status
       const data=await response.json();if(!response.ok)throw Error(data.error)
-      if(alive.current){setPreview(data);setAudio(null);track('try_processing_completed',{input_mode:inputMode,duration_ms:Date.now()-started,has_smart_step:data.result?.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})}
-    }catch(e){track('try_processing_failed',{input_mode:inputMode,duration_ms:Date.now()-started});if(alive.current)setError(e instanceof Error?e.message:'Could not process this visit.')}
+      if(alive.current){setPreview(data);setAudio(null);attempt.complete({confirmation:'server',has_smart_step:data.result?.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})}
+    }catch(e){attempt.fail(e,responseStatus);if(alive.current)setError(e instanceof Error?e.message:'Could not process this visit.')}
     finally{locked.current=false;if(alive.current)setBusy(false)}
   }
   const toggleRecording=async()=>{
     if(recording){recorder.current?.stop();return}
     if(locked.current)return;locked.current=true;setError('')
+    const attempt=recordingAnalytics(track,'guest');recordingAttempt.current=attempt
     try{
-      const media=await navigator.mediaDevices.getUserMedia({audio:true});stream.current=media
+      if(!navigator.mediaDevices?.getUserMedia)throw new DOMException('Unsupported','NotSupportedError')
+      const media=await navigator.mediaDevices.getUserMedia({audio:true});stream.current=media;attempt.granted()
       if(!alive.current){media.getTracks().forEach(t=>t.stop());return}
       const r=new MediaRecorder(media,{audioBitsPerSecond:64000});recorder.current=r;const chunks:Blob[]=[]
       r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}
-      r.onstop=()=>{if(timer.current)clearTimeout(timer.current);media.getTracks().forEach(t=>t.stop());if(alive.current){const blob=new Blob(chunks,{type:r.mimeType});setAudio(blob);setRecording(false);void process(blob)}}
-      r.onerror=()=>{track('try_recording_failed');media.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('Recording interrupted. You can paste your recap instead.')}}
-      r.start(1000);track('try_recording_started');setRecording(true);setAudio(null)
+      r.onstop=()=>{if(timer.current)clearTimeout(timer.current);media.getTracks().forEach(t=>t.stop());if(alive.current){const blob=new Blob(chunks,{type:r.mimeType});setRecording(false);if(!attempt.finish(blob.size>0)){if(!blob.size)setError('No audio was captured. Please retry.');return}setAudio(blob);void process(blob)}}
+      r.onerror=()=>{attempt.fail(new DOMException('Recording interrupted','RecordingError'));media.getTracks().forEach(t=>t.stop());if(alive.current){setRecording(false);setError('Recording interrupted. You can paste your recap instead.')}}
+      r.start(1000);attempt.start();setRecording(true);setAudio(null)
       timer.current=setTimeout(()=>{if(r.state==='recording')r.stop()},180000)
-    }catch{track('try_recording_failed');setError('Microphone unavailable. Allow microphone access or paste your recap below.')}
+    }catch(error){attempt.fail(error);stream.current?.getTracks().forEach(t=>t.stop());setError('Microphone unavailable. Allow microphone access or paste your recap below.')}
     finally{locked.current=false}
   }
   const keep=async()=>{
@@ -81,11 +87,14 @@ export default function LiveTry(){
     if(locked.current||!preview)return
     if(preview.noteId){router.push('/?calendarNote='+preview.noteId);return}
     locked.current=true;setBusy(true);setError('')
+    const attempt=analyticsAttempt(track,{start:'note_save_started',complete:'try_claim_completed',fail:'try_claim_failed'},{flow:'guest',stage:'save'},Date.now,preview.previewId)
+    let responseStatus:number|undefined
     try{
-      const response=await fetchWithTimeout('/api/try/claim',{method:'POST'},20000);const data=await response.json()
+      const response=await fetchWithTimeout('/api/try/claim',{method:'POST',headers:analyticsHeaders(attempt.id,attempt.properties)},20000);responseStatus=response.status;const data=await response.json()
       if(!response.ok)throw Error(data.error)
-      track('try_claim_completed');setPreview({...preview,noteId:data.noteId});setNotice('Visit saved. Tap Add to calendar again to connect your calendar or save the event.')
-    }catch(e){track('try_claim_failed');setError(e instanceof Error?e.message:'Could not save your visit.')}
+      attempt.settle()
+      setPreview({...preview,noteId:data.noteId});setNotice('Visit saved. Tap Add to calendar again to connect your calendar or save the event.')
+    }catch(e){attempt.fail(e,responseStatus);setError(e instanceof Error?e.message:'Could not save your visit.')}
     finally{locked.current=false;setBusy(false)}
   }
   if(examples)return <><button className="block w-full bg-white p-3 text-sm text-indigo-700" onClick={()=>setExamples(false)}>Back to your own visit</button><PublicDemo onSignIn={signin} onStart={()=>track('example_selected')}/></>

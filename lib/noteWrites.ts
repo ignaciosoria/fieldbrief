@@ -14,7 +14,7 @@ export class NoteWrites<T> {
     this.pending.delete(key)
   }
   save(owner:string,id:string,result:T,transcript:string,expectedVersion:number,
-    send:(note:PendingNoteWrite<T>)=>Promise<{version:number}>=note=>notesRequest('/api/notes',{method:'PUT',body:JSON.stringify(note)})) {
+    send:(note:PendingNoteWrite<T>)=>Promise<{version:number}>=note=>notesRequest('/api/notes',{method:'PUT',body:JSON.stringify(note)},{analyticsAttemptId:note.requestId})) {
     const key=this.key(owner,id), old=this.pending.get(key)
     if(old && (JSON.stringify(old.result)!==JSON.stringify(result) || old.transcript!==transcript))
       return Promise.reject(Error('A correction is still waiting to be saved. Retry or copy it before making another change.'))

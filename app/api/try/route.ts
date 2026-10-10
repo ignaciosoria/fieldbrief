@@ -2,6 +2,7 @@ import {NextResponse} from 'next/server'
 import {DateTime} from 'luxon'
 import OpenAI from 'openai'
 import {auth} from '../../../auth'
+import {scheduleAnalytics} from '../../../lib/analyticsServer'
 import {serverDb} from '../../../lib/serverDb'
 import {extractVisitWithResearch} from '../../../lib/parallelVisit'
 import {transcribeVisitAudio} from '../../../lib/transcriptionModel'
@@ -28,6 +29,7 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
+  const started=Date.now()
   if(!enabled())return json({error:'The live demo is not available yet. Explore an example below.'},503)
   if(!sameOrigin(request))return json({error:'Invalid request origin.'},403)
   let note='',file:File|undefined,zone:unknown
@@ -62,6 +64,7 @@ export async function POST(request:Request){
     const {result}=await extractVisitWithResearch(note,new Date().toISOString(),timezone,async()=>true)
     const saved=await db.from('folup_guest_visits').update({state:'ready',raw_text:note,output:result}).eq('token_hash',hash).eq('state','running').select('id').single()
     if(saved.error)throw saved.error
+    scheduleAnalytics(request,'try_processing_completed',{flow:'guest',input_mode:file?'voice':'text',duration_ms:Date.now()-started,has_smart_step:result.extraction.actions.some(a=>a.origin==='recommendation')})
     return reply({state:'ready',previewId:saved.data.id,note,result})
   }catch{
     if(reserved)await serverDb().from('folup_guest_visits').update({state:'failed'}).eq('token_hash',hash).eq('state','running')

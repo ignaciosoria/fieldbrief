@@ -5,6 +5,7 @@ import {extractVisitWithResearch} from '../../../lib/parallelVisit'
 import {checkAiAccess} from '../../../lib/aiAccess'
 import {reserveAiUsage} from '../../../lib/aiAccessServer'
 import {withTrialNote} from '../../../lib/trialServer'
+import {scheduleAnalytics} from '../../../lib/analyticsServer'
 export const maxDuration=90
 
 export async function POST(request: Request) {
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     const {result,usage} = processed
     // Operational counts only: do not log the transcript, names or extracted prose.
     console.info("folup.structure",{version:2,ms:Date.now()-started,inputTokens:usage?.prompt_tokens,outputTokens:usage?.completion_tokens,actions:result.actions.length,questions:result.extraction.questions.length})
+    scheduleAnalytics(request,'note_processed',{stage:'extraction',duration_ms:Date.now()-started,has_smart_step:result.extraction.actions.some(a=>a.origin==='recommendation')},body.serverEmail)
     return NextResponse.json(result,{headers:{"Cache-Control":"no-store"}})
   } catch {
     return NextResponse.json({error:"Could not process this note. Your transcript is available to retry."},{status:502})
