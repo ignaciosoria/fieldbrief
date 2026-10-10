@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
-import {privatePageview,privateAnalyticsConfig} from '../lib/analyticsPrivacy'
+import {privatePageview,privateAnalyticsConfig,safeCampaign} from '../lib/analyticsPrivacy'
 import type {CaptureResult} from 'posthog-js'
 
 const event:CaptureResult={uuid:'event-test',event:'$pageview',timestamp:new Date(0),properties:{
@@ -9,6 +9,17 @@ const event:CaptureResult={uuid:'event-test',event:'$pageview',timestamp:new Dat
   $referrer:'https://crm.example.test/contact/private',transcript:'Private CRM visit',
   contact:'María',company:'Acme',$elements:[{text:'Private rendered note'}],
 },$set:{email:'person@example.test'},$set_once:{name:'María'}}
+
+test('Apollo variant and follow-up step survive privacy filtering without arbitrary UTM text',()=>{
+  const campaign={utm_source:'apollo',utm_medium:'email',utm_campaign:'packaging_20261009',utm_content:'a',utm_term:'followup_2'}
+  const clean=safeCampaign(campaign)
+  assert.deepEqual(clean,campaign)
+  const result=privatePageview(event,'random',{first:clean,last:clean,sessionCampaign:clean})!
+  assert.equal(result.properties.utm_content,'a')
+  for(const prefix of ['', 'first_', 'session_'])assert.equal(result.properties[`${prefix}utm_term`],'followup_2')
+  assert.equal(safeCampaign({...campaign,utm_term:'private@example.test'}).utm_term,undefined)
+  assert.equal(safeCampaign({...campaign,utm_source:'unknown'}).utm_term,undefined)
+})
 
 test('analytics only keeps coarse page counts without visit text, identity, URLs or profiles',()=>{
   const result=privatePageview(event,'random-per-page-id')!
