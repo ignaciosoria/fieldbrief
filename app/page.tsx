@@ -2,7 +2,7 @@
 
 import './components/public-marketing.css'
 
-import { initPosthog, track, trackSigninStart, trackSigninFailure, analyticsHeaders, analyticsCheckout, clearAnalyticsJourney } from '../lib/posthog'
+import { initPosthog, track, trackSigninStart, trackSigninFailure, readyAnalyticsHeaders, readyAnalyticsCheckout, clearAnalyticsJourney } from '../lib/posthog'
 import {analyticsAttempt,recordingAnalytics} from '../lib/analyticsAttempt'
 import AnalyticsPreference from './components/AnalyticsPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -2907,7 +2907,7 @@ export default function Home() {
       processingStage='extraction'
       const structureRes = await fetchWithTimeout('/api/structure', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json',...analyticsHeaders(attempt.id,attempt.properties) },
+        headers: { 'Content-Type': 'application/json',...await readyAnalyticsHeaders(attempt.id,attempt.properties) },
         body: JSON.stringify({
           note: tx,
           timezone: audio.timezone,
@@ -3007,7 +3007,7 @@ export default function Home() {
     try {
       const res = await fetchWithTimeout('/api/structure', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json',...analyticsHeaders(attempt.id,attempt.properties) },
+        headers: { 'Content-Type': 'application/json',...await readyAnalyticsHeaders(attempt.id,attempt.properties) },
         body: JSON.stringify({
           note: input,
           timezone: transcriptContext?.timezone || getClientTimezone(),
@@ -5105,7 +5105,7 @@ export default function Home() {
                 setCheckoutBusy(true)
                 setCheckoutError('')
                 try {
-                  const res = await fetch('/api/stripe/checkout', { method: 'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analytics:analyticsCheckout()}) })
+                  const res = await fetch('/api/stripe/checkout', { method: 'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({analytics:await readyAnalyticsCheckout()}) })
                   const data = await res.json()
                   if (!res.ok) throw Error(data.error || 'Unable to open checkout. Please try again.')
                   if (typeof data.url !== 'string') throw Error('Checkout unavailable. Please try again.')

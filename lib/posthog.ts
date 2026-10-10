@@ -97,7 +97,19 @@ export function analyticsHeaders(attemptId:string,properties:Record<string,unkno
     return safe?{'x-folup-analytics':JSON.stringify({id:journey.id,context:context(),properties:safe.properties})}:{}
   }catch{return {}}
 }
-export function analyticsCheckout(){initPosthog();return !analyticsDisabled()&&journey&&internal===false&&localStorage.getItem(INTERNAL)!=='1'?{id:journey.id,first:journey.first,last:journey.last}:undefined}
+async function readyAnalyticsContext(){
+  initPosthog()
+  if(!initialized||analyticsDisabled())return
+  if(contextRequest)await contextRequest
+  else if(internal===undefined&&Date.now()>=contextRetryAt)await refreshAnalyticsContext()
+}
+/** A quick submit must not drop server attribution while the initial context check is in flight. */
+export async function readyAnalyticsHeaders(attemptId:string,properties:Record<string,unknown>={}){
+  await readyAnalyticsContext()
+  return analyticsHeaders(attemptId,properties)
+}
+export function analyticsCheckout(){initPosthog();if(analyticsDisabled()||!journey||internal!==false||localStorage.getItem(INTERNAL)==='1')return;touch();return {id:journey.id,...context(),first:journey.first,last:journey.last}}
+export async function readyAnalyticsCheckout(){await readyAnalyticsContext();return analyticsCheckout()}
 export function clearAnalyticsJourney(){try{localStorage.removeItem(STORAGE)}catch{}generation++;contextRetryAt=0;contextRequest=undefined;journey=undefined;initialized=false;internal=undefined;queue=[];lastPage=undefined;signinLock=false;try{posthog.reset()}catch{}}
 export function setAnalyticsDisabled(disabled:boolean){try{localStorage.setItem(OPT_OUT,disabled?'1':'0')}catch{}if(disabled)clearAnalyticsJourney();else{initPosthog();trackPageview(location.pathname)}window.dispatchEvent(new Event('folup-analytics-change'))}
 /** QA can enable before login; server account marking works across signed-in devices. */
