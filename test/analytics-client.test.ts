@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {test,mock} from 'node:test'
-import posthog,{analyticsCheckout,clearAnalyticsJourney,initPosthog,refreshAnalyticsContext,setAnalyticsDisabled,track,trackSigninStart,trackSigninComplete,trackSigninFailure,trackPageview,analyticsHeaders,setAnalyticsInternal} from '../lib/posthog'
+import posthog,{analyticsCheckout,clearAnalyticsJourney,initPosthog,refreshAnalyticsContext,setAnalyticsDisabled,track,trackSigninStart,trackSigninComplete,trackSigninFailure,trackPageview,analyticsHeaders,readyAnalyticsHeaders,readyAnalyticsCheckout,setAnalyticsInternal} from '../lib/posthog'
 
 test('client analytics respects privacy, excludes previews, survives storage failures and counts OAuth once',async()=>{
   const names=['window','localStorage','navigator','location','document']
@@ -46,6 +46,26 @@ test('client analytics respects privacy, excludes previews, survives storage fai
     assert.equal(JSON.parse(analyticsHeaders(crypto.randomUUID())['x-folup-analytics']).context.internal,true)
     assert.equal(analyticsCheckout(),undefined,'internal checkout is not a campaign conversion')
     clearAnalyticsJourney()
+    setAnalyticsInternal(false)
+    let resolveContext!:(response:Response)=>void
+    mock.method(globalThis,'fetch',()=>new Promise<Response>(resolve=>{resolveContext=resolve}))
+    const attempt=crypto.randomUUID()
+    let completed=false
+    const pendingHeaders=readyAnalyticsHeaders(attempt).then(headers=>{completed=true;return headers})
+    const pendingCheckout=readyAnalyticsCheckout()
+    await Promise.resolve()
+    assert.equal(completed,false,'quick submits wait for the internal traffic check')
+    resolveContext(Response.json({internal:false}))
+    const header=JSON.parse((await pendingHeaders)['x-folup-analytics'])
+    assert.equal(header.properties.attempt_id,attempt)
+    assert.equal(header.context.internal,false)
+    assert.equal((await pendingCheckout)?.id,header.id,'checkout and server events share the journey')
+    clearAnalyticsJourney()
+    const optedOut=readyAnalyticsHeaders(attempt)
+    setAnalyticsDisabled(true)
+    resolveContext(Response.json({internal:false}))
+    assert.deepEqual(await optedOut,{},'opting out during the check suppresses attribution')
+    values.delete('folup-analytics-disabled')
     storage.getItem=()=>{throw Error('Storage denied')}
     assert.doesNotThrow(()=>track('note_processed'))
     assert.equal(analyticsCheckout(),undefined)

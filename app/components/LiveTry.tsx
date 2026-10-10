@@ -13,7 +13,7 @@ import type {visitExtractionResult} from '../../lib/visitExtraction'
 import type {CalendarDraft} from '../../lib/calendarDraft'
 import {formatProfessionalCrmNote} from '../../lib/formatCrmSalesNote'
 import {fetchWithTimeout} from '../../lib/fetchWithTimeout'
-import {initPosthog,track,trackSigninStart,trackSigninFailure,analyticsHeaders} from '../../lib/posthog'
+import {initPosthog,track,trackSigninStart,trackSigninFailure,readyAnalyticsHeaders} from '../../lib/posthog'
 
 import {analyticsAttempt,recordingAnalytics} from '../../lib/analyticsAttempt'
 
@@ -58,7 +58,7 @@ export default function LiveTry(){
       const recordingBlob=recorded||audio
       if(recordingBlob){const form=new FormData();form.set('file',recordingBlob,recordingBlob.type.includes('mp4')?'visit.mp4':'visit.webm');form.set('timezone',timezone);body=form}
       else{body=JSON.stringify({note:text,timezone});headers={'Content-Type':'application/json'}}
-      const response=await fetchWithTimeout('/api/try',{method:'POST',headers:{...headers,...analyticsHeaders(attempt.id,attempt.properties)},body},155000)
+      const response=await fetchWithTimeout('/api/try',{method:'POST',headers:{...headers,...await readyAnalyticsHeaders(attempt.id,attempt.properties)},body},155000)
       responseStatus=response.status
       const data=await response.json();if(!response.ok)throw Error(data.error)
       if(alive.current){setPreview(data);setAudio(null);attempt.complete({confirmation:'server',has_smart_step:data.result?.extraction?.actions?.some((a:{origin?:string})=>a.origin==='recommendation')||false})}
@@ -90,7 +90,7 @@ export default function LiveTry(){
     const attempt=analyticsAttempt(track,{start:'note_save_started',complete:'try_claim_completed',fail:'try_claim_failed'},{flow:'guest',stage:'save'},Date.now,preview.previewId)
     let responseStatus:number|undefined
     try{
-      const response=await fetchWithTimeout('/api/try/claim',{method:'POST',headers:analyticsHeaders(attempt.id,attempt.properties)},20000);responseStatus=response.status;const data=await response.json()
+      const response=await fetchWithTimeout('/api/try/claim',{method:'POST',headers:await readyAnalyticsHeaders(attempt.id,attempt.properties)},20000);responseStatus=response.status;const data=await response.json()
       if(!response.ok)throw Error(data.error)
       attempt.settle()
       setPreview({...preview,noteId:data.noteId});setNotice('Visit saved. Tap Add to calendar again to connect your calendar or save the event.')

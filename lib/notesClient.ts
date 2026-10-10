@@ -1,4 +1,4 @@
-import {analyticsHeaders,track} from './posthog'
+import {readyAnalyticsHeaders,track} from './posthog'
 import {analyticsAttempt} from './analyticsAttempt'
 /** Bound the entire operation, including reading the body. Never retry implicitly. */
 export async function notesRequest(url: string, init?: RequestInit, options:{timeoutMs?:number;fetcher?:typeof fetch;analyticsAttemptId?:string}={}) {
@@ -6,7 +6,6 @@ export async function notesRequest(url: string, init?: RequestInit, options:{tim
   const headers=new Headers(init?.headers)
   if(!headers.has('Content-Type')) headers.set('Content-Type','application/json')
   const attempt=url==='/api/notes'&&init?.method==='PUT'?analyticsAttempt(track,{start:'note_save_started',complete:'note_saved',fail:'note_save_failed'},{flow:'app',stage:'save'},Date.now,options.analyticsAttemptId):undefined
-  if(attempt)for(const [key,value] of Object.entries(analyticsHeaders(attempt.id,attempt.properties)))headers.set(key,value)
   let responseStatus:number|undefined
   let timer:ReturnType<typeof setTimeout>|undefined
   let onAbort:(()=>void)|undefined
@@ -20,6 +19,7 @@ export async function notesRequest(url: string, init?: RequestInit, options:{tim
     else init?.signal?.addEventListener('abort',onAbort,{once:true})
   })
   const request=async()=>{
+    if(attempt)for(const [key,value] of Object.entries(await readyAnalyticsHeaders(attempt.id,attempt.properties)))headers.set(key,value)
     if(controller.signal.aborted) throw Error('The request was cancelled.')
     const response=await (options.fetcher || fetch)(url,{...init,headers,cache:'no-store',signal:controller.signal})
     responseStatus=response.status

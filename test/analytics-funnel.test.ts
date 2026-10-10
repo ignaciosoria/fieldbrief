@@ -41,7 +41,7 @@ test('billing attribution rejects non-UUID identities and strips arbitrary metad
   assert.ok(result.folup_analytics.length<=500)
 })
 function payment(overrides:Record<string,unknown>={},type='checkout.session.completed') {
-  return {type,created:1800000100,data:{object:{id:'cs_test',created:1800000000,mode:'subscription',payment_status:'paid',subscription:'sub_test',metadata:{user_email:'SECRET',...analyticsMetadata({id,first:campaign,last:campaign})},...overrides}}} as unknown as Stripe.Event
+  return {type,livemode:true,created:1800000100,data:{object:{id:'cs_test',livemode:true,created:1800000000,mode:'subscription',payment_status:'paid',subscription:'sub_test',metadata:{user_email:'SECRET',...analyticsMetadata({id,first:campaign,last:campaign})},...overrides}}} as unknown as Stripe.Event
 }
 test('only confirmed paid subscription checkout yields conversion; deterministic UUID suppresses retries',()=>{
   const a=paidAnalyticsPayload(payment())!

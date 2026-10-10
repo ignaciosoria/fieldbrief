@@ -5,6 +5,7 @@ import {stripeServer} from '../../../../lib/stripeServer'
 import {serverDb} from '../../../../lib/serverDb'
 import {grantsPaidAccess} from '../../../../lib/subscriptionPolicy'
 import {analyticsMetadata} from '../../../../lib/analyticsBilling'
+import {isInternalAnalyticsAccount} from '../../../../lib/analyticsInternal'
 
 export async function POST(request:Request) {
   try {
@@ -15,7 +16,7 @@ export async function POST(request:Request) {
 
     const email=session.user.email.trim()
     const body=await request.json().catch(()=>null)
-    const attribution=analyticsMetadata(body?.analytics)
+    const attribution=request.headers.get('dnt')==='1'||request.headers.get('sec-gpc')==='1'?{}:analyticsMetadata(body?.analytics,isInternalAnalyticsAccount(email))
     const stripe=stripeServer()
     const price=process.env.STRIPE_PRICE_ID
     if(!price) throw Error('Missing price')
