@@ -2,18 +2,19 @@ import type { CaptureResult, PostHogConfig } from 'posthog-js'
 
 export const analyticsEvents = ['$pageview','try_cta_clicked','example_viewed','example_selected','try_recording_started','try_recording_failed','try_processing_started','try_processing_completed','try_processing_failed','try_calendar_clicked','try_claim_completed','try_claim_failed','demo_started','demo_completed','signin_started','signin_completed','note_processing_started','note_processed','note_processing_failed','crm_copied','calendar_save_started','calendar_saved','calendar_save_failed','calendar_connection_required','checkout_opened','checkout_failed','trial_limit_reached','voice_correction_started','signin_failed','signin_result_unobserved','record_clicked','microphone_requested','microphone_granted','microphone_denied','recording_started','recording_completed','recording_cancelled','recording_failed','note_save_started','note_saved','note_updated','note_save_failed','note_result_received'] as const
 export type AnalyticsEvent = typeof analyticsEvents[number]
-export type Campaign = {utm_source?:'apollo';utm_medium?:'email';utm_campaign?:string;utm_content?:string}
+export type Campaign = {utm_source?:'apollo';utm_medium?:'email';utm_campaign?:string;utm_content?:string;utm_term?:'initial'|'followup_1'|'followup_2'}
 export const campaignNames = ['ag_field_pilot','field_sales_pilot','ag_field_followup'] as const
 /** Approved topic + date codes, never arbitrary URL text or recipient identifiers. */
 export function campaignFromParams(params:URLSearchParams):Campaign {
   const name=params.get('utm_campaign')?.toLowerCase()||''
   if(params.get('utm_source')?.toLowerCase()!=='apollo' || params.get('utm_medium')?.toLowerCase()!=='email' || !(campaignNames.some(n=>n===name)||/^(packaging|ag_field|field_sales|agriculture|distribution|folup)_20\d{6}$/.test(name)))return {}
   const content=params.get('utm_content')?.toLowerCase()
-  return {utm_source:'apollo',utm_medium:'email',utm_campaign:name,...(['a','b','c','followup_1','followup_2'].includes(content||'')?{utm_content:content!}:{})}
+  const term=params.get('utm_term')?.toLowerCase()
+  return {utm_source:'apollo',utm_medium:'email',utm_campaign:name,...(['a','b','c','followup_1','followup_2'].includes(content||'')?{utm_content:content!}:{}),...(['initial','followup_1','followup_2'].includes(term||'')?{utm_term:term as Campaign['utm_term']}:{})}
 }
 export function safeCampaign(value:unknown):Campaign {
   const params=new URLSearchParams()
-  if(value && typeof value==='object')for(const key of ['utm_source','utm_medium','utm_campaign','utm_content']) {
+  if(value && typeof value==='object')for(const key of ['utm_source','utm_medium','utm_campaign','utm_content','utm_term']) {
     const v=(value as Record<string,unknown>)[key];if(typeof v==='string')params.set(key,v)
   }
   return campaignFromParams(params)

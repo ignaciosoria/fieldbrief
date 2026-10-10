@@ -4,7 +4,7 @@ import type Stripe from 'stripe'
 import {analyticsMetadata,analyticsFromMetadata} from '../lib/analyticsBilling'
 import {paidAnalyticsPayload} from '../lib/analyticsBillingServer'
 const id='12345678-1234-4234-8234-123456789abc',sessionId='22345678-1234-4234-8234-123456789abc'
-const campaign={utm_source:'apollo',utm_medium:'email',utm_campaign:'packaging_20261009',utm_content:'b'} as const
+const campaign={utm_source:'apollo',utm_medium:'email',utm_campaign:'packaging_20261009',utm_content:'b',utm_term:'followup_2'} as const
 const context={id,first:campaign,last:campaign,sessionCampaign:campaign,sessionId,firstSource:'apollo',sessionSource:'apollo',visitorType:'returning'}
 function event(livemode=true,internal=false,email='external@example.test'){
   return {type:'checkout.session.completed',livemode,created:1800000100,data:{object:{id:'cs_fixture',livemode,mode:'subscription',payment_status:'paid',subscription:'sub_fixture',metadata:{user_email:email,...analyticsMetadata(context,internal)}}}} as unknown as Stripe.Event
@@ -14,6 +14,7 @@ test('live external payment matches reporting filters and carries all three attr
   assert.equal(payload.properties.environment,'production');assert.equal(payload.properties.is_internal,false)
   const properties:Record<string,unknown>=payload.properties
   assert.equal(properties.first_utm_content,'b');assert.equal(properties.utm_content,'b');assert.equal(properties.session_utm_content,'b')
+  assert.equal(properties.first_utm_term,'followup_2');assert.equal(properties.utm_term,'followup_2');assert.equal(properties.session_utm_term,'followup_2')
   assert.equal(payload.properties.$session_id,sessionId);assert.equal(payload.properties.confirmation,'server')
   assert.doesNotMatch(JSON.stringify(payload),/external@|cs_fixture|sub_fixture/)
 })
